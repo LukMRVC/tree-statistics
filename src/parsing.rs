@@ -86,9 +86,11 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
                     tree_bytes[(*token + 1)..**token_end].to_vec()
                 );
                 let n = tree.new_node(label.unwrap());
-                node_stack.last()
-                    .unwrap()
-                    .append(n, &mut tree);
+                let Some(last_node) = node_stack.last() else {
+                    let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
+                    return Err(IncorrectFormat(err_msg));
+                };
+                last_node.append(n, &mut tree);
                 node_stack.push(n);
             },
             TOKEN_END => {
@@ -119,5 +121,13 @@ mod tests {
         assert_eq!(iter.next().map(|node| node.get().clone()), Some("einsteinstrasse".to_owned()));
         assert_eq!(iter.next().map(|node| node.get().clone()), Some("1".to_owned()));
         assert_eq!(iter.next().map(|node| node.get().clone()), Some("3".to_owned()));
+    }
+
+
+    #[test]
+    fn test_parses_escaped() {
+        let input = String::from("{inproceedings{key{conf/inlg/Bohnet08a}}{mdate{2012-06-18}}{author{Bernd Bohnet}}{title{The Fingerprint of Human Referring Expressions and their Surface Realization with Graph Transducers (IS-FP, IS-GT, IS-FP-GT)\\}\\}.}}{year{2008}}{booktitle{INLG}}{ee{http://www.aclweb.org/anthology/W08-1132}}{crossref{conf/inlg/2008}}{url{db/conf/inlg/inlg2008.html#Bohnet08a}}}");
+        let arena = parse_tree(Ok(input));
+        assert_eq!(arena.is_ok(), true);
     }
 }
