@@ -21,7 +21,13 @@ fn main() -> Result<(), clap::Error> {
         exit(1);
     }
 
-    let trees = parsing::parse_dataset(cli.dataset_path);
-
+    let trees = match parsing::parse_dataset(cli.dataset_path) {
+        Ok(trees) => trees,
+        Err(e) => {
+            eprintln!("Got unexpected error: {}", e);
+            exit(1);
+        },
+    };
+    println!("Parsed {} trees", trees.len());
     Ok(())
 }

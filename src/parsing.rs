@@ -28,7 +28,7 @@ pub fn parse_dataset(dataset_file: PathBuf) -> Result<Vec<indextree::Arena<Strin
 
 
 const TOKEN_START: u8 = b'{';
-const TOKEN_END: u8 = b'{';
+const TOKEN_END: u8 = b'}';
 const ESCAPE_CHAR: u8 = b'\\';
 
 #[inline(always)]
@@ -42,8 +42,10 @@ pub enum TreeParseError {
     IsNotAscii,
     #[error(transparent)]
     LineReadError(#[from] io::Error),
-    #[error("tree string has incorrect bracket notation format")]
-    IncorrectFormat
+    #[error("tree string has incorrect bracket notation format: {}", .0)]
+    IncorrectFormat(String),
+    #[error("Bad tokenizing")]
+    TokenizerError
 }
 
 
@@ -54,7 +56,7 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
     if !tree_str.is_ascii() {
         return Err(IsNotAscii);
     }
-    let tree = Arena::<String>::new();
+    let mut tree = Arena::<String>::new();
     let tree_bytes = tree_str.as_bytes();
 
     let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
@@ -62,16 +64,60 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
         .collect();
 
     if token_positions.len() < 2 {
-        return Err(IncorrectFormat);
+        return Err(IncorrectFormat("Minimal of 2 brackets not found!".to_owned()));
     }
 
     let mut tokens = token_positions.iter().peekable();
     let root_start = *tokens.next().unwrap();
     let root_end = **tokens.peek().unwrap();
 
-    let root_label = String::from(&tree_bytes[(root_start + 1)..root_end]);
-    // TODO: create root node
+    let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec());
+    let root = tree.new_node(root_label.unwrap());
+    let mut node_stack = vec![root];
+
+    while let Some(token) = tokens.next() {
+        match tree_bytes[*token] {
+            TOKEN_START => {
+                let Some(token_end) = tokens.peek() else {
+                    let err_msg = format!("Label has no ending token near col {token} , line \"{tree_str}\"");
+                    return Err(IncorrectFormat(err_msg));
+                };
+                let label = String::from_utf8(
+                    tree_bytes[(*token + 1)..**token_end].to_vec()
+                );
+                let n = tree.new_node(label.unwrap());
+                node_stack.last()
+                    .unwrap()
+                    .append(n, &mut tree);
+                node_stack.push(n);
+            },
+            TOKEN_END => {
+                let Some(_) = node_stack.pop() else {
+                    return Err(IncorrectFormat("Wrong bracket pairing".to_owned()));
+                };
+            },
+            _ => return Err(TokenizerError),
+        }
+    }
 
     Ok(tree)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parses() {
+        let input = "{einsteinstrasse{1}{3}}".to_owned();
+        let arena = parse_tree(Ok(input));
+        assert_eq!(arena.is_ok(), true);
+        let arena = arena.unwrap();
+        assert_eq!(arena.count(), 3);
+        let mut iter = arena.iter();
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some("einsteinstrasse".to_owned()));
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some("1".to_owned()));
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some("3".to_owned()));
+    }
+}
