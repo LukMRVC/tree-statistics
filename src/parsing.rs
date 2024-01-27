@@ -31,8 +31,13 @@ const TOKEN_START: u8 = b'{';
 const TOKEN_END: u8 = b'}';
 const ESCAPE_CHAR: u8 = b'\\';
 
-#[inline(always)]
+// #[inline(always)]
 fn is_escaped(byte_string: &[u8], offset: usize) -> bool {
+    let offset = dbg!(offset);
+    dbg!(byte_string[offset] as char);
+    if offset > 0 {
+        dbg!(byte_string[offset - 1] as char);
+    }
     offset > 0 && byte_string[offset - 1] == ESCAPE_CHAR
 }
 
@@ -50,11 +55,11 @@ pub enum TreeParseError {
 
 
 fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, TreeParseError> {
-    use TreeParseError::*;
+    use TreeParseError as TPE;
 
     let tree_str = tree_str?;
     if !tree_str.is_ascii() {
-        return Err(IsNotAscii);
+        return Err(TPE::IsNotAscii);
     }
     let mut tree = Arena::<String>::new();
     let tree_bytes = tree_str.as_bytes();
@@ -64,7 +69,7 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
         .collect();
 
     if token_positions.len() < 2 {
-        return Err(IncorrectFormat("Minimal of 2 brackets not found!".to_owned()));
+        return Err(TPE::IncorrectFormat("Minimal of 2 brackets not found!".to_owned()));
     }
 
     let mut tokens = token_positions.iter().peekable();
@@ -80,7 +85,7 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
             TOKEN_START => {
                 let Some(token_end) = tokens.peek() else {
                     let err_msg = format!("Label has no ending token near col {token} , line \"{tree_str}\"");
-                    return Err(IncorrectFormat(err_msg));
+                    return Err(TPE::IncorrectFormat(err_msg));
                 };
                 let label = String::from_utf8(
                     tree_bytes[(*token + 1)..**token_end].to_vec()
@@ -88,17 +93,17 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
                 let n = tree.new_node(label.unwrap());
                 let Some(last_node) = node_stack.last() else {
                     let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
-                    return Err(IncorrectFormat(err_msg));
+                    return Err(TPE::IncorrectFormat(err_msg));
                 };
                 last_node.append(n, &mut tree);
                 node_stack.push(n);
             },
             TOKEN_END => {
                 let Some(_) = node_stack.pop() else {
-                    return Err(IncorrectFormat("Wrong bracket pairing".to_owned()));
+                    return Err(TPE::IncorrectFormat("Wrong bracket pairing".to_owned()));
                 };
             },
-            _ => return Err(TokenizerError),
+            _ => return Err(TPE::TokenizerError),
         }
     }
 
@@ -126,8 +131,9 @@ mod tests {
 
     #[test]
     fn test_parses_escaped() {
-        let input = String::from("{inproceedings{key{conf/inlg/Bohnet08a}}{mdate{2012-06-18}}{author{Bernd Bohnet}}{title{The Fingerprint of Human Referring Expressions and their Surface Realization with Graph Transducers (IS-FP, IS-GT, IS-FP-GT)\\}\\}.}}{year{2008}}{booktitle{INLG}}{ee{http://www.aclweb.org/anthology/W08-1132}}{crossref{conf/inlg/2008}}{url{db/conf/inlg/inlg2008.html#Bohnet08a}}}");
+        let input = String::from(r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#);
         let arena = parse_tree(Ok(input));
         assert_eq!(arena.is_ok(), true);
+        assert_eq!(arena.unwrap().count(), 21);
     }
 }

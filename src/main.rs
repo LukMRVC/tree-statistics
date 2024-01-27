@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::exit;
 
 mod parsing;
+mod statistics;
 
 /// Tree statistics utility
 #[derive(Parser, Debug)]
