@@ -31,13 +31,8 @@ const TOKEN_START: u8 = b'{';
 const TOKEN_END: u8 = b'}';
 const ESCAPE_CHAR: u8 = b'\\';
 
-// #[inline(always)]
+#[inline(always)]
 fn is_escaped(byte_string: &[u8], offset: usize) -> bool {
-    let offset = dbg!(offset);
-    dbg!(byte_string[offset] as char);
-    if offset > 0 {
-        dbg!(byte_string[offset - 1] as char);
-    }
     offset > 0 && byte_string[offset - 1] == ESCAPE_CHAR
 }
 
@@ -119,7 +114,7 @@ mod tests {
     fn test_parses() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
         let arena = parse_tree(Ok(input));
-        assert_eq!(arena.is_ok(), true);
+        assert!(arena.is_ok());
         let arena = arena.unwrap();
         assert_eq!(arena.count(), 3);
         let mut iter = arena.iter();
@@ -133,7 +128,30 @@ mod tests {
     fn test_parses_escaped() {
         let input = String::from(r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#);
         let arena = parse_tree(Ok(input));
-        assert_eq!(arena.is_ok(), true);
+        assert!(arena.is_ok());
         assert_eq!(arena.unwrap().count(), 21);
+    }
+
+    #[test]
+    fn test_descendants_correct() {
+        let input = "{first{second{third}{fourth{fifth{six}{seven}}}}".to_owned();
+        let arena = parse_tree(Ok(input));
+        assert!(arena.is_ok());
+        let arena = arena.unwrap();
+        let Some(root) = arena.iter().next() else {
+            panic!("Unable to get root but tree is not empty!");
+        };
+        let root_id = arena.get_node_id(root).unwrap();
+        let mut iter = root_id.descendants(&arena);
+
+        let rd = iter.next();
+        assert!(rd.is_some());
+        assert_eq!(arena.get(rd.unwrap()).map(|node| node.get()), Some("first".to_string()).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("second".to_string()).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("third".to_string()).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("fourth".to_string()).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("fifth".to_string()).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("six".to_string()).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("seven".to_string()).as_ref());
     }
 }
