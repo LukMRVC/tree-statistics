@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 use std::process::exit;
+use rayon::prelude::*;
 
 mod parsing;
 mod statistics;
@@ -10,8 +11,8 @@ mod statistics;
 #[command(author, version, about)]
 struct Cli {
     /// Dataset file of trees in bracket notation
-    #[arg(short, long, value_name="FILE")]
-    dataset_path: PathBuf
+    #[arg(short, long, value_name = "FILE")]
+    dataset_path: PathBuf,
 }
 
 fn main() -> Result<(), clap::Error> {
@@ -27,8 +28,14 @@ fn main() -> Result<(), clap::Error> {
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
             exit(1);
-        },
+        }
     };
     println!("Parsed {} trees", trees.len());
+
+    println!("Gathering statistics");
+    let stats: Vec<_> = trees.par_iter().map(statistics::gather).collect();
+    let summary = statistics::summarize(&stats);
+
+    println!("Collection statistics\n{summary}");
     Ok(())
 }
