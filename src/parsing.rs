@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
@@ -16,11 +17,12 @@ pub enum DatasetParseError {
 }
 
 
-pub fn parse_dataset(dataset_file: PathBuf) -> Result<Vec<indextree::Arena<String>>, DatasetParseError> {
+pub fn parse_dataset(dataset_file: PathBuf, replace_labels_with_ids: bool) -> Result<Vec<indextree::Arena<String>>, DatasetParseError> {
     let f = File::open(dataset_file)?;
+    let mut label_map = HashMap::new();
     let reader = BufReader::new(f);
-    let trees: Vec<indextree::Arena<String>> = reader.lines()
-        .map(parse_tree)
+    let trees: Vec<Arena<String>> = reader.lines()
+        .map(|l| parse_tree(l, &mut label_map, replace_labels_with_ids))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(trees)
@@ -45,11 +47,12 @@ pub enum TreeParseError {
     #[error("tree string has incorrect bracket notation format: {}", .0)]
     IncorrectFormat(String),
     #[error("Bad tokenizing")]
-    TokenizerError
+    TokenizerError,
 }
 
 
-fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, TreeParseError> {
+fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut HashMap<String, usize>, replace: bool)
+    -> Result<Arena<String>, TreeParseError> {
     use TreeParseError as TPE;
 
     let tree_str = tree_str?;
@@ -66,13 +69,16 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
     if token_positions.len() < 2 {
         return Err(TPE::IncorrectFormat("Minimal of 2 brackets not found!".to_owned()));
     }
+    let mut max_node_id = 1;
 
     let mut tokens = token_positions.iter().peekable();
     let root_start = *tokens.next().unwrap();
     let root_end = **tokens.peek().unwrap();
 
-    let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec());
-    let root = tree.new_node(root_label.unwrap());
+    let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
+    label_map.insert(root_label, max_node_id);
+
+    let root = tree.new_node(max_node_id.to_string());
     let mut node_stack = vec![root];
 
     while let Some(token) = tokens.next() {
@@ -84,20 +90,20 @@ fn parse_tree(tree_str: Result<String, io::Error>) -> Result<Arena<String>, Tree
                 };
                 let label = String::from_utf8(
                     tree_bytes[(*token + 1)..**token_end].to_vec()
-                );
-                let n = tree.new_node(label.unwrap());
+                ).unwrap();
+                let n = tree.new_node(label);
                 let Some(last_node) = node_stack.last() else {
                     let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
                 last_node.append(n, &mut tree);
                 node_stack.push(n);
-            },
+            }
             TOKEN_END => {
                 let Some(_) = node_stack.pop() else {
                     return Err(TPE::IncorrectFormat("Wrong bracket pairing".to_owned()));
                 };
-            },
+            }
             _ => return Err(TPE::TokenizerError),
         }
     }
@@ -113,7 +119,8 @@ mod tests {
     #[test]
     fn test_parses() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
-        let arena = parse_tree(Ok(input));
+        let mut hs = HashMap::new();
+        let arena = parse_tree(Ok(input), &mut hs, false);
         assert!(arena.is_ok());
         let arena = arena.unwrap();
         assert_eq!(arena.count(), 3);
@@ -126,8 +133,9 @@ mod tests {
 
     #[test]
     fn test_parses_escaped() {
+        let mut hs = HashMap::new();
         let input = String::from(r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#);
-        let arena = parse_tree(Ok(input));
+        let arena = parse_tree(Ok(input), &mut hs, false);
         assert!(arena.is_ok());
         assert_eq!(arena.unwrap().count(), 21);
     }
@@ -135,7 +143,8 @@ mod tests {
     #[test]
     fn test_descendants_correct() {
         let input = "{first{second{third}{fourth{fifth{six}{seven}}}}".to_owned();
-        let arena = parse_tree(Ok(input));
+        let mut hs = HashMap::new();
+        let arena = parse_tree(Ok(input), &mut hs, false);
         assert!(arena.is_ok());
         let arena = arena.unwrap();
         let Some(root) = arena.iter().next() else {
