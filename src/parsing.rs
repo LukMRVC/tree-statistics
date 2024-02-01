@@ -76,9 +76,13 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut HashMap<Strin
     let root_end = **tokens.peek().unwrap();
 
     let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
-    label_map.insert(root_label, max_node_id);
+    let root = if replace {
+        label_map.insert(root_label, max_node_id);
+        tree.new_node(max_node_id.to_string())
+    } else {
+        tree.new_node(root_label)
+    };
 
-    let root = tree.new_node(max_node_id.to_string());
     let mut node_stack = vec![root];
 
     while let Some(token) = tokens.next() {
@@ -91,7 +95,17 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut HashMap<Strin
                 let label = String::from_utf8(
                     tree_bytes[(*token + 1)..**token_end].to_vec()
                 ).unwrap();
-                let n = tree.new_node(label);
+
+                let node_label = if replace {
+                    label_map.entry(label).or_insert_with(|| {
+                        max_node_id += 1;
+                        max_node_id
+                    }).to_string()
+                } else {
+                    label
+                };
+
+                let n = tree.new_node(node_label);
                 let Some(last_node) = node_stack.last() else {
                     let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));

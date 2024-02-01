@@ -53,7 +53,7 @@ fn main() -> Result<(), anyhow::Error> {
         ).exit();
     }
 
-    let trees = match parsing::parse_dataset(cli.dataset_path, true) {
+    let trees = match parsing::parse_dataset(cli.dataset_path, false) {
         Ok(trees) => trees,
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
