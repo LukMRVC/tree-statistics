@@ -6,11 +6,14 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use clap::error::ErrorKind;
 use rayon::prelude::*;
+use crate::indexing::SEDIndex;
+use crate::parsing::LabelDict;
 use crate::statistics::TreeStatistics;
 
 mod parsing;
 mod statistics;
-mod traversals;
+mod indexing;
+mod lb;
 
 /// Tree statistics utility
 #[derive(Parser, Debug)]
@@ -53,7 +56,8 @@ fn main() -> Result<(), anyhow::Error> {
         ).exit();
     }
 
-    let trees = match parsing::parse_dataset(cli.dataset_path, false) {
+    let mut label_dict = LabelDict::new();
+    let trees = match parsing::parse_dataset(cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
@@ -85,9 +89,11 @@ fn main() -> Result<(), anyhow::Error> {
         },
         Commands::Traversals { output} => {
             let traversal_strings = trees.par_iter()
-                .map(traversals::get_pre_post_strings)
-                .map(|(pre, post)| {
-                    format!("{pre},{post}", pre = pre.join(""), post = post.join(""))
+                .map(SEDIndex::index_tree)
+                .map(|index| {
+                    format!("{pre},{post}",
+                            pre = index.preorder.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(";"),
+                            post = index.postorder.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(";"))
                 })
                 .collect::<Vec<_>>();
 
@@ -108,12 +114,12 @@ fn write_files(stats: &[TreeStatistics], output_dir: &impl AsRef<Path>) -> Resul
         [&out, &PathBuf::from("depths.csv")].iter().collect::<PathBuf>(),
         &stats.iter().flat_map(|s| &s.depths).collect::<Vec<&usize>>()
     )?;
-    write_file(
-        [&out, &PathBuf::from("labels.csv")].iter().collect::<PathBuf>(),
-        &stats.iter().flat_map(|s| {
-            s.distinct_labels.iter().map(|(k, v)| format!("{k},{v}")).collect::<Vec<_>>()
-        }).collect::<Vec<_>>()
-    )?;
+    // write_file(
+    //     [&out, &PathBuf::from("labels.csv")].iter().collect::<PathBuf>(),
+    //     &stats.iter().flat_map(|s| {
+    //         s.distinct_labels.iter().map(|(k, v)| format!("{k},{v}")).collect::<Vec<_>>()
+    //     }).collect::<Vec<_>>()
+    // )?;
 
     Ok(())
 }

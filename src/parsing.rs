@@ -17,12 +17,15 @@ pub enum DatasetParseError {
 }
 
 
-pub fn parse_dataset(dataset_file: PathBuf, replace_labels_with_ids: bool) -> Result<Vec<indextree::Arena<String>>, DatasetParseError> {
+pub type LabelDict = HashMap<String, i32>;
+pub(crate)
+type ParsedTree = Arena<i32>;
+
+pub fn parse_dataset(dataset_file: PathBuf, label_dict: &mut LabelDict) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let f = File::open(dataset_file)?;
-    let mut label_map = HashMap::new();
     let reader = BufReader::new(f);
-    let trees: Vec<Arena<String>> = reader.lines()
-        .map(|l| parse_tree(l, &mut label_map, replace_labels_with_ids))
+    let trees: Vec<ParsedTree> = reader.lines()
+        .map(|l| parse_tree(l, label_dict))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(trees)
@@ -51,15 +54,15 @@ pub enum TreeParseError {
 }
 
 
-fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut HashMap<String, usize>, replace: bool)
-    -> Result<Arena<String>, TreeParseError> {
+fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
+    -> Result<ParsedTree, TreeParseError> {
     use TreeParseError as TPE;
 
     let tree_str = tree_str?;
     if !tree_str.is_ascii() {
         return Err(TPE::IsNotAscii);
     }
-    let mut tree = Arena::<String>::new();
+    let mut tree = ParsedTree::new();
     let tree_bytes = tree_str.as_bytes();
 
     let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
@@ -76,12 +79,8 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut HashMap<Strin
     let root_end = **tokens.peek().unwrap();
 
     let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
-    let root = if replace {
-        label_map.insert(root_label, max_node_id);
-        tree.new_node(max_node_id.to_string())
-    } else {
-        tree.new_node(root_label)
-    };
+    label_map.insert(root_label, max_node_id);
+    let root =  tree.new_node(max_node_id);
 
     let mut node_stack = vec![root];
 
@@ -96,16 +95,12 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut HashMap<Strin
                     tree_bytes[(*token + 1)..**token_end].to_vec()
                 ).unwrap();
 
-                let node_label = if replace {
-                    label_map.entry(label).or_insert_with(|| {
-                        max_node_id += 1;
-                        max_node_id
-                    }).to_string()
-                } else {
-                    label
-                };
+                let node_label = label_map.entry(label).or_insert_with(|| {
+                    max_node_id += 1;
+                    max_node_id
+                });
 
-                let n = tree.new_node(node_label);
+                let n = tree.new_node(*node_label);
                 let Some(last_node) = node_stack.last() else {
                     let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));
@@ -133,23 +128,23 @@ mod tests {
     #[test]
     fn test_parses() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
-        let mut hs = HashMap::new();
-        let arena = parse_tree(Ok(input), &mut hs, false);
+        let mut hs = LabelDict::new();
+        let arena = parse_tree(Ok(input), &mut hs);
         assert!(arena.is_ok());
         let arena = arena.unwrap();
         assert_eq!(arena.count(), 3);
         let mut iter = arena.iter();
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some("einsteinstrasse".to_owned()));
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some("1".to_owned()));
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some("3".to_owned()));
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some(1));
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some(2));
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some(3));
     }
 
 
     #[test]
     fn test_parses_escaped() {
-        let mut hs = HashMap::new();
+        let mut hs = LabelDict::new();
         let input = String::from(r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#);
-        let arena = parse_tree(Ok(input), &mut hs, false);
+        let arena = parse_tree(Ok(input), &mut hs);
         assert!(arena.is_ok());
         assert_eq!(arena.unwrap().count(), 21);
     }
@@ -157,8 +152,8 @@ mod tests {
     #[test]
     fn test_descendants_correct() {
         let input = "{first{second{third}{fourth{fifth{six}{seven}}}}".to_owned();
-        let mut hs = HashMap::new();
-        let arena = parse_tree(Ok(input), &mut hs, false);
+        let mut hs = LabelDict::new();
+        let arena = parse_tree(Ok(input), &mut hs);
         assert!(arena.is_ok());
         let arena = arena.unwrap();
         let Some(root) = arena.iter().next() else {
@@ -169,12 +164,12 @@ mod tests {
 
         let rd = iter.next();
         assert!(rd.is_some());
-        assert_eq!(arena.get(rd.unwrap()).map(|node| node.get()), Some("first".to_string()).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("second".to_string()).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("third".to_string()).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("fourth".to_string()).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("fifth".to_string()).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("six".to_string()).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some("seven".to_string()).as_ref());
+        assert_eq!(arena.get(rd.unwrap()).map(|node| node.get()), Some(1).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(2).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(3).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(4).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(5).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(6).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(7).as_ref());
     }
 }

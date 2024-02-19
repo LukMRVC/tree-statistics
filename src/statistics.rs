@@ -1,18 +1,16 @@
 use indextree::Arena;
-use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Formatter;
 use itertools::Itertools;
 use rayon::prelude::*;
+use crate::parsing::ParsedTree;
 
 #[derive(Default, Debug, Clone)]
-pub struct TreeStatistics<'a> {
+pub struct TreeStatistics {
     /// Slice of degrees of tree - useful for histograms and average degree
     pub degrees: Vec<usize>,
     /// Tree depths - length of each path from root to leaf
     pub depths: Vec<usize>,
-    /// distinct labels in a tree
-    pub distinct_labels: HashMap<&'a str, usize>,
     /// number of nodes in a tree
     pub size: usize,
     /// average node degree
@@ -33,19 +31,17 @@ pub struct CollectionStatistics {
     /// average number of nodes per tree in collection
     pub avg_tree_size: usize,
     /// number of distinct labels in collection
-    pub distinct_labels: usize,
-    /// number of trees in collection
     pub trees: usize,
 }
 
 impl fmt::Display for CollectionStatistics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{},{},{},{},{}\n", self.min_tree_size, self.max_tree_size, self.avg_tree_size, self.distinct_labels, self.trees)
+        write!(f, "{},{},{},{}\n", self.min_tree_size, self.max_tree_size, self.avg_tree_size, self.trees)
     }
 }
 
 
-pub fn gather(tree: &Arena<String>) -> TreeStatistics {
+pub fn gather(tree: &ParsedTree) -> TreeStatistics {
     if tree.is_empty() {
         return TreeStatistics::default();
     }
@@ -59,17 +55,14 @@ pub fn gather(tree: &Arena<String>) -> TreeStatistics {
     let root_id = tree.get_node_id(root).unwrap();
     let mut degrees = vec![];
     let mut depths = vec![];
+
+    #[inline]
     fn is_leaf(children: &usize) -> bool {
         *children == 0
     }
-    let mut labels = HashMap::new();
 
     for nid in root_id.descendants(tree) {
         let n = tree.get(nid).unwrap();
-        let str_label = n.get().as_str();
-
-        labels.entry(str_label).and_modify(|c| { *c += 1 }).or_insert(1);
-
         let mut degree = nid.children(tree).count();
 
         // pop node ids from stack to get into
@@ -95,7 +88,6 @@ pub fn gather(tree: &Arena<String>) -> TreeStatistics {
     TreeStatistics {
         degrees,
         depths,
-        distinct_labels: labels,
         size: tree.count(),
         height,
         avg_degree,
@@ -116,16 +108,11 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
 
     let avg_size = all_statistics.par_iter().map(|s| s.size).sum::<usize>() as f64 / all_statistics.len() as f64;
     let avg_size = avg_size.round() as usize;
-    let distinct_labels = all_statistics.iter().fold(HashSet::<&str>::new(), |mut acc, s| {
-        acc.extend(s.distinct_labels.keys());
-        acc
-    });
 
     CollectionStatistics {
         min_tree_size: min,
         max_tree_size: max,
         avg_tree_size: avg_size,
-        distinct_labels: distinct_labels.len(),
         trees: all_statistics.len(),
     }
 }
@@ -137,10 +124,10 @@ mod tests {
     #[test]
     fn test_simple_statistics() {
         let mut a = Arena::new();
-        let n1 = a.new_node("first".to_owned());
-        let n2 = a.new_node("second".to_owned());
-        let n3 = a.new_node("third".to_owned());
-        let n4 = a.new_node("fourth".to_owned());
+        let n1 = a.new_node(1);
+        let n2 = a.new_node(2);
+        let n3 = a.new_node(3);
+        let n4 = a.new_node(4);
 
         n1.append(n2, &mut a);
         n2.append(n3, &mut a);
@@ -149,7 +136,6 @@ mod tests {
 
         assert_eq!(stats.depths, vec![3]);
         assert_eq!(stats.degrees, vec![1, 2, 2, 1]);
-        assert_eq!(stats.distinct_labels.len(), 4);
         assert_eq!(stats.height, 3);
         assert_eq!(stats.avg_depth, 3f64);
         assert_eq!(stats.avg_degree, 1.5f64);
@@ -159,13 +145,13 @@ mod tests {
     #[test]
     fn test_branched_stats() {
         let mut a = Arena::new();
-        let n1 = a.new_node("a".to_owned());
-        let n2 = a.new_node("b".to_owned());
-        let n3 = a.new_node("c".to_owned());
-        let n4 = a.new_node("d".to_owned());
-        let n5 = a.new_node("c".to_owned());
-        let n6 = a.new_node("b".to_owned());
-        let n7 = a.new_node("f".to_owned());
+        let n1 = a.new_node(1);
+        let n2 = a.new_node(2);
+        let n3 = a.new_node(3);
+        let n4 = a.new_node(4);
+        let n5 = a.new_node(3);
+        let n6 = a.new_node(2);
+        let n7 = a.new_node(5);
 
         n1.append(n2, &mut a);
         n2.append(n3, &mut a);
@@ -179,6 +165,5 @@ mod tests {
 
         assert_eq!(stats.depths, vec![3, 3, 2]);
         assert_eq!(stats.degrees, vec![2, 2, 3, 1, 1, 2, 1]);
-        assert_eq!(stats.distinct_labels.len(), 5);
     }
 }
