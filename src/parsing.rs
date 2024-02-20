@@ -54,6 +54,7 @@ pub enum TreeParseError {
 }
 
 
+pub(crate)
 fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
     -> Result<ParsedTree, TreeParseError> {
     use TreeParseError as TPE;
@@ -72,7 +73,7 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
     if token_positions.len() < 2 {
         return Err(TPE::IncorrectFormat("Minimal of 2 brackets not found!".to_owned()));
     }
-    let mut max_node_id = 1;
+    let mut max_node_id = 0;
 
     let mut tokens = token_positions.iter().peekable();
     let root_start = *tokens.next().unwrap();
@@ -134,9 +135,9 @@ mod tests {
         let arena = arena.unwrap();
         assert_eq!(arena.count(), 3);
         let mut iter = arena.iter();
+        assert_eq!(iter.next().map(|node| node.get().clone()), Some(0));
         assert_eq!(iter.next().map(|node| node.get().clone()), Some(1));
         assert_eq!(iter.next().map(|node| node.get().clone()), Some(2));
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some(3));
     }
 
 
@@ -164,12 +165,12 @@ mod tests {
 
         let rd = iter.next();
         assert!(rd.is_some());
-        assert_eq!(arena.get(rd.unwrap()).map(|node| node.get()), Some(1).as_ref());
+        assert_eq!(arena.get(rd.unwrap()).map(|node| node.get()), Some(0).as_ref());
+        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(1).as_ref());
         assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(2).as_ref());
         assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(3).as_ref());
         assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(4).as_ref());
         assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(5).as_ref());
         assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(6).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(7).as_ref());
     }
 }

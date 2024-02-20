@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use clap::error::ErrorKind;
 use rayon::prelude::*;
-use crate::indexing::SEDIndex;
+use crate::indexing::{Indexer, SEDIndex};
 use crate::parsing::LabelDict;
 use crate::statistics::TreeStatistics;
 
@@ -89,9 +89,9 @@ fn main() -> Result<(), anyhow::Error> {
         },
         Commands::Traversals { output} => {
             let traversal_strings = trees.par_iter()
-                .map(SEDIndex::index_tree)
+                .map(|tree| SEDIndex::index_tree(tree, &label_dict))
                 .map(|index| {
-                    format!("{pre},{post}",
+                    format!("{pre}\n{post}",
                             pre = index.preorder.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(";"),
                             post = index.postorder.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(";"))
                 })
