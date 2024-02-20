@@ -1,15 +1,21 @@
-use indextree::{Arena, NodeId};
+use indextree::NodeId;
+use std::collections::HashMap;
 use crate::parsing::{LabelDict, ParsedTree};
 
 pub trait Indexer {
     fn index_tree(tree: &ParsedTree, label_dict: &LabelDict) -> Self where Self: Sized;
 }
 
+#[derive(Debug)]
+pub struct ConstantsIndex {
+    pub tree_size: usize,
+}
 
 #[derive(Debug)]
 pub struct SEDIndex {
     pub preorder: Vec<i32>,
     pub postorder: Vec<i32>,
+    pub c: ConstantsIndex,
 }
 
 
@@ -27,7 +33,10 @@ impl Indexer for SEDIndex {
 
         Self {
             postorder: post,
-            preorder: pre
+            preorder: pre,
+            c: ConstantsIndex {
+                tree_size: tree.count()
+            }
         }
     }
 }
@@ -43,11 +52,14 @@ fn traverse<'a>(nid: NodeId, tree: &'a ParsedTree, pre: &mut Vec<i32>, post: &mu
 }
 
 
+pub type InvListLblPost = HashMap<i32, Vec<i32>>;
+
 /// Inverted list of nodes, key is index which is the label id in label dict
 /// and postings list contains postorder traversal number
 #[derive(Debug)]
 pub struct InvertedListLabelPostorderIndex {
-    pub inverted_list: Vec<Vec<i32>>,
+    pub inverted_list: InvListLblPost,
+    pub c: ConstantsIndex,
 }
 
 
@@ -56,17 +68,20 @@ impl Indexer for InvertedListLabelPostorderIndex {
         let Some(root) = tree.iter().next() else {
             panic!("Unable to get root but tree is not empty!");
         };
-        let mut inverted_list = vec![vec![]; label_dict.len()];
+        let mut inverted_list = HashMap::new();
         let root_id = tree.get_node_id(root).unwrap();
         traverse_inverted(root_id, tree, &mut inverted_list, 0);
 
         Self {
-            inverted_list
+            inverted_list,
+            c: ConstantsIndex {
+                tree_size: tree.count(),
+            }
         }
     }
 }
 
-fn traverse_inverted<'a>(nid: NodeId, tree: &'a ParsedTree, inverted_list: &mut Vec<Vec<i32>>, start_postorder: i32) -> i32 {
+fn traverse_inverted<'a>(nid: NodeId, tree: &'a ParsedTree, inverted_list: &mut InvListLblPost, start_postorder: i32) -> i32 {
     let label = tree.get(nid).unwrap().get();
     let mut postorder_id = start_postorder;
     let mut children = 0;
@@ -74,7 +89,9 @@ fn traverse_inverted<'a>(nid: NodeId, tree: &'a ParsedTree, inverted_list: &mut 
         postorder_id += traverse_inverted(cnid, tree, inverted_list, postorder_id);
         children += 1;
     }
-    inverted_list[*label as usize].push(postorder_id);
+    inverted_list.entry(*label)
+        .and_modify(|postings| postings.push(postorder_id))
+        .or_insert(vec![postorder_id]);
     children + 1
 }
 
@@ -124,12 +141,12 @@ mod tests {
         assert!(parse_result.is_ok(), "Tree parsing failed, which shouldn't");
         let tree = parse_result.unwrap();
         let idx = InvertedListLabelPostorderIndex::index_tree(&tree, &label_dict);
-        assert_eq!(idx.inverted_list, vec![
-            vec![3, 6],
-            vec![0],
-            vec![1, 4],
-            vec![2],
-            vec![5],
-        ])
+        assert_eq!(idx.inverted_list, InvListLblPost::from([
+            (0, vec![3, 6]),
+            (1, vec![0]),
+            (2, vec![1, 4]),
+            (3, vec![2]),
+            (4, vec![5]),
+        ]));
     }
 }
