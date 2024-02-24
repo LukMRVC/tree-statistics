@@ -16,10 +16,11 @@ pub enum DatasetParseError {
     ParseError(#[from] TreeParseError),
 }
 
+pub type LabelId = i32;
 
-pub type LabelDict = HashMap<String, i32>;
+pub type LabelDict = HashMap<String, LabelId>;
 pub(crate)
-type ParsedTree = Arena<i32>;
+type ParsedTree = Arena<LabelId>;
 
 pub fn parse_dataset(dataset_file: PathBuf, label_dict: &mut LabelDict) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let f = File::open(dataset_file)?;
