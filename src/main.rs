@@ -1,19 +1,19 @@
-use std::fmt::Display;
-use std::fs::{create_dir_all, File};
-use std::io::{BufWriter, Write};
-use clap::{CommandFactory, Subcommand, Parser};
-use std::path::{Path, PathBuf};
-use std::process::exit;
-use clap::error::ErrorKind;
-use rayon::prelude::*;
 use crate::indexing::{Indexer, SEDIndex};
 use crate::parsing::LabelDict;
 use crate::statistics::TreeStatistics;
+use clap::error::ErrorKind;
+use clap::{CommandFactory, Parser, Subcommand};
+use rayon::prelude::*;
+use std::fmt::Display;
+use std::fs::{create_dir_all, File};
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
+use std::process::exit;
 
-mod parsing;
-mod statistics;
 mod indexing;
 mod lb;
+mod parsing;
+mod statistics;
 
 /// Tree statistics utility
 #[derive(Parser, Debug)]
@@ -35,14 +35,14 @@ enum Commands {
     Statistics {
         /// outputs data for degree, leaf paths and labels histograms
         #[arg(long)]
-        hists: Option<PathBuf>
+        hists: Option<PathBuf>,
     },
     /// Gets pre and post order traversals of each tree
     Traversals {
         /// output path for traversals
         #[arg(long)]
         output: PathBuf,
-    }
+    },
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -52,8 +52,9 @@ fn main() -> Result<(), anyhow::Error> {
     if !cli.dataset_path.exists() || !cli.dataset_path.is_file() {
         cmd.error(
             ErrorKind::InvalidValue,
-            "Path does not exists or is not a valid file!"
-        ).exit();
+            "Path does not exists or is not a valid file!",
+        )
+        .exit();
     }
 
     let mut label_dict = LabelDict::new();
@@ -69,14 +70,18 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     match cli.command {
-        Commands::Statistics { hists} => {
+        Commands::Statistics { hists } => {
             let stats: Vec<_> = trees.par_iter().map(statistics::gather).collect();
             let summary = statistics::summarize(&stats);
             println!("Collection statistics\n{summary}");
             if hists.is_some() {
                 let mut output_path = hists.unwrap();
                 if output_path.exists() && !output_path.is_dir() {
-                    cmd.error(ErrorKind::InvalidValue, "Output path must be a directory! Defaulting to current...").print()?;
+                    cmd.error(
+                        ErrorKind::InvalidValue,
+                        "Output path must be a directory! Defaulting to current...",
+                    )
+                    .print()?;
                     output_path = PathBuf::from("./");
                 }
 
@@ -86,33 +91,59 @@ fn main() -> Result<(), anyhow::Error> {
 
                 write_files(&stats, &output_path)?;
             }
-        },
-        Commands::Traversals { output} => {
-            let traversal_strings = trees.par_iter()
+        }
+        Commands::Traversals { output } => {
+            let traversal_strings = trees
+                .par_iter()
                 .map(|tree| SEDIndex::index_tree(tree, &label_dict))
                 .map(|index| {
-                    format!("{pre}\n{post}",
-                            pre = index.preorder.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(";"),
-                            post = index.postorder.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(";"))
+                    format!(
+                        "{pre}\n{post}",
+                        pre = index
+                            .preorder
+                            .iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<_>>()
+                            .join(";"),
+                        post = index
+                            .postorder
+                            .iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<_>>()
+                            .join(";")
+                    )
                 })
                 .collect::<Vec<_>>();
 
             write_file(output, &traversal_strings)?;
-        },
+        }
     }
 
     Ok(())
 }
 
-fn write_files(stats: &[TreeStatistics], output_dir: &impl AsRef<Path>) -> Result<(), anyhow::Error> {
+fn write_files(
+    stats: &[TreeStatistics],
+    output_dir: &impl AsRef<Path>,
+) -> Result<(), anyhow::Error> {
     let out = output_dir.as_ref().to_path_buf();
     write_file(
-        [&out, &PathBuf::from("degrees.csv")].iter().collect::<PathBuf>(),
-        &stats.iter().flat_map(|s| &s.degrees).collect::<Vec<&usize>>()
+        [&out, &PathBuf::from("degrees.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats
+            .iter()
+            .flat_map(|s| &s.degrees)
+            .collect::<Vec<&usize>>(),
     )?;
     write_file(
-        [&out, &PathBuf::from("depths.csv")].iter().collect::<PathBuf>(),
-        &stats.iter().flat_map(|s| &s.depths).collect::<Vec<&usize>>()
+        [&out, &PathBuf::from("depths.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats
+            .iter()
+            .flat_map(|s| &s.depths)
+            .collect::<Vec<&usize>>(),
     )?;
     // write_file(
     //     [&out, &PathBuf::from("labels.csv")].iter().collect::<PathBuf>(),
@@ -125,7 +156,9 @@ fn write_files(stats: &[TreeStatistics], output_dir: &impl AsRef<Path>) -> Resul
 }
 
 fn write_file<T>(file_name: impl AsRef<Path>, data: &[T]) -> Result<(), std::io::Error>
-    where T: Display {
+where
+    T: Display,
+{
     let f = File::create(file_name.as_ref().to_path_buf())?;
     let mut w = BufWriter::new(f);
 

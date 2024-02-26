@@ -44,7 +44,6 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
         (t1, t2) = (t2, t1);
     }
 
-
     let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
     let post_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
 
@@ -52,7 +51,7 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
 }
 
 fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
-    use std::cmp::{min, max};
+    use std::cmp::{max, min};
     // assumes size of s2 is smaller or equal than s1
     let mut s1len = s1.len();
     let mut s2len = s2.len();
@@ -105,12 +104,7 @@ fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     }
 
     let threshold = threshold as i64;
-    let zero_k: i64 = ((if s1len < threshold {
-        s1len
-    } else {
-        threshold
-    }) >> 1)
-        + 2;
+    let zero_k: i64 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
 
     let arr_len = size_diff + (zero_k) * 2 + 2;
 
@@ -185,8 +179,6 @@ fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

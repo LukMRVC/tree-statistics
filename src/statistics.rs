@@ -1,9 +1,9 @@
+use crate::parsing::ParsedTree;
 use indextree::Arena;
-use std::fmt;
-use std::fmt::Formatter;
 use itertools::Itertools;
 use rayon::prelude::*;
-use crate::parsing::ParsedTree;
+use std::fmt;
+use std::fmt::Formatter;
 
 #[derive(Default, Debug, Clone)]
 pub struct TreeStatistics {
@@ -21,7 +21,6 @@ pub struct TreeStatistics {
     pub height: usize,
 }
 
-
 #[derive(Default, Debug, Clone)]
 pub struct CollectionStatistics {
     /// min tree size in collection
@@ -36,10 +35,13 @@ pub struct CollectionStatistics {
 
 impl fmt::Display for CollectionStatistics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{},{},{},{}\n", self.min_tree_size, self.max_tree_size, self.avg_tree_size, self.trees)
+        write!(
+            f,
+            "{},{},{},{}\n",
+            self.min_tree_size, self.max_tree_size, self.avg_tree_size, self.trees
+        )
     }
 }
-
 
 pub fn gather(tree: &ParsedTree) -> TreeStatistics {
     if tree.is_empty() {
@@ -66,7 +68,8 @@ pub fn gather(tree: &ParsedTree) -> TreeStatistics {
         let mut degree = nid.children(tree).count();
 
         // pop node ids from stack to get into
-        while !node_stack.is_empty() && *node_stack.last().unwrap() != tree.get(nid).unwrap().parent().unwrap()
+        while !node_stack.is_empty()
+            && *node_stack.last().unwrap() != tree.get(nid).unwrap().parent().unwrap()
         {
             node_stack.pop();
         }
@@ -95,8 +98,6 @@ pub fn gather(tree: &ParsedTree) -> TreeStatistics {
     }
 }
 
-
-
 pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
     use itertools::MinMaxResult as MMR;
 
@@ -106,7 +107,8 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
         MMR::MinMax(mi, mx) => (mi.size, mx.size),
     };
 
-    let avg_size = all_statistics.par_iter().map(|s| s.size).sum::<usize>() as f64 / all_statistics.len() as f64;
+    let avg_size = all_statistics.par_iter().map(|s| s.size).sum::<usize>() as f64
+        / all_statistics.len() as f64;
     let avg_size = avg_size.round() as usize;
 
     CollectionStatistics {

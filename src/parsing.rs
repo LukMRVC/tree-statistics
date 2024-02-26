@@ -1,12 +1,11 @@
+use indextree::Arena;
+use memchr::memchr2_iter;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use indextree::Arena;
 use thiserror::Error;
-use memchr::memchr2_iter;
-
 
 #[derive(Error, Debug)]
 pub enum DatasetParseError {
@@ -19,19 +18,21 @@ pub enum DatasetParseError {
 pub type LabelId = i32;
 
 pub type LabelDict = HashMap<String, LabelId>;
-pub(crate)
-type ParsedTree = Arena<LabelId>;
+pub(crate) type ParsedTree = Arena<LabelId>;
 
-pub fn parse_dataset(dataset_file: PathBuf, label_dict: &mut LabelDict) -> Result<Vec<ParsedTree>, DatasetParseError> {
+pub fn parse_dataset(
+    dataset_file: PathBuf,
+    label_dict: &mut LabelDict,
+) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let f = File::open(dataset_file)?;
     let reader = BufReader::new(f);
-    let trees: Vec<ParsedTree> = reader.lines()
+    let trees: Vec<ParsedTree> = reader
+        .lines()
         .map(|l| parse_tree(l, label_dict))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(trees)
 }
-
 
 const TOKEN_START: u8 = b'{';
 const TOKEN_END: u8 = b'}';
@@ -54,10 +55,10 @@ pub enum TreeParseError {
     TokenizerError,
 }
 
-
-pub(crate)
-fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
-    -> Result<ParsedTree, TreeParseError> {
+pub(crate) fn parse_tree(
+    tree_str: Result<String, io::Error>,
+    label_map: &mut LabelDict,
+) -> Result<ParsedTree, TreeParseError> {
     use TreeParseError as TPE;
 
     let tree_str = tree_str?;
@@ -72,17 +73,25 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
         .collect();
 
     if token_positions.len() < 2 {
-        return Err(TPE::IncorrectFormat("Minimal of 2 brackets not found!".to_owned()));
+        return Err(TPE::IncorrectFormat(
+            "Minimal of 2 brackets not found!".to_owned(),
+        ));
     }
-    let mut max_node_id = 0;
+    let mut max_node_id = label_map.values().max().cloned().unwrap_or(0);
 
     let mut tokens = token_positions.iter().peekable();
     let root_start = *tokens.next().unwrap();
     let root_end = **tokens.peek().unwrap();
 
     let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
-    label_map.insert(root_label, max_node_id);
-    let root =  tree.new_node(max_node_id);
+    let is_first_label_in_map = label_map.is_empty();
+    let root_label = label_map.entry(root_label).or_insert_with(|| {
+        if !is_first_label_in_map {
+            max_node_id += 1;
+        }
+        max_node_id
+    });
+    let root = tree.new_node(*root_label);
 
     let mut node_stack = vec![root];
 
@@ -90,12 +99,12 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
         match tree_bytes[*token] {
             TOKEN_START => {
                 let Some(token_end) = tokens.peek() else {
-                    let err_msg = format!("Label has no ending token near col {token} , line \"{tree_str}\"");
+                    let err_msg =
+                        format!("Label has no ending token near col {token} , line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
-                let label = String::from_utf8(
-                    tree_bytes[(*token + 1)..**token_end].to_vec()
-                ).unwrap();
+                let label =
+                    String::from_utf8(tree_bytes[(*token + 1)..**token_end].to_vec()).unwrap();
 
                 let node_label = label_map.entry(label).or_insert_with(|| {
                     max_node_id += 1;
@@ -122,7 +131,6 @@ fn parse_tree(tree_str: Result<String, io::Error>, label_map: &mut LabelDict)
     Ok(tree)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,14 +149,37 @@ mod tests {
         assert_eq!(iter.next().map(|node| node.get().clone()), Some(2));
     }
 
-
     #[test]
     fn test_parses_escaped() {
         let mut hs = LabelDict::new();
-        let input = String::from(r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#);
+        let input = String::from(
+            r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#,
+        );
         let arena = parse_tree(Ok(input), &mut hs);
         assert!(arena.is_ok());
         assert_eq!(arena.unwrap().count(), 21);
+    }
+
+    #[test]
+    fn test_label_dict_preserved_label_ids() {
+        // test label ids are not overwritten when parsing another tree
+        let mut ld = LabelDict::new();
+        let t1 = parse_tree(Ok(
+            "{b{e}{d{a}}}".to_owned()
+        ), &mut ld).unwrap();
+        let t2 = parse_tree(Ok(
+            "{d{c}{f{g}{d{a}}}}".to_owned()
+        ), &mut ld).unwrap();
+
+        assert_eq!(ld, LabelDict::from([
+            ("b".to_owned(), 0),
+            ("e".to_owned(), 1),
+            ("d".to_owned(), 2),
+            ("a".to_owned(), 3),
+            ("c".to_owned(), 4),
+            ("f".to_owned(), 5),
+            ("g".to_owned(), 6),
+        ]), "Label dict label ids were not preserved!");
     }
 
     #[test]
@@ -166,12 +197,33 @@ mod tests {
 
         let rd = iter.next();
         assert!(rd.is_some());
-        assert_eq!(arena.get(rd.unwrap()).map(|node| node.get()), Some(0).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(1).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(2).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(3).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(4).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(5).as_ref());
-        assert_eq!(arena.get(iter.next().unwrap()).map(|node| node.get()), Some(6).as_ref());
+        assert_eq!(
+            arena.get(rd.unwrap()).map(|node| node.get()),
+            Some(0).as_ref()
+        );
+        assert_eq!(
+            arena.get(iter.next().unwrap()).map(|node| node.get()),
+            Some(1).as_ref()
+        );
+        assert_eq!(
+            arena.get(iter.next().unwrap()).map(|node| node.get()),
+            Some(2).as_ref()
+        );
+        assert_eq!(
+            arena.get(iter.next().unwrap()).map(|node| node.get()),
+            Some(3).as_ref()
+        );
+        assert_eq!(
+            arena.get(iter.next().unwrap()).map(|node| node.get()),
+            Some(4).as_ref()
+        );
+        assert_eq!(
+            arena.get(iter.next().unwrap()).map(|node| node.get()),
+            Some(5).as_ref()
+        );
+        assert_eq!(
+            arena.get(iter.next().unwrap()).map(|node| node.get()),
+            Some(6).as_ref()
+        );
     }
 }
