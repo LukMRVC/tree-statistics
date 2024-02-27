@@ -1,14 +1,15 @@
-use crate::indexing::{Indexer, SEDIndex};
+use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
 use crate::parsing::LabelDict;
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use itertools::Itertools;
 
 mod indexing;
 mod lb;
@@ -29,6 +30,16 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum LowerBoundMethods {
+    /// Histogram lower bound
+    Hist,
+    /// Label intersection lower bound
+    Lblint,
+    /// String edit distance lower bound
+    Sed,
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// outputs data for degree, leaf paths and labels histograms
@@ -43,6 +54,18 @@ enum Commands {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Calculates lower bound candidates
+    LowerBound {
+        /// output path for lower bound candidates
+        #[arg(long)]
+        output: PathBuf,
+        /// Lower bound method
+        #[arg(value_enum)]
+        method: LowerBoundMethods,
+        /// Optional threshold for bounded calculation - they are faster!
+        #[arg()]
+        threshold: Option<usize>,
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -117,10 +140,46 @@ fn main() -> Result<(), anyhow::Error> {
 
             write_file(output, &traversal_strings)?;
         }
+        Commands::LowerBound { method, output, threshold } => {
+            use LowerBoundMethods as LBM;
+            let mut candidates: Vec<(usize, usize)> = vec![];
+            // TODO: Fix this unwrap_or
+            let k = threshold.unwrap_or(0);
+            match method {
+                LBM::Hist => {
+                    candidates = lb::indexes::histograms::index_lookup(&trees, &label_dict, k);
+                },
+                LBM::Lblint => {
+                    let indexed_trees = trees.iter()
+                        .map(|t| InvertedListLabelPostorderIndex::index_tree(&t, &label_dict))
+                        .collect_vec();
+
+                    for (i, t1) in indexed_trees.iter().enumerate() {
+                        for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
+                            let lb = lb::label_intersection::label_intersection(t1, t2);
+                            if lb <= k {
+                                candidates.push((i, j));
+                            }
+                        }
+                    }
+
+                },
+                LBM::Sed => {
+                    let indexed_trees = trees.iter()
+                        .map(|t| SEDIndex::index_tree(&t, &label_dict))
+                        .collect_vec();
+                    todo!();
+                }
+            }
+            write_file(output, &candidates.iter().map(|(c1, c2)| {
+                format!("{c1},{c2}")
+            }).collect_vec())?;
+        }
     }
 
     Ok(())
 }
+
 
 fn write_files(
     stats: &[TreeStatistics],
