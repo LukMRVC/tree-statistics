@@ -15,6 +15,7 @@ mod indexing;
 mod lb;
 mod parsing;
 mod statistics;
+mod validation;
 
 /// Tree statistics utility
 #[derive(Parser, Debug)]
@@ -48,7 +49,7 @@ enum Commands {
         #[arg(long)]
         hists: Option<PathBuf>,
     },
-    /// Gets pre and post order traversals of each tree
+    /// Gets pre- and post- order traversals of each tree
     Traversals {
         /// output path for traversals
         #[arg(long)]
@@ -65,6 +66,18 @@ enum Commands {
         /// Optional threshold for bounded calculation - they are faster!
         #[arg()]
         threshold: Option<usize>,
+    },
+    /// Validates candidate results against real results
+    Validate {
+        /// Candidates path
+        #[arg(long)]
+        candidates_path: PathBuf,
+        /// Real results path
+        #[arg(long)]
+        results_path: PathBuf,
+        /// Threshold for validation
+        #[arg()]
+        threshold: usize,
     }
 }
 
@@ -150,8 +163,10 @@ fn main() -> Result<(), anyhow::Error> {
                     candidates = lb::indexes::histograms::index_lookup(&trees, &label_dict, k);
                 },
                 LBM::Lblint => {
-                    let indexed_trees = trees.iter()
-                        .map(|t| InvertedListLabelPostorderIndex::index_tree(&t, &label_dict))
+                    let indexed_trees = trees.iter().enumerate()
+                        .map(|(idx, t)| {
+                            InvertedListLabelPostorderIndex::index_tree(&t, &label_dict)
+                        })
                         .collect_vec();
 
                     for (i, t1) in indexed_trees.iter().enumerate() {
@@ -175,6 +190,10 @@ fn main() -> Result<(), anyhow::Error> {
             write_file(output, &candidates.iter().map(|(c1, c2)| {
                 format!("{c1},{c2}")
             }).collect_vec())?;
+        },
+        Commands::Validate { results_path, threshold, candidates_path } => {
+            validation::validate(candidates_path, results_path, threshold)?;
+
         }
     }
 

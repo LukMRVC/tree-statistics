@@ -16,10 +16,12 @@ pub fn index_lookup(
     // this is the inverted index, that will be indexed by labelId, and contains a vector of pairs
     // (tree_id, labelId_count_in_tree)
     let mut il_index = vec![vec![]; label_dict.len() + 1];
+
     // label intersections counter for each tree. Counts with how many other trees it has an intersection
+    // this is here to compute the symmetric difference faster
     let mut intersections_count = vec![0; label_hist.len()];
 
-    for (tree_id, (tree_size, label_histogram)) in label_hist.iter().enumerate() {
+    for (tree_id, (tree_size, tree_label_histogram)) in label_hist.iter().enumerate() {
         let mut pre_candidates = vec![];
 
         // if the tree size is smaller than distance threshold k
@@ -35,10 +37,10 @@ pub fn index_lookup(
         }
 
         // get pre-candidates by looking up the inverted index and doing the label intersection
-        for (label_id, label_count) in label_histogram.iter() {
+        for (label_id, label_count) in tree_label_histogram.iter() {
             for (other_tree_id, other_label_count) in il_index[*label_id as usize].iter() {
                 let intersection_size = *std::cmp::min(other_label_count, label_count);
-                if intersections_count[*other_tree_id] == 0 && intersection_size != 0 {
+                if intersections_count[*other_tree_id] == 0 && intersection_size > 0 {
                     pre_candidates.push(*other_tree_id);
                 }
                 intersections_count[*other_tree_id] = std::cmp::min(
@@ -52,9 +54,15 @@ pub fn index_lookup(
         // verify precandidates
         for pre_cand_id in pre_candidates.iter() {
             let other_tree_size = label_hist[*pre_cand_id].0;
-            if (tree_size + other_tree_size - (2 * intersections_count[*pre_cand_id] as usize)) / 2 <= k {
+            // compute the symmetric difference (union - intersection size) and divide by 2 to get the label lower bound
+            // if (tree_size + other_tree_size - (2 * intersections_count[*pre_cand_id] as usize)) / 2 <= k {
+            //     candidates.push((tree_id, *pre_cand_id));
+            // }
+
+            if std::cmp::max(*tree_size, other_tree_size) - intersections_count[*pre_cand_id] as usize <= k {
                 candidates.push((tree_id, *pre_cand_id));
             }
+
             intersections_count[*pre_cand_id] = 0;
         }
     }

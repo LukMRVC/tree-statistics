@@ -23,6 +23,11 @@ pub fn label_intersection_k(
     use std::cmp::{max, min};
     let mut intersection_size = 0;
     let bigger_tree = max(t1.c.tree_size, t2.c.tree_size);
+
+    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+        return k + 1;
+    }
+
     for (label, postings) in t1.inverted_list.iter() {
         let Some(t2postings) = t2.inverted_list.get(label) else {
             continue;
