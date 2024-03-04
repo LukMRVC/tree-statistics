@@ -171,6 +171,7 @@ fn main() -> Result<(), anyhow::Error> {
                     todo!();
                 }
             }
+            candidates.sort();
             write_file(output, &candidates.iter().map(|(c1, c2)| {
                 format!("{c1},{c2}")
             }).collect_vec())?;
