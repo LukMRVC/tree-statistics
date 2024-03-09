@@ -3,15 +3,31 @@ use indextree::NodeId;
 use std::collections::HashMap;
 use itertools::Itertools;
 
-type Histogram = HashMap<u32, u32>;
+type Histogram<K = u32, V = u32> = HashMap<K, V>;
 
-pub fn index_lookup(
+pub type Candidate = (usize, usize);
+pub type Candidates = Vec<Candidate>;
+
+
+/// Will convert into histograms before getting candidates
+pub fn collection_index_lookup(
     tree_collection: &[ParsedTree],
     label_dict: &LabelDict,
     k: usize,
-) -> Vec<(usize, usize)> {
+) -> Candidates {
     // assumes tree collection is sorted by tree size
     let (leaf_hist, degree_hist, label_hist) = create_collection_histograms(tree_collection);
+    index_lookup(&leaf_hist, &degree_hist, &label_hist, label_dict, k).1
+}
+
+
+pub fn index_lookup(
+    leaf_hist: &[(usize, Histogram)],
+    degree_hist: &[(usize, Histogram)],
+    label_hist: &[(usize, Histogram<LabelId, u32>)],
+    label_dict: &LabelDict,
+    k: usize,
+) -> (Vec<u128>, Candidates) {
     let mut candidates = vec![];
     // this is the inverted index, that will be indexed by labelId, and contains a vector of pairs
     // (tree_id, labelId_count_in_tree)
@@ -72,26 +88,26 @@ pub fn index_lookup(
         .filter(|(t1, t2)| {
             let intersection_size = degree_hist[*t1].1.iter()
                 .fold(0, |intersection, (degree, count)| {
-                intersection + std::cmp::min(
-                    count,
-                    degree_hist[*t2].1.get(degree).unwrap_or(&0)
-                )
-            }) as usize;
+                    intersection + std::cmp::min(
+                        count,
+                        degree_hist[*t2].1.get(degree).unwrap_or(&0)
+                    )
+                }) as usize;
 
             let (t1size, t2size) = (
                 degree_hist[*t1].0,
                 degree_hist[*t2].0
-                );
+            );
             (t1size + t2size - (2 * intersection_size)) / 5 <= k
         })
         .filter(|(t1, t2)| {
             let intersection_size = leaf_hist[*t1].1.iter()
                 .fold(0, |intersection, (degree, count)| {
-                intersection + std::cmp::min(
-                    count,
-                    leaf_hist[*t2].1.get(degree).unwrap_or(&0)
-                )
-            }) as usize;
+                    intersection + std::cmp::min(
+                        count,
+                        leaf_hist[*t2].1.get(degree).unwrap_or(&0)
+                    )
+                }) as usize;
 
             let (t1size, t2size) = (
                 degree_hist[*t1].0,
@@ -106,6 +122,156 @@ pub fn index_lookup(
 }
 
 
+// for some testing purposes, implement only single label filter
+pub fn leaf_index_lookup(
+    leaf_hist: &[(usize, Histogram)],
+    label_dict: &LabelDict,
+    k: usize,
+) -> Candidates {
+    let mut candidates = vec![];
+    // this is the inverted index, that will be indexed by labelId, and contains a vector of pairs
+    // (tree_id, labelId_count_in_tree)
+    let mut il_index = vec![vec![]; label_dict.len() + 1];
+
+    // label intersections counter for each tree. Counts with how many other trees it has an intersection
+    // this is here to compute the symmetric difference faster
+    let mut intersections_count = vec![0; leaf_hist.len()];
+
+    for (tree_id, (tree_size, tree_label_histogram)) in leaf_hist.iter().enumerate() {
+        let mut pre_candidates = vec![];
+
+        // get pre-candidates by looking up the inverted index and doing the label intersection
+        for (label_id, label_count) in tree_label_histogram.iter() {
+            for (other_tree_id, other_label_count) in il_index[*label_id as usize].iter() {
+                let intersection_size = *std::cmp::min(other_label_count, label_count);
+                if intersections_count[*other_tree_id] == 0 && intersection_size > 0 {
+                    pre_candidates.push(*other_tree_id);
+                }
+                intersections_count[*other_tree_id] += intersection_size as usize;
+            }
+            il_index[*label_id as usize].push((tree_id, *label_count));
+        }
+
+        // verify pre-candidates
+        for pre_cand_id in pre_candidates.iter() {
+            let other_tree_size = leaf_hist[*pre_cand_id].0;
+            if (tree_size + other_tree_size) - (2 * intersections_count[*pre_cand_id]) <= k {
+                candidates.push((tree_id, *pre_cand_id))
+            }
+        }
+
+    }
+
+    candidates
+}
+
+
+pub fn degree_index_lookup(
+    degree_hist: &[(usize, Histogram)],
+    label_dict: &LabelDict,
+    k: usize,
+) -> Candidates {
+    let mut candidates = vec![];
+    // this is the inverted index, that will be indexed by labelId, and contains a vector of pairs
+    // (tree_id, labelId_count_in_tree)
+    let mut il_index = vec![vec![]; label_dict.len() + 1];
+
+    // label intersections counter for each tree. Counts with how many other trees it has an intersection
+    // this is here to compute the symmetric difference faster
+    let mut intersections_count = vec![0; degree_hist.len()];
+
+    for (tree_id, (tree_size, tree_label_histogram)) in degree_hist.iter().enumerate() {
+        let mut pre_candidates = vec![];
+
+        // get pre-candidates by looking up the inverted index and doing the label intersection
+        for (label_id, label_count) in tree_label_histogram.iter() {
+            for (other_tree_id, other_label_count) in il_index[*label_id as usize].iter() {
+                let intersection_size = *std::cmp::min(other_label_count, label_count);
+                if intersections_count[*other_tree_id] == 0 && intersection_size > 0 {
+                    pre_candidates.push(*other_tree_id);
+                }
+                intersections_count[*other_tree_id] += intersection_size as usize;
+            }
+            il_index[*label_id as usize].push((tree_id, *label_count));
+        }
+
+        // verify pre-candidates
+        for pre_cand_id in pre_candidates.iter() {
+            let other_tree_size = degree_hist[*pre_cand_id].0;
+            if (tree_size + other_tree_size) - (2 * intersections_count[*pre_cand_id]) / 3 <= k {
+                candidates.push((tree_id, *pre_cand_id))
+            }
+        }
+
+    }
+
+    candidates
+}
+
+
+pub fn label_index_lookup(
+    label_hist: &[(usize, Histogram<LabelId, u32>)],
+    label_dict: &LabelDict,
+    k: usize,
+) -> Candidates {
+    let mut candidates = vec![];
+    // this is the inverted index, that will be indexed by labelId, and contains a vector of pairs
+    // (tree_id, labelId_count_in_tree)
+    let mut il_index = vec![vec![]; label_dict.len() + 1];
+
+    // label intersections counter for each tree. Counts with how many other trees it has an intersection
+    // this is here to compute the symmetric difference faster
+    let mut intersections_count = vec![0; label_hist.len()];
+
+    for (tree_id, (tree_size, tree_label_histogram)) in label_hist.iter().enumerate() {
+        let mut pre_candidates = vec![];
+
+        // if the tree size is smaller than distance threshold k
+        // we can safely increase all smaller trees intersections count
+        if *tree_size <= k {
+            intersections_count[..tree_id]
+                .iter_mut()
+                .enumerate()
+                .for_each(|(other_tree_id, count)| {
+                    pre_candidates.push(other_tree_id);
+                    *count += 1
+                });
+        }
+
+        // get pre-candidates by looking up the inverted index and doing the label intersection
+        for (label_id, label_count) in tree_label_histogram.iter() {
+            for (other_tree_id, other_label_count) in il_index[*label_id as usize].iter() {
+                let intersection_size = *std::cmp::min(other_label_count, label_count);
+                if intersections_count[*other_tree_id] == 0 && intersection_size > 0 {
+                    pre_candidates.push(*other_tree_id);
+                }
+                intersections_count[*other_tree_id] = std::cmp::min(
+                    intersections_count[*other_tree_id] + intersection_size,
+                    *tree_size as u32
+                )
+            }
+            il_index[*label_id as usize].push((tree_id, *label_count));
+        }
+
+        // verify precandidates
+        for pre_cand_id in pre_candidates.iter() {
+            let other_tree_size = label_hist[*pre_cand_id].0;
+            // compute the symmetric difference (union - intersection size) and divide by 2 to get the label lower bound
+            // if (tree_size + other_tree_size - (2 * intersections_count[*pre_cand_id] as usize)) / 2 <= k {
+            //     candidates.push((tree_id, *pre_cand_id));
+            // }
+
+            if std::cmp::max(*tree_size, other_tree_size) - intersections_count[*pre_cand_id] as usize <= k {
+                candidates.push((tree_id, *pre_cand_id));
+            }
+
+            intersections_count[*pre_cand_id] = 0;
+        }
+    }
+
+    candidates
+}
+
 /// Creates and returns Leaf, Degree and Label histogram collections
 /// the first usize in vec pair is the tree size
 pub fn create_collection_histograms(
@@ -113,7 +279,7 @@ pub fn create_collection_histograms(
 ) -> (
     Vec<(usize, Histogram)>,
     Vec<(usize, Histogram)>,
-    Vec<(usize, HashMap<LabelId, u32>)>,
+    Vec<(usize, Histogram<LabelId, u32>)>,
 ) {
     let (mut leaf_hists, mut degree_hists, mut label_hists) = (
         Vec::with_capacity(tree_collection.len()),
@@ -132,12 +298,12 @@ pub fn create_collection_histograms(
 }
 
 /// Creates and returns Leaf, Degree and Label histograms respectively
-pub fn create_tree_histograms(tree: &ParsedTree) -> (Histogram, Histogram, HashMap<LabelId, u32>) {
+pub fn create_tree_histograms(tree: &ParsedTree) -> (Histogram, Histogram, Histogram<LabelId, u32>) {
     let Some(root) = tree.iter().next() else {
         panic!("Unable to get tree root, but tree is not empty!");
     };
     let (mut label, mut degree, mut leaf) = (
-        HashMap::<LabelId, u32>::new(),
+        Histogram::<LabelId, u32>::new(),
         Histogram::new(),
         Histogram::new(),
     );
@@ -150,7 +316,7 @@ pub fn create_tree_histograms(tree: &ParsedTree) -> (Histogram, Histogram, HashM
 fn traverse_tree(
     node_id: &NodeId,
     tree: &ParsedTree,
-    label_hist: &mut HashMap<LabelId, u32>,
+    label_hist: &mut Histogram<LabelId, u32>,
     degree_hist: &mut Histogram,
     leaf_hist: &mut Histogram,
 ) -> u32 {

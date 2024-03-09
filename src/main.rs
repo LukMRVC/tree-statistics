@@ -9,7 +9,9 @@ use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::exit;
+use std::time::Instant;
 use itertools::Itertools;
+use crate::lb::indexes::histograms::{create_collection_histograms, index_lookup};
 
 mod indexing;
 mod lb;
@@ -160,7 +162,11 @@ fn main() -> Result<(), anyhow::Error> {
             let k = threshold.unwrap_or(0);
             match method {
                 LBM::Hist => {
-                    candidates = lb::indexes::histograms::index_lookup(&trees, &label_dict, k);
+                    let (leaf_hist, degree_hist, label_hist) = create_collection_histograms(&trees);
+                    let start = Instant::now();
+                    candidates = index_lookup(&leaf_hist, &degree_hist, &label_hist, &label_dict, k);
+                    let duration = start.elapsed();
+                    println!("Histogram LB lookup took: {}ms", duration.as_millis());
                 },
                 LBM::Lblint => {
                     let indexed_trees = trees.iter().enumerate()
@@ -177,7 +183,6 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                     }
-
                 },
                 LBM::Sed => {
                     let indexed_trees = trees.iter()

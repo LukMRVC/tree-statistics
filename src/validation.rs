@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
-use itertools::Itertools;
+use std::io::BufReader;
 
 pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<(), anyhow::Error> {
     let cfile = File::open(candidates_file)?;
