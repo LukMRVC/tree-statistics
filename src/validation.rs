@@ -32,12 +32,10 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
     let mut not_found = vec![];
 
     'outer: for p1 in real_result.iter() {
-        for p2 in candidates.iter() {
-            if p1 == p2 {
-                continue 'outer;
-            }
-        }
-        not_found.push(p1);
+        match candidates.binary_search(p1) {
+            Ok(_) => continue 'outer,
+            Err(_) => not_found.push(p1),
+        };
     }
 
     println!("{not_found:?}");

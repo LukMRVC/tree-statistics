@@ -226,4 +226,14 @@ mod tests {
             Some(6).as_ref()
         );
     }
+
+    #[test]
+    fn test_parses_empty_label() {
+        let input = "{wendelsteinstrasse{1{{1}{2}{3}{4}{5}{6}{7}{14}}}}".to_owned();
+        let mut hs = LabelDict::new();
+        let arena = parse_tree(Ok(input), &mut hs);
+        assert!(arena.is_ok());
+        let arena = arena.unwrap();
+        assert_eq!(arena.count(), 11, "Parser did not deal with empty label accordingly");
+    }
 }

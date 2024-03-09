@@ -74,4 +74,20 @@ mod tests {
         assert_eq!(0, t3t5_lb, "Label diff between t3 and t5 should be 0!");
     }
 
+    #[test]
+    fn test_missing_label_lb() {
+        let i1 = "{pietro gobetti str.{8}{10}}".to_owned();
+        let i2 = "{wendelsteinstrasse{1{{1}{2}{3}{4}{5}{6}{7}{14}}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let t1 = parse_tree(Ok(i1), &mut ld).unwrap();
+        let t2 = parse_tree(Ok(i2), &mut ld).unwrap();
+
+        let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
+        let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
+
+        let lb = label_intersection(&t1i, &t2i);
+
+        assert_eq!(lb, 11, "Lower bound is 10");
+    }
+
 }
