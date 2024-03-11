@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::time::Instant;
 use itertools::Itertools;
-use crate::lb::indexes::histograms::{create_collection_histograms, index_lookup};
+use crate::lb::indexes::histograms::{create_collection_histograms, degree_index_lookup, index_lookup, label_index_lookup, leaf_index_lookup};
 
 mod indexing;
 mod lb;
@@ -68,6 +68,9 @@ enum Commands {
         /// Optional threshold for bounded calculation - they are faster!
         #[arg()]
         threshold: Option<usize>,
+        /// Optional real results path - will output precision and filter_times
+        #[arg(long)]
+        results_path: Option<PathBuf>,
     },
     /// Validates candidate results against real results
     Validate {
@@ -155,7 +158,7 @@ fn main() -> Result<(), anyhow::Error> {
 
             write_file(output, &traversal_strings)?;
         }
-        Commands::LowerBound { method, output, threshold } => {
+        Commands::LowerBound { method, output, threshold, results_path } => {
             use LowerBoundMethods as LBM;
             let mut candidates: Vec<(usize, usize)> = vec![];
             // TODO: Fix this unwrap_or
@@ -164,9 +167,39 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Hist => {
                     let (leaf_hist, degree_hist, label_hist) = create_collection_histograms(&trees);
                     let start = Instant::now();
-                    candidates = index_lookup(&leaf_hist, &degree_hist, &label_hist, &label_dict, k);
+                    let (times, c) = index_lookup(&leaf_hist, &degree_hist, &label_hist, &label_dict, k);
+                    candidates = c;
                     let duration = start.elapsed();
                     println!("Histogram LB lookup took: {}ms", duration.as_millis());
+
+                    if let Some(results_path) = results_path {
+                        let (all_correct, all_extra, all_precision) = validation::get_precision(&candidates, &results_path, k).unwrap();
+                        let output_dir = output.parent().expect("Output dir not found!");
+                        write_precision_and_filter_times(output_dir, &times, (all_correct, all_extra, all_precision, duration.as_millis()), "all", k)?;
+
+
+                        let leaf_time = Instant::now();
+                        let (leaf_filter_times, leaf_candidates) = leaf_index_lookup(&leaf_hist, &label_dict, k);
+                        let leaf_time = leaf_time.elapsed().as_millis();
+                        let (correct, extra, precision) = validation::get_precision(&leaf_candidates, &results_path, k).unwrap();
+                        write_precision_and_filter_times(output_dir, &leaf_filter_times, (correct, extra, precision, leaf_time), "leaf", k)?;
+
+
+                        let label_time = Instant::now();
+                        let (label_filter_times, label_candidates) = label_index_lookup(&label_hist, &label_dict, k);
+                        let label_time = label_time.elapsed().as_millis();
+                        let (correct, extra, precision) = validation::get_precision(&label_candidates, &results_path, k).unwrap();
+                        write_precision_and_filter_times(output_dir, &label_filter_times, (correct, extra, precision, label_time), "label", k)?;
+
+
+                        let degree_time = Instant::now();
+                        let (degree_filter_times, degree_candidates) = degree_index_lookup(&degree_hist, &label_dict, k);
+                        let degree_time = degree_time.elapsed().as_millis();
+                        let (correct, extra, precision) = validation::get_precision(&degree_candidates, &results_path, k).unwrap();
+                        write_precision_and_filter_times(output_dir, &degree_filter_times, (correct, extra, precision, degree_time), "degree", k)?;
+
+                    }
+
                 },
                 LBM::Lblint => {
                     let indexed_trees = trees.iter().enumerate()
@@ -201,6 +234,26 @@ fn main() -> Result<(), anyhow::Error> {
 
         }
     }
+
+    Ok(())
+}
+
+
+fn write_precision_and_filter_times(base: &Path, times: &[u128], precision: (usize, usize, f32, u128), hist_method: &str, k: usize) -> Result<(), anyhow::Error> {
+    let mut times_output = PathBuf::from(base);
+    let mut precision_output = PathBuf::from(base);
+    times_output.push(format!("hist_{hist_method}_us.txt"));
+    precision_output.push(format!("precision-hist-{hist_method}-{k}.txt"));
+    let times_file = File::options().create(true).write(true).open(times_output)?;
+    let mut precision_file = File::options().create(true).write(true).open(precision_output)?;
+    let mut times_writer = BufWriter::new(times_file);
+
+    for t in times.iter() {
+        writeln!(times_writer, "{t}")?;
+    }
+
+    writeln!(precision_file, "Correct trees;Incorrect trees;Precision;Total Time")?;
+    writeln!(precision_file, "{};{};{};{}", precision.0, precision.1, precision.2, precision.3)?;
 
     Ok(())
 }
