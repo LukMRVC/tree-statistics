@@ -61,8 +61,8 @@ pub fn get_precision(candidates: &Candidates, results_path: &PathBuf, k: usize) 
     let candidates = candidates.iter().sorted().cloned().collect_vec();
     let extra = candidates.iter().fold(0usize, |acc, candidate| {
         match real_result.binary_search(candidate) {
-            Ok(_) => acc + 1,
-            Err(_) => acc,
+            Ok(_) => acc,
+            Err(_) => acc + 1,
         }
     });
 
