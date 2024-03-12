@@ -1,8 +1,13 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
+use crate::lb::indexes::histograms::{
+    create_collection_histograms, degree_index_lookup, index_lookup, label_index_lookup,
+    leaf_index_lookup,
+};
 use crate::parsing::LabelDict;
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use itertools::Itertools;
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
@@ -10,8 +15,6 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::time::Instant;
-use itertools::Itertools;
-use crate::lb::indexes::histograms::{create_collection_histograms, degree_index_lookup, index_lookup, label_index_lookup, leaf_index_lookup};
 
 mod indexing;
 mod lb;
@@ -83,7 +86,7 @@ enum Commands {
         /// Threshold for validation
         #[arg()]
         threshold: usize,
-    }
+    },
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -158,7 +161,12 @@ fn main() -> Result<(), anyhow::Error> {
 
             write_file(output, &traversal_strings)?;
         }
-        Commands::LowerBound { method, output, threshold, results_path } => {
+        Commands::LowerBound {
+            method,
+            output,
+            threshold,
+            results_path,
+        } => {
             use LowerBoundMethods as LBM;
             let mut candidates: Vec<(usize, usize)> = vec![];
             // TODO: Fix this unwrap_or
@@ -167,44 +175,81 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Hist => {
                     let (leaf_hist, degree_hist, label_hist) = create_collection_histograms(&trees);
                     let start = Instant::now();
-                    let (times, c) = index_lookup(&leaf_hist, &degree_hist, &label_hist, &label_dict, k);
+                    let (times, c) =
+                        index_lookup(&leaf_hist, &degree_hist, &label_hist, &label_dict, k);
                     candidates = c;
                     let duration = start.elapsed();
                     println!("Histogram LB lookup took: {}ms", duration.as_millis());
 
                     if let Some(results_path) = results_path {
-                        let (all_correct, all_extra, all_precision) = validation::get_precision(&candidates, &results_path, k).unwrap();
+                        let (all_correct, all_extra, all_precision) =
+                            validation::get_precision(&candidates, &results_path, k).unwrap();
                         let output_dir = output.parent().expect("Output dir not found!");
-                        write_precision_and_filter_times(output_dir, &times, (all_correct, all_extra, all_precision, duration.as_millis()), "all", k)?;
-
-
-                        let leaf_time = Instant::now();
-                        let (leaf_filter_times, leaf_candidates) = leaf_index_lookup(&leaf_hist, &label_dict, k);
-                        let leaf_time = leaf_time.elapsed().as_millis();
-                        let (correct, extra, precision) = validation::get_precision(&leaf_candidates, &results_path, k).unwrap();
-                        write_precision_and_filter_times(output_dir, &leaf_filter_times, (correct, extra, precision, leaf_time), "leaf", k)?;
-
-
-                        let label_time = Instant::now();
-                        let (label_filter_times, label_candidates) = label_index_lookup(&label_hist, &label_dict, k);
-                        let label_time = label_time.elapsed().as_millis();
-                        let (correct, extra, precision) = validation::get_precision(&label_candidates, &results_path, k).unwrap();
-                        write_precision_and_filter_times(output_dir, &label_filter_times, (correct, extra, precision, label_time), "label", k)?;
-
+                        write_precision_and_filter_times(
+                            output_dir,
+                            &times,
+                            (all_correct, all_extra, all_precision, duration.as_millis()),
+                            "all",
+                            k,
+                            None,
+                        )?;
 
                         let degree_time = Instant::now();
-                        let (degree_filter_times, degree_candidates) = degree_index_lookup(&degree_hist, &label_dict, k);
+                        let (degree_filter_times, mut degree_candidates) =
+                            degree_index_lookup(&degree_hist, &label_dict, k);
+                        degree_candidates.sort();
                         let degree_time = degree_time.elapsed().as_millis();
-                        let (correct, extra, precision) = validation::get_precision(&degree_candidates, &results_path, k).unwrap();
-                        write_precision_and_filter_times(output_dir, &degree_filter_times, (correct, extra, precision, degree_time), "degree", k)?;
+                        let (correct, extra, precision) =
+                            validation::get_precision(&degree_candidates, &results_path, k)
+                                .unwrap();
+                        write_precision_and_filter_times(
+                            output_dir,
+                            &degree_filter_times,
+                            (correct, extra, precision, degree_time),
+                            "degree",
+                            k,
+                            Some(&degree_candidates),
+                        )?;
 
+                        let leaf_time = Instant::now();
+                        let (leaf_filter_times, mut leaf_candidates) =
+                            leaf_index_lookup(&leaf_hist, &label_dict, k);
+                        leaf_candidates.sort();
+                        let leaf_time = leaf_time.elapsed().as_millis();
+                        let (correct, extra, precision) =
+                            validation::get_precision(&leaf_candidates, &results_path, k).unwrap();
+                        write_precision_and_filter_times(
+                            output_dir,
+                            &leaf_filter_times,
+                            (correct, extra, precision, leaf_time),
+                            "leaf",
+                            k,
+                            Some(&leaf_candidates),
+                        )?;
+
+                        let label_time = Instant::now();
+                        let (label_filter_times, mut label_candidates) =
+                            label_index_lookup(&label_hist, &label_dict, k);
+                        label_candidates.sort();
+                        let label_time = label_time.elapsed().as_millis();
+                        let (correct, extra, precision) =
+                            validation::get_precision(&label_candidates, &results_path, k).unwrap();
+                        write_precision_and_filter_times(
+                            output_dir,
+                            &label_filter_times,
+                            (correct, extra, precision, label_time),
+                            "label",
+                            k,
+                            Some(&label_candidates),
+                        )?;
                     }
-
-                },
+                }
                 LBM::Lblint => {
-                    let indexed_trees = trees.iter().enumerate()
+                    let indexed_trees = trees
+                        .iter()
+                        .enumerate()
                         .map(|(idx, t)| {
-                            InvertedListLabelPostorderIndex::index_tree(&t, &label_dict)
+                            InvertedListLabelPostorderIndex::index_tree(t, &label_dict)
                         })
                         .collect_vec();
 
@@ -216,48 +261,86 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                     }
-                },
+                }
                 LBM::Sed => {
-                    let indexed_trees = trees.iter()
-                        .map(|t| SEDIndex::index_tree(&t, &label_dict))
+                    let indexed_trees = trees
+                        .iter()
+                        .map(|t| SEDIndex::index_tree(t, &label_dict))
                         .collect_vec();
                     todo!();
                 }
             }
             candidates.sort();
-            write_file(output, &candidates.iter().map(|(c1, c2)| {
-                format!("{c1},{c2}")
-            }).collect_vec())?;
-        },
-        Commands::Validate { results_path, threshold, candidates_path } => {
+            write_file(
+                output,
+                &candidates
+                    .iter()
+                    .map(|(c1, c2)| format!("{c1},{c2}"))
+                    .collect_vec(),
+            )?;
+        }
+        Commands::Validate {
+            results_path,
+            threshold,
+            candidates_path,
+        } => {
             validation::validate(candidates_path, results_path, threshold)?;
-
         }
     }
 
     Ok(())
 }
 
-
-fn write_precision_and_filter_times(base: &Path, times: &[u128], precision: (usize, usize, f32, u128), hist_method: &str, k: usize) -> Result<(), anyhow::Error> {
+fn write_precision_and_filter_times(
+    base: &Path,
+    times: &[u128],
+    precision: (usize, usize, f32, u128),
+    hist_method: &str,
+    k: usize,
+    candidates: Option<&[(usize, usize)]>,
+) -> Result<(), anyhow::Error> {
     let mut times_output = PathBuf::from(base);
     let mut precision_output = PathBuf::from(base);
+    let mut candidates_output = PathBuf::from(base);
     times_output.push(format!("hist_{hist_method}_us.txt"));
     precision_output.push(format!("precision-hist-{hist_method}-{k}.txt"));
-    let times_file = File::options().create(true).write(true).open(times_output)?;
-    let mut precision_file = File::options().create(true).write(true).open(precision_output)?;
+    let times_file = File::options()
+        .create(true)
+        .write(true)
+        .open(times_output)?;
+    let mut precision_file = File::options()
+        .create(true)
+        .write(true)
+        .open(precision_output)?;
     let mut times_writer = BufWriter::new(times_file);
 
     for t in times.iter() {
         writeln!(times_writer, "{t}")?;
     }
 
-    writeln!(precision_file, "Correct trees;Incorrect trees;Precision;Total Time")?;
-    writeln!(precision_file, "{};{};{};{}", precision.0, precision.1, precision.2, precision.3)?;
+    writeln!(
+        precision_file,
+        "Correct trees;Incorrect trees;Precision;Total Time"
+    )?;
+    writeln!(
+        precision_file,
+        "{};{};{};{}",
+        precision.0, precision.1, precision.2, precision.3
+    )?;
+
+    if let Some(candidates) = candidates {
+        candidates_output.push(format!("candidates-hist-{hist_method}-k.csv"));
+        write_file(
+            candidates_output,
+            &candidates
+                .iter()
+                .map(|(c1, c2)| format!("{c1},{c2}"))
+                .collect_vec(),
+        )?;
+    }
 
     Ok(())
 }
-
 
 fn write_files(
     stats: &[TreeStatistics],
@@ -296,7 +379,7 @@ fn write_file<T>(file_name: impl AsRef<Path>, data: &[T]) -> Result<(), std::io:
 where
     T: Display,
 {
-    let f = File::create(file_name.as_ref().to_path_buf())?;
+    let f = File::create(file_name.as_ref())?;
     let mut w = BufWriter::new(f);
 
     for d in data.iter() {

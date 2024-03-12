@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use crate::lb::indexes::histograms::Candidates;
+use itertools::Itertools;
 use std::fs::File;
 use std::io::BufReader;
-use itertools::Itertools;
-use crate::lb::indexes::histograms::Candidates;
+use std::path::PathBuf;
 
 pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<(), anyhow::Error> {
     let cfile = File::open(candidates_file)?;
@@ -13,7 +13,8 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
     let mut rreader = csv::Reader::from_reader(rreader);
     for result in rreader.records() {
         let record = result?;
-        let (t1, t2, dist): (usize, usize, usize) = (record[0].parse()?, record[1].parse()?, record[2].parse()?);
+        let (t1, t2, dist): (usize, usize, usize) =
+            (record[0].parse()?, record[1].parse()?, record[2].parse()?);
         if dist <= k {
             real_result.push((t1, t2));
         }
@@ -39,20 +40,30 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
         };
     }
 
-    println!("{not_found:?}");
-    println!("Candidates and real result size diff is: {}", not_found.len());
+    // println!("{not_found:?}");
+    println!(
+        "Candidates and real result size diff is: {}, should have found: {} and found: {}",
+        not_found.len(),
+        real_result.len(),
+        candidates.len()
+    );
 
     Ok(())
 }
 
-pub fn get_precision(candidates: &Candidates, results_path: &PathBuf, k: usize) -> Result<(usize, usize, f32), anyhow::Error> {
+pub fn get_precision(
+    candidates: &Candidates,
+    results_path: &PathBuf,
+    k: usize,
+) -> Result<(usize, usize, f32), anyhow::Error> {
     let rfile = File::open(results_path)?;
     let rreader = BufReader::new(rfile);
     let mut real_result = vec![];
     let mut rreader = csv::Reader::from_reader(rreader);
     for result in rreader.records() {
         let record = result?;
-        let (t1, t2, dist): (usize, usize, usize) = (record[0].parse()?, record[1].parse()?, record[2].parse()?);
+        let (t1, t2, dist): (usize, usize, usize) =
+            (record[0].parse()?, record[1].parse()?, record[2].parse()?);
         if dist <= k {
             real_result.push((t1, t2));
         }

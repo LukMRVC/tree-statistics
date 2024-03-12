@@ -42,26 +42,19 @@ pub fn label_intersection_k(
     bigger_tree - intersection_size
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::*;
     use crate::indexing::{Indexer, InvertedListLabelPostorderIndex};
+    use crate::parsing::*;
 
     #[test]
     fn test_lblint() {
         let mut ld = LabelDict::new();
 
-        let t2 = parse_tree(Ok(
-            "{b{e}{d{a}}}".to_owned()
-        ), &mut ld).unwrap();
-        let t3 = parse_tree(Ok(
-            "{d{c}{b{a}{d{a}}}}".to_owned()
-        ), &mut ld).unwrap();
-        let t5 = parse_tree(Ok(
-            "{a{b{a}{c{d}}}{d}}".to_owned()
-        ), &mut ld).unwrap();
+        let t2 = parse_tree(Ok("{b{e}{d{a}}}".to_owned()), &mut ld).unwrap();
+        let t3 = parse_tree(Ok("{d{c}{b{a}{d{a}}}}".to_owned()), &mut ld).unwrap();
+        let t5 = parse_tree(Ok("{a{b{a}{c{d}}}{d}}".to_owned()), &mut ld).unwrap();
 
         let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
         let t3i = InvertedListLabelPostorderIndex::index_tree(&t3, &ld);
@@ -89,5 +82,4 @@ mod tests {
 
         assert_eq!(lb, 11, "Lower bound is 10");
     }
-
 }

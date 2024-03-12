@@ -164,22 +164,22 @@ mod tests {
     fn test_label_dict_preserved_label_ids() {
         // test label ids are not overwritten when parsing another tree
         let mut ld = LabelDict::new();
-        let t1 = parse_tree(Ok(
-            "{b{e}{d{a}}}".to_owned()
-        ), &mut ld).unwrap();
-        let t2 = parse_tree(Ok(
-            "{d{c}{f{g}{d{a}}}}".to_owned()
-        ), &mut ld).unwrap();
+        let t1 = parse_tree(Ok("{b{e}{d{a}}}".to_owned()), &mut ld).unwrap();
+        let t2 = parse_tree(Ok("{d{c}{f{g}{d{a}}}}".to_owned()), &mut ld).unwrap();
 
-        assert_eq!(ld, LabelDict::from([
-            ("b".to_owned(), 0),
-            ("e".to_owned(), 1),
-            ("d".to_owned(), 2),
-            ("a".to_owned(), 3),
-            ("c".to_owned(), 4),
-            ("f".to_owned(), 5),
-            ("g".to_owned(), 6),
-        ]), "Label dict label ids were not preserved!");
+        assert_eq!(
+            ld,
+            LabelDict::from([
+                ("b".to_owned(), 0),
+                ("e".to_owned(), 1),
+                ("d".to_owned(), 2),
+                ("a".to_owned(), 3),
+                ("c".to_owned(), 4),
+                ("f".to_owned(), 5),
+                ("g".to_owned(), 6),
+            ]),
+            "Label dict label ids were not preserved!"
+        );
     }
 
     #[test]
@@ -234,6 +234,10 @@ mod tests {
         let arena = parse_tree(Ok(input), &mut hs);
         assert!(arena.is_ok());
         let arena = arena.unwrap();
-        assert_eq!(arena.count(), 11, "Parser did not deal with empty label accordingly");
+        assert_eq!(
+            arena.count(),
+            11,
+            "Parser did not deal with empty label accordingly"
+        );
     }
 }

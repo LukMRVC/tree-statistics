@@ -111,7 +111,7 @@ fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     let mut current_row = vec![-1i64; arr_len as usize];
     let mut next_row = vec![-1i64; arr_len as usize];
     let mut i = 0;
-    let condition_row = size_diff as i64 + zero_k;
+    let condition_row = size_diff + zero_k;
     let end_max = condition_row << 1;
 
     loop {
