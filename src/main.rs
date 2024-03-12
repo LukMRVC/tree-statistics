@@ -329,7 +329,7 @@ fn write_precision_and_filter_times(
     )?;
 
     if let Some(candidates) = candidates {
-        candidates_output.push(format!("candidates-hist-{hist_method}-k.csv"));
+        candidates_output.push(format!("candidates-hist-{hist_method}-{k}.csv"));
         write_file(
             candidates_output,
             &candidates
