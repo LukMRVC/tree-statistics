@@ -144,9 +144,9 @@ mod tests {
         let arena = arena.unwrap();
         assert_eq!(arena.count(), 3);
         let mut iter = arena.iter();
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some(0));
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some(1));
-        assert_eq!(iter.next().map(|node| node.get().clone()), Some(2));
+        assert_eq!(iter.next().map(|node| *node.get()), Some(0));
+        assert_eq!(iter.next().map(|node| *node.get()), Some(1));
+        assert_eq!(iter.next().map(|node| *node.get()), Some(2));
     }
 
     #[test]
@@ -164,8 +164,8 @@ mod tests {
     fn test_label_dict_preserved_label_ids() {
         // test label ids are not overwritten when parsing another tree
         let mut ld = LabelDict::new();
-        let t1 = parse_tree(Ok("{b{e}{d{a}}}".to_owned()), &mut ld).unwrap();
-        let t2 = parse_tree(Ok("{d{c}{f{g}{d{a}}}}".to_owned()), &mut ld).unwrap();
+        let _t1 = parse_tree(Ok("{b{e}{d{a}}}".to_owned()), &mut ld).unwrap();
+        let _t2 = parse_tree(Ok("{d{c}{f{g}{d{a}}}}".to_owned()), &mut ld).unwrap();
 
         assert_eq!(
             ld,

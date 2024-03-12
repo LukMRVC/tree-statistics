@@ -1,5 +1,5 @@
 use crate::parsing::ParsedTree;
-use indextree::Arena;
+
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::fmt;

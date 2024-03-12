@@ -248,7 +248,7 @@ fn main() -> Result<(), anyhow::Error> {
                     let indexed_trees = trees
                         .iter()
                         .enumerate()
-                        .map(|(idx, t)| {
+                        .map(|(_idx, t)| {
                             InvertedListLabelPostorderIndex::index_tree(t, &label_dict)
                         })
                         .collect_vec();
@@ -263,7 +263,7 @@ fn main() -> Result<(), anyhow::Error> {
                     }
                 }
                 LBM::Sed => {
-                    let indexed_trees = trees
+                    let _indexed_trees = trees
                         .iter()
                         .map(|t| SEDIndex::index_tree(t, &label_dict))
                         .collect_vec();

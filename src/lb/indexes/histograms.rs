@@ -1,6 +1,6 @@
 use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
-use itertools::Itertools;
+
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -135,17 +135,6 @@ pub fn leaf_index_lookup(
         let start = Instant::now();
         let mut pre_candidates = vec![];
 
-        // if the tree size is smaller than distance threshold k
-        // we can safely increase all smaller trees intersections count
-        if *tree_size <= k {
-            intersections_count[..tree_id]
-                .iter_mut()
-                .enumerate()
-                .for_each(|(other_tree_id, count)| {
-                    pre_candidates.push(other_tree_id);
-                });
-        }
-
         // get pre-candidates by looking up the inverted index and doing the label intersection
         for (leaf_distance_path, leaf_distance_count) in tree_leaf_histogram.iter() {
             for (other_tree_id, other_label_count) in il_index[*leaf_distance_path as usize].iter()
@@ -188,9 +177,6 @@ pub fn degree_index_lookup(
     // this is here to compute the symmetric difference faster
     let mut intersections_count = vec![0; degree_hist.len()];
 
-    // 305,42 and more are missing from candidates
-    // 305,43
-
     for (tree_id, (tree_size, tree_degree_histogram)) in degree_hist.iter().enumerate() {
         let start = Instant::now();
         let mut pre_candidates = vec![];
@@ -210,8 +196,6 @@ pub fn degree_index_lookup(
         // verify pre-candidates
         for pre_cand_id in pre_candidates.iter() {
             let other_tree_size = degree_hist[*pre_cand_id].0;
-            let union_size = tree_size + other_tree_size;
-            let int_size = 2 * intersections_count[*pre_cand_id];
             if ((tree_size + other_tree_size) - (2 * intersections_count[*pre_cand_id])) / 3 <= k {
                 candidates.push((tree_id, *pre_cand_id))
             }
@@ -315,7 +299,7 @@ pub fn create_collection_histograms(
         label_hists.push((tree.count(), label));
     });
 
-    return (leaf_hists, degree_hists, label_hists);
+    (leaf_hists, degree_hists, label_hists)
 }
 
 /// Creates and returns Leaf, Degree and Label histograms respectively

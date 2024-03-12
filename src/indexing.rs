@@ -21,7 +21,7 @@ pub struct SEDIndex {
 }
 
 impl Indexer for SEDIndex {
-    fn index_tree(tree: &ParsedTree, label_dict: &LabelDict) -> Self {
+    fn index_tree(tree: &ParsedTree, _label_dict: &LabelDict) -> Self {
         let Some(root) = tree.iter().next() else {
             panic!("Unable to get root but tree is not empty!");
         };
@@ -42,7 +42,7 @@ impl Indexer for SEDIndex {
     }
 }
 
-fn traverse<'a>(nid: NodeId, tree: &'a ParsedTree, pre: &mut Vec<i32>, post: &mut Vec<i32>) {
+fn traverse(nid: NodeId, tree: &ParsedTree, pre: &mut Vec<i32>, post: &mut Vec<i32>) {
     // i am here at the current root
     let label = tree.get(nid).unwrap().get();
     pre.push(*label);
@@ -63,7 +63,7 @@ pub struct InvertedListLabelPostorderIndex {
 }
 
 impl Indexer for InvertedListLabelPostorderIndex {
-    fn index_tree(tree: &ParsedTree, label_dict: &LabelDict) -> Self {
+    fn index_tree(tree: &ParsedTree, _label_dict: &LabelDict) -> Self {
         let Some(root) = tree.iter().next() else {
             panic!("Unable to get root but tree is not empty!");
         };
