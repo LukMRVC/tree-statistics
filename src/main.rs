@@ -193,55 +193,55 @@ fn main() -> Result<(), anyhow::Error> {
                             k,
                             None,
                         )?;
-
-                        let degree_time = Instant::now();
-                        let (degree_filter_times, mut degree_candidates) =
-                            degree_index_lookup(&degree_hist, &label_dict, k);
-                        degree_candidates.sort();
-                        let degree_time = degree_time.elapsed().as_millis();
-                        let (correct, extra, precision) =
-                            validation::get_precision(&degree_candidates, &results_path, k)
-                                .unwrap();
-                        write_precision_and_filter_times(
-                            output_dir,
-                            &degree_filter_times,
-                            (correct, extra, precision, degree_time),
-                            "degree",
-                            k,
-                            Some(&degree_candidates),
-                        )?;
-
-                        let leaf_time = Instant::now();
-                        let (leaf_filter_times, mut leaf_candidates) =
-                            leaf_index_lookup(&leaf_hist, &label_dict, k);
-                        leaf_candidates.sort();
-                        let leaf_time = leaf_time.elapsed().as_millis();
-                        let (correct, extra, precision) =
-                            validation::get_precision(&leaf_candidates, &results_path, k).unwrap();
-                        write_precision_and_filter_times(
-                            output_dir,
-                            &leaf_filter_times,
-                            (correct, extra, precision, leaf_time),
-                            "leaf",
-                            k,
-                            Some(&leaf_candidates),
-                        )?;
-
-                        let label_time = Instant::now();
-                        let (label_filter_times, mut label_candidates) =
-                            label_index_lookup(&label_hist, &label_dict, k);
-                        label_candidates.sort();
-                        let label_time = label_time.elapsed().as_millis();
-                        let (correct, extra, precision) =
-                            validation::get_precision(&label_candidates, &results_path, k).unwrap();
-                        write_precision_and_filter_times(
-                            output_dir,
-                            &label_filter_times,
-                            (correct, extra, precision, label_time),
-                            "label",
-                            k,
-                            Some(&label_candidates),
-                        )?;
+                        //
+                        // let degree_time = Instant::now();
+                        // let (degree_filter_times, mut degree_candidates) =
+                        //     degree_index_lookup(&degree_hist, &label_dict, k);
+                        // degree_candidates.sort();
+                        // let degree_time = degree_time.elapsed().as_millis();
+                        // let (correct, extra, precision) =
+                        //     validation::get_precision(&degree_candidates, &results_path, k)
+                        //         .unwrap();
+                        // write_precision_and_filter_times(
+                        //     output_dir,
+                        //     &degree_filter_times,
+                        //     (correct, extra, precision, degree_time),
+                        //     "degree",
+                        //     k,
+                        //     Some(&degree_candidates),
+                        // )?;
+                        //
+                        // let leaf_time = Instant::now();
+                        // let (leaf_filter_times, mut leaf_candidates) =
+                        //     leaf_index_lookup(&leaf_hist, &label_dict, k);
+                        // leaf_candidates.sort();
+                        // let leaf_time = leaf_time.elapsed().as_millis();
+                        // let (correct, extra, precision) =
+                        //     validation::get_precision(&leaf_candidates, &results_path, k).unwrap();
+                        // write_precision_and_filter_times(
+                        //     output_dir,
+                        //     &leaf_filter_times,
+                        //     (correct, extra, precision, leaf_time),
+                        //     "leaf",
+                        //     k,
+                        //     Some(&leaf_candidates),
+                        // )?;
+                        //
+                        // let label_time = Instant::now();
+                        // let (label_filter_times, mut label_candidates) =
+                        //     label_index_lookup(&label_hist, &label_dict, k);
+                        // label_candidates.sort();
+                        // let label_time = label_time.elapsed().as_millis();
+                        // let (correct, extra, precision) =
+                        //     validation::get_precision(&label_candidates, &results_path, k).unwrap();
+                        // write_precision_and_filter_times(
+                        //     output_dir,
+                        //     &label_filter_times,
+                        //     (correct, extra, precision, label_time),
+                        //     "label",
+                        //     k,
+                        //     Some(&label_candidates),
+                        // )?;
                     }
                 }
                 LBM::Lblint => {

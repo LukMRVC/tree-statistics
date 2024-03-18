@@ -121,6 +121,7 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
 
 #[cfg(test)]
 mod tests {
+    use indextree::Arena;
     use super::*;
 
     #[test]

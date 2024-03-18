@@ -29,6 +29,7 @@ pub fn parse_dataset(
     let trees: Vec<ParsedTree> = reader
         .lines()
         .map(|l| parse_tree(l, label_dict))
+        .filter(|res| res.is_ok())
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(trees)
@@ -41,6 +42,7 @@ const ESCAPE_CHAR: u8 = b'\\';
 #[inline(always)]
 fn is_escaped(byte_string: &[u8], offset: usize) -> bool {
     offset > 0 && byte_string[offset - 1] == ESCAPE_CHAR
+     && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
 }
 
 #[derive(Error, Debug)]
@@ -133,6 +135,7 @@ pub(crate) fn parse_tree(
 
 #[cfg(test)]
 mod tests {
+    use clap::error::ContextValue::String;
     use super::*;
 
     #[test]
@@ -151,9 +154,10 @@ mod tests {
 
     #[test]
     fn test_parses_escaped() {
+        use std::string::String;
         let mut hs = LabelDict::new();
         let input = String::from(
-            r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\\}\\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#,
+            r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\}\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#,
         );
         let arena = parse_tree(Ok(input), &mut hs);
         assert!(arena.is_ok());
@@ -240,4 +244,13 @@ mod tests {
             "Parser did not deal with empty label accordingly"
         );
     }
+
+    #[test]
+    fn test_invalid_escape() {
+        let input = r"{article{key{journals/corr/FongT15b}}{mdate{2017-06-07}}{publtype{informal withdrawn}}{title{On the Empirical Output Distribution of $\\}varepsilon$-Good Codes for Gaussian Channels under a Long-Term Power Constraint.}}{year{2015}}{volume{abs/1510.08544}}{journal{CoRR}}{ee{http://arxiv.org/abs/1510.08544}}{url{db/journals/corr/corr1510.html#FongT15b}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let tree = parse_tree(Ok(input), &mut ld);
+        assert!(tree.is_err());
+    }
+
 }

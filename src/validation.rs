@@ -3,6 +3,7 @@ use itertools::Itertools;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
+use rayon::prelude::*;
 
 pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<(), anyhow::Error> {
     let cfile = File::open(candidates_file)?;
@@ -19,7 +20,7 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
             real_result.push((t1, t2));
         }
     }
-    real_result.sort();
+    real_result.par_sort();
     let mut candidates = vec![];
 
     let creader = BufReader::new(cfile);
@@ -47,6 +48,14 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
         real_result.len(),
         candidates.len()
     );
+
+    if not_found.len() > 0 {
+        let max = std::cmp::min(5, not_found.len());
+        println!("Some not found candidates");
+        for (c1, c2) in &not_found[..max] {
+            println!("{c1} --- {c2}")
+        }
+    }
 
     Ok(())
 }

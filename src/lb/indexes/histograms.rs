@@ -371,12 +371,11 @@ mod tests {
         let (leaf, degree, label) = create_tree_histograms(&pt);
 
         assert_eq!(leaf, HashMap::from([(1, 5), (2, 2), (3, 1), (4, 1),]));
-
         assert_eq!(degree, HashMap::from([(0, 5), (1, 1), (2, 2), (3, 1),]));
-
         assert_eq!(
             label,
             HashMap::from([(0, 1), (1, 2), (2, 2), (3, 1), (4, 1), (5, 1), (6, 1),])
         );
     }
+
 }
