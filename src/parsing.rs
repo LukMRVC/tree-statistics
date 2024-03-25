@@ -1,10 +1,12 @@
-use indextree::Arena;
+use indextree::{Arena, NodeEdge};
 use memchr::memchr2_iter;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::string::String;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,6 +21,65 @@ pub type LabelId = i32;
 
 pub type LabelDict = HashMap<String, LabelId>;
 pub(crate) type ParsedTree = Arena<LabelId>;
+
+pub enum TreeOutput {
+    BracketNotation,
+    Graphviz,
+}
+
+pub fn tree_to_string(tree: &ParsedTree, out_type: TreeOutput) -> String {
+    match out_type {
+        TreeOutput::BracketNotation => tree_to_bracket(tree),
+        TreeOutput::Graphviz => {
+            tree_to_graphviz(tree)
+        }
+    }
+}
+
+fn tree_to_graphviz(tree: &ParsedTree) -> String {
+    let mut graphviz = String::with_capacity(tree.count() * 4);
+    graphviz.push_str("strict digraph G {\n");
+    let mut nodeid_stack = vec![];
+    let Some(root) = tree.iter().next() else {
+        panic!("Root not found!");
+    };
+    let root_id = tree.get_node_id(root).expect("Root ID not found!");
+    nodeid_stack.push(root_id);
+    while !nodeid_stack.is_empty() {
+        let nid = nodeid_stack.pop().unwrap();
+        let root_label = tree.get(nid).unwrap().get();
+        for cnid in nid.children(tree) {
+            let label = tree.get(cnid).unwrap().get();
+            graphviz.push_str(&format!("{root_label} -> {label};\n"));
+            nodeid_stack.push(cnid);
+        }
+    }
+    graphviz.push('}');
+    graphviz.push('\n');
+    graphviz
+}
+
+fn tree_to_bracket(tree: &ParsedTree) -> String {
+    let mut bracket_notation = String::with_capacity(tree.count() * 4);
+    let Some(root) = tree.iter().next() else {
+        panic!("Root not found!");
+    };
+    let root_id = tree.get_node_id(root).expect("Root ID not found!");
+
+    for edge in root_id.traverse(tree) {
+        match edge {
+            NodeEdge::Start(node_id) => {
+                bracket_notation.push('{');
+                bracket_notation.push_str(&tree.get(node_id).unwrap().get().to_string());
+            }
+            NodeEdge::End(_) => {
+                bracket_notation.push('}');
+            }
+        }
+    }
+
+    bracket_notation
+}
 
 pub fn parse_dataset(
     dataset_file: PathBuf,
@@ -41,8 +102,9 @@ const ESCAPE_CHAR: u8 = b'\\';
 
 #[inline(always)]
 fn is_escaped(byte_string: &[u8], offset: usize) -> bool {
-    offset > 0 && byte_string[offset - 1] == ESCAPE_CHAR
-     && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
+    offset > 0
+        && byte_string[offset - 1] == ESCAPE_CHAR
+        && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
 }
 
 #[derive(Error, Debug)]
@@ -67,7 +129,7 @@ pub(crate) fn parse_tree(
     if !tree_str.is_ascii() {
         return Err(TPE::IsNotAscii);
     }
-    let mut tree = ParsedTree::new();
+    let mut tree = ParsedTree::with_capacity(tree_str.len() / 2);
     let tree_bytes = tree_str.as_bytes();
 
     let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
@@ -135,8 +197,8 @@ pub(crate) fn parse_tree(
 
 #[cfg(test)]
 mod tests {
-    use clap::error::ContextValue::String;
     use super::*;
+    use clap::error::ContextValue::String;
 
     #[test]
     fn test_parses() {
@@ -252,5 +314,4 @@ mod tests {
         let tree = parse_tree(Ok(input), &mut ld);
         assert!(tree.is_err());
     }
-
 }

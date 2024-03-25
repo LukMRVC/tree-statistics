@@ -1,11 +1,15 @@
 use crate::lb::indexes::histograms::Candidates;
 use itertools::Itertools;
+use rayon::prelude::*;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
-use rayon::prelude::*;
 
-pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<(), anyhow::Error> {
+pub fn validate(
+    candidates_file: PathBuf,
+    results: PathBuf,
+    k: usize,
+) -> Result<Vec<(usize, usize)>, anyhow::Error> {
     let cfile = File::open(candidates_file)?;
     let rfile = File::open(results)?;
 
@@ -30,18 +34,29 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
         let (t1, t2): (usize, usize) = (record[0].parse()?, record[1].parse()?);
         candidates.push((t1, t2));
     }
-    candidates.sort();
+    candidates.par_sort();
 
-    let mut not_found = vec![];
+    let not_found = real_result
+        .par_iter()
+        .filter_map(|result_pair| {
+            candidates
+                .binary_search(result_pair)
+                .ok()
+                .map_or(Some(result_pair), |_| None)
+        })
+        .collect::<Vec<_>>();
 
-    for p1 in real_result.iter() {
-        match candidates.binary_search(p1) {
-            Ok(_) => continue,
-            Err(_) => not_found.push(p1),
-        };
-    }
+    let false_positives = candidates
+        .par_iter()
+        .filter_map(|candidate| {
+            real_result
+                .binary_search(candidate)
+                .ok()
+                .map_or(Some(candidate), |_| None)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
 
-    // println!("{not_found:?}");
     println!(
         "Candidates and real result size diff is: {}, should have found: {} and found: {}",
         not_found.len(),
@@ -57,7 +72,7 @@ pub fn validate(candidates_file: PathBuf, results: PathBuf, k: usize) -> Result<
         }
     }
 
-    Ok(())
+    Ok(false_positives)
 }
 
 pub fn get_precision(

@@ -3,7 +3,7 @@ use crate::lb::indexes::histograms::{
     create_collection_histograms, degree_index_lookup, index_lookup, label_index_lookup,
     leaf_index_lookup,
 };
-use crate::parsing::LabelDict;
+use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
@@ -263,14 +263,24 @@ fn main() -> Result<(), anyhow::Error> {
                     }
                 }
                 LBM::Sed => {
-                    let _indexed_trees = trees
+                    let indexed_trees = trees
                         .iter()
                         .map(|t| SEDIndex::index_tree(t, &label_dict))
                         .collect_vec();
-                    todo!();
+
+                    candidates = indexed_trees.par_iter().enumerate().flat_map(|(i, t1)| {
+                        let mut lc = vec![];
+                        for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
+                            let lb = lb::sed::sed_k(t1, t2, k + 1);
+                            if lb <= k {
+                                lc.push((i, j));
+                            }
+                        }
+                        lc
+                    }).collect::<Vec<_>>();
                 }
             }
-            candidates.sort();
+            candidates.par_sort();
             write_file(
                 output,
                 &candidates
@@ -284,7 +294,33 @@ fn main() -> Result<(), anyhow::Error> {
             threshold,
             candidates_path,
         } => {
-            validation::validate(candidates_path, results_path, threshold)?;
+            let false_positives = validation::validate(candidates_path, results_path, threshold)?;
+            write_file(
+                PathBuf::from("./false-positives.bracket"),
+                &false_positives
+                    .iter()
+                    .map(|(c1, c2)| {
+                        format!(
+                            "\"{}\",\"{}\"",
+                            tree_to_string(&trees[*c1], TreeOutput::BracketNotation),
+                            tree_to_string(&trees[*c2], TreeOutput::BracketNotation)
+                        )
+                    })
+                    .collect_vec(),
+            )?;
+            write_file(
+                PathBuf::from("./false-positives.graphviz"),
+                &false_positives
+                    .iter()
+                    .map(|(c1, c2)| {
+                        format!(
+                            "{}{}\n-------------------------\n",
+                            tree_to_string(&trees[*c1], TreeOutput::Graphviz),
+                            tree_to_string(&trees[*c2], TreeOutput::Graphviz)
+                        )
+                    })
+                    .collect_vec(),
+            )?;
         }
     }
 
