@@ -32,7 +32,6 @@ pub struct LabelSetElement {
     pub struct_vec: Vec<StructuralVec>,
 }
 
-
 /// Base struct tuple for structural filter
 pub struct StructuralFilterTuple(usize, HashMap<LabelId, LabelSetElement>);
 
@@ -49,8 +48,7 @@ pub struct LabelSetConverter {
 }
 
 impl LabelSetConverter {
-    pub fn create(&mut self, trees: &[ParsedTree])
-        -> Vec<StructuralFilterTuple> {
+    pub fn create(&mut self, trees: &[ParsedTree]) -> Vec<StructuralFilterTuple> {
         // add one because range are end exclusive
         // frequency vector of pair (label weight, labelId)
         let mut sets_collection = Vec::with_capacity(trees.len());
@@ -210,9 +208,6 @@ impl LabelSetConverter {
     }
 }
 
-
-
-
 /// Given two sets
 pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
     use std::cmp::max;
@@ -223,11 +218,13 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
         if let Some(set2) = s2.1.get(lblid) {
             for n1 in set1.struct_vec.iter() {
                 for n2 in set2.struct_vec.iter() {
-                    overlap += usize::from((n1.nodes_left.abs_diff(n2.nodes_left) +
-                    n1.nodes_right.abs_diff(n2.nodes_right) +
-                    n1.nodes_ancestors.abs_diff(n2.nodes_ancestors) +
-                    n1.nodes_descendants.abs_diff(n2.nodes_descendants)) <= k);
-
+                    overlap += usize::from(
+                        (n1.nodes_left.abs_diff(n2.nodes_left)
+                            + n1.nodes_right.abs_diff(n2.nodes_right)
+                            + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
+                            + n1.nodes_descendants.abs_diff(n2.nodes_descendants))
+                            <= k,
+                    );
                 }
             }
         }

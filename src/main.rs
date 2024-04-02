@@ -45,7 +45,7 @@ enum LowerBoundMethods {
     /// String edit distance lower bound
     Sed,
     /// Structural filter lower bound
-    Structural
+    Structural,
 }
 
 #[derive(Subcommand, Debug)]
@@ -255,14 +255,20 @@ fn main() -> Result<(), anyhow::Error> {
                         })
                         .collect_vec();
 
-                    for (i, t1) in indexed_trees.iter().enumerate() {
-                        for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
-                            let lb = lb::label_intersection::label_intersection(t1, t2);
-                            if lb <= k {
-                                candidates.push((i, j));
+                    candidates = indexed_trees
+                        .par_iter()
+                        .enumerate()
+                        .flat_map(|(i, t1)| {
+                            let mut lc = vec![];
+                            for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
+                                let lb = lb::label_intersection::label_intersection(t1, t2);
+                                if lb <= k {
+                                    lc.push((i, j));
+                                }
                             }
-                        }
-                    }
+                            lc
+                        })
+                        .collect::<Vec<_>>();
                 }
                 LBM::Sed => {
                     let indexed_trees = trees
@@ -289,16 +295,19 @@ fn main() -> Result<(), anyhow::Error> {
                     let mut lc = lb::structural_filter::LabelSetConverter::default();
                     let structural_sets = lc.create(&trees);
 
-                    candidates = structural_sets.iter().enumerate().flat_map(|(i, t1)| {
-                        let mut lower_bound_candidates = vec![];
-                        for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
-                            let lb = lb::structural_filter::ted(t1, t2, k);
-                            if lb <= k {
-                                lower_bound_candidates.push((i, j));
+                    candidates = structural_sets
+                        .par_iter()
+                        .enumerate()
+                        .flat_map(|(i, t1)| {
+                            let mut lower_bound_candidates = vec![];
+                            for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
+                                let lb = lb::structural_filter::ted(t1, t2, k);
+                                if lb <= k {
+                                    lower_bound_candidates.push((i, j));
+                                }
                             }
-                        }
-                        lower_bound_candidates
-                    })
+                            lower_bound_candidates
+                        })
                         .collect::<Vec<_>>();
                 }
             }
@@ -318,7 +327,7 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             let false_positives = validation::validate(candidates_path, results_path, threshold)?;
             write_file(
-                PathBuf::from("./false-positives.bracket"),
+                PathBuf::from("../resources/results/false-positives.bracket"),
                 &false_positives
                     .iter()
                     .map(|(c1, c2)| {
@@ -331,7 +340,7 @@ fn main() -> Result<(), anyhow::Error> {
                     .collect_vec(),
             )?;
             write_file(
-                PathBuf::from("./false-positives.graphviz"),
+                PathBuf::from("../resources/results/false-positives.graphviz"),
                 &false_positives
                     .iter()
                     .map(|(c1, c2)| {
