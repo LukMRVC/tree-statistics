@@ -44,6 +44,8 @@ enum LowerBoundMethods {
     Lblint,
     /// String edit distance lower bound
     Sed,
+    /// Structural filter lower bound
+    Structural
 }
 
 #[derive(Subcommand, Debug)]
@@ -268,16 +270,36 @@ fn main() -> Result<(), anyhow::Error> {
                         .map(|t| SEDIndex::index_tree(t, &label_dict))
                         .collect_vec();
 
-                    candidates = indexed_trees.par_iter().enumerate().flat_map(|(i, t1)| {
-                        let mut lc = vec![];
-                        for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
-                            let lb = lb::sed::sed_k(t1, t2, k + 1);
+                    candidates = indexed_trees
+                        .par_iter()
+                        .enumerate()
+                        .flat_map(|(i, t1)| {
+                            let mut lc = vec![];
+                            for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
+                                let lb = lb::sed::sed_k(t1, t2, k + 1);
+                                if lb <= k {
+                                    lc.push((i, j));
+                                }
+                            }
+                            lc
+                        })
+                        .collect::<Vec<_>>();
+                }
+                LBM::Structural => {
+                    let mut lc = lb::structural_filter::LabelSetConverter::default();
+                    let structural_sets = lc.create(&trees);
+
+                    candidates = structural_sets.iter().enumerate().flat_map(|(i, t1)| {
+                        let mut lower_bound_candidates = vec![];
+                        for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
+                            let lb = lb::structural_filter::ted(t1, t2, k);
                             if lb <= k {
-                                lc.push((i, j));
+                                lower_bound_candidates.push((i, j));
                             }
                         }
-                        lc
-                    }).collect::<Vec<_>>();
+                        lower_bound_candidates
+                    })
+                        .collect::<Vec<_>>();
                 }
             }
             candidates.par_sort();
