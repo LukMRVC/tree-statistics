@@ -256,7 +256,7 @@ fn main() -> Result<(), anyhow::Error> {
                         .collect_vec();
 
                     candidates = indexed_trees
-                        .par_iter()
+                        .iter()
                         .enumerate()
                         .flat_map(|(i, t1)| {
                             let mut lc = vec![];
@@ -277,7 +277,7 @@ fn main() -> Result<(), anyhow::Error> {
                         .collect_vec();
 
                     candidates = indexed_trees
-                        .par_iter()
+                        .iter()
                         .enumerate()
                         .flat_map(|(i, t1)| {
                             let mut lc = vec![];
@@ -292,8 +292,10 @@ fn main() -> Result<(), anyhow::Error> {
                         .collect::<Vec<_>>();
                 }
                 LBM::Structural => {
+                    let start = Instant::now();
                     let mut lc = lb::structural_filter::LabelSetConverter::default();
                     let structural_sets = lc.create(&trees);
+                    println!("Creating sets took {}ms", start.elapsed().as_millis());
 
                     candidates = structural_sets
                         .par_iter()
@@ -326,8 +328,9 @@ fn main() -> Result<(), anyhow::Error> {
             candidates_path,
         } => {
             let false_positives = validation::validate(candidates_path, results_path, threshold)?;
+            println!("Printing false positives in bracket");
             write_file(
-                PathBuf::from("../resources/results/false-positives.bracket"),
+                PathBuf::from("./resources/results/false-positives.bracket"),
                 &false_positives
                     .iter()
                     .map(|(c1, c2)| {
@@ -339,8 +342,9 @@ fn main() -> Result<(), anyhow::Error> {
                     })
                     .collect_vec(),
             )?;
+            println!("Printing false positives in graphviz");
             write_file(
-                PathBuf::from("../resources/results/false-positives.graphviz"),
+                PathBuf::from("./resources/results/false-positives.graphviz"),
                 &false_positives
                     .iter()
                     .map(|(c1, c2)| {
@@ -446,7 +450,7 @@ fn write_file<T>(file_name: impl AsRef<Path>, data: &[T]) -> Result<(), std::io:
 where
     T: Display,
 {
-    let f = File::create(file_name.as_ref())?;
+    let f = File::options().create(true).write(true).truncate(true).open(file_name.as_ref())?;
     let mut w = BufWriter::new(f);
 
     for d in data.iter() {

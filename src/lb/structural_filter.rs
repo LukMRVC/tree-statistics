@@ -2,6 +2,10 @@ use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use std::collections::HashMap;
+use rustc_hash::FxHashMap;
+
+
+type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 
 /// The building block for structural filter, holds information about
 /// the count of ancestral nodes, descendants nodes, to the left and to the right
@@ -33,7 +37,7 @@ pub struct LabelSetElement {
 }
 
 /// Base struct tuple for structural filter
-pub struct StructuralFilterTuple(usize, HashMap<LabelId, LabelSetElement>);
+pub struct StructuralFilterTuple(usize, StructHashMap);
 
 /// Takes a collection of trees and converts them into a collection of label
 /// sets. A label set consists of labels and each label holds all nodes with that
@@ -55,7 +59,7 @@ impl LabelSetConverter {
         for tree in trees.iter() {
             // contains structural vectors for the current tree
             // is it a hash map of Label -> Vec<StructVec>
-            let mut record_labels = HashMap::new();
+            let mut record_labels = StructHashMap::default();
             // nodes in a tree
             let tree_size = tree.count();
 
@@ -99,7 +103,7 @@ impl LabelSetConverter {
             let mut record: Vec<LabelSetElement> = Vec::new();
             // contains structural vectors for the current tree
             // is it a hash map of Label -> Vec<StructVec>
-            let mut record_labels = HashMap::new();
+            let mut record_labels = StructHashMap::default();
             // nodes in a tree
             let tree_size = tree.count();
 
@@ -166,7 +170,7 @@ impl LabelSetConverter {
         tree: &ParsedTree,
         mut postorder_id: &mut usize,
         tree_size: usize,
-        record_labels: &mut HashMap<LabelId, LabelSetElement>,
+        record_labels: &mut StructHashMap,
     ) -> usize {
         // number of children = subtree_size - 1
         // subtree_size = 1 -> actual node + sum of children
@@ -237,7 +241,6 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
             }
 
             for n1 in s1c.struct_vec.iter() {
-
                 let k_window = n1.postorder_id.saturating_sub(k);
 
                 // apply postorder filter

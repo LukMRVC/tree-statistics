@@ -10,7 +10,7 @@ pub fn validate(
     results: PathBuf,
     k: usize,
 ) -> Result<Vec<(usize, usize)>, anyhow::Error> {
-    let cfile = File::open(candidates_file)?;
+    let cfile = File::open(&candidates_file)?;
     let rfile = File::open(results)?;
 
     let mut real_result = vec![];
@@ -37,24 +37,27 @@ pub fn validate(
     candidates.par_sort();
 
     let not_found = real_result
-        .par_iter()
-        .filter_map(|result_pair| {
+        .iter()
+        .filter_map(|(p1, p2)| {
             candidates
-                .binary_search(result_pair)
-                .ok()
-                .map_or(Some(result_pair), |_| None)
+                .binary_search(&(*p1, *p2))
+                .map_or_else(|_| {
+                    let flipped = &(*p2, *p1);
+                    candidates.binary_search(flipped).map_or(Some((p1, p2)), |_| None)
+                }, |_| None)
         })
         .collect::<Vec<_>>();
 
     let false_positives = candidates
         .par_iter()
-        .filter_map(|candidate| {
+        .filter_map(|(p1, p2)| {
             real_result
-                .binary_search(candidate)
-                .ok()
-                .map_or(Some(candidate), |_| None)
+                .binary_search(&(*p1, *p2))
+                .map_or(Some((*p1, *p2)), |_| {
+                    let flipped = &(*p2, *p1);
+                    real_result.binary_search(flipped).map_or(Some((*p1, *p2)), |_| None)
+                })
         })
-        .cloned()
         .collect::<Vec<_>>();
 
     println!(
