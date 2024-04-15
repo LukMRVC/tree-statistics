@@ -30,9 +30,7 @@ pub enum TreeOutput {
 pub fn tree_to_string(tree: &ParsedTree, out_type: TreeOutput) -> String {
     match out_type {
         TreeOutput::BracketNotation => tree_to_bracket(tree),
-        TreeOutput::Graphviz => {
-            tree_to_graphviz(tree)
-        }
+        TreeOutput::Graphviz => tree_to_graphviz(tree),
     }
 }
 
@@ -44,14 +42,14 @@ fn tree_to_graphviz(tree: &ParsedTree) -> String {
         panic!("Root not found!");
     };
     let root_id = tree.get_node_id(root).expect("Root ID not found!");
-    nodeid_stack.push(root_id);
+    nodeid_stack.push((root_id, format!("A{}", root.get())));
     while !nodeid_stack.is_empty() {
-        let nid = nodeid_stack.pop().unwrap();
-        let root_label = tree.get(nid).unwrap().get();
-        for cnid in nid.children(tree) {
+        let (nid, lbl_str) = nodeid_stack.pop().unwrap();
+        for (idx, cnid) in nid.children(tree).enumerate() {
             let label = tree.get(cnid).unwrap().get();
-            graphviz.push_str(&format!("{root_label} -> {label};\n"));
-            nodeid_stack.push(cnid);
+            let ascii_char = char::from_u32(idx as u32 + 65).unwrap();
+            graphviz.push_str(&format!("{lbl_str} -> {ascii_char}{label};\n"));
+            nodeid_stack.push((cnid, format!("{ascii_char}{label}")));
         }
     }
     graphviz.push('}');
