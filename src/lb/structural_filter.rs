@@ -2,10 +2,11 @@ use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use std::collections::HashMap;
+use std::collections::BTreeMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 
-type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
+type StructHashMap = BTreeMap<LabelId, LabelSetElement>;
 type StructHashMapKeys = FxHashSet<LabelId>;
 
 /// The building block for structural filter, holds information about
@@ -219,50 +220,51 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     let bigger = max(s1.0, s2.0);
     let mut overlap = 0;
 
-    let mut label_intersection = s1.2.intersection(&s2.2);
-    
-    for lbl in label_intersection {
-        let (set1, set2) = (s1.1.get(lbl).unwrap(), s2.1.get(lbl).unwrap());
-        if set1.weight == 1 && set2.weight == 1 {
-            let (n1, n2) = (&set1.struct_vec[0], &set2.struct_vec[0]);
-            let l1_region_distance = n1.nodes_left.abs_diff(n2.nodes_left)
-                + n1.nodes_right.abs_diff(n2.nodes_right)
-                + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
-                + n1.nodes_descendants.abs_diff(n2.nodes_descendants);
-            if l1_region_distance <= k {
-                overlap += 1;
-                continue;
-            }
-        }
 
-        let mut s1c = set1;
-        let mut s2c = set2;
-
-        if set2.weight < set1.weight {
-            (s1c, s2c) = (s2c, s1c);
-        }
-
-        for n1 in s1c.struct_vec.iter() {
-            let k_window = n1.postorder_id.saturating_sub(k);
-
-            // apply postorder filter
-            for n2 in s2c.struct_vec.iter().skip_while(|n2| {
-                k_window < s2c.struct_vec.len() && n2.postorder_id < k_window
-            }) {
-                if n2.postorder_id > k + n1.postorder_id {
-                    break;
-                }
-
+    for (lblid, set1) in s1.1.iter() {
+        if let Some(set2) = s2.1.get(lblid) {
+            if set1.weight == 1 && set2.weight == 1 {
+                let (n1, n2) = (&set1.struct_vec[0], &set2.struct_vec[0]);
                 let l1_region_distance = n1.nodes_left.abs_diff(n2.nodes_left)
                     + n1.nodes_right.abs_diff(n2.nodes_right)
                     + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
                     + n1.nodes_descendants.abs_diff(n2.nodes_descendants);
-
                 if l1_region_distance <= k {
                     overlap += 1;
-                    break;
+                    continue;
                 }
             }
+
+            let mut s1c = set1;
+            let mut s2c = set2;
+
+            if set2.weight < set1.weight {
+                (s1c, s2c) = (s2c, s1c);
+            }
+
+            for n1 in s1c.struct_vec.iter() {
+                let k_window = n1.postorder_id.saturating_sub(k);
+
+                // apply postorder filter
+                for n2 in s2c.struct_vec.iter().skip_while(|n2| {
+                    k_window < s2c.struct_vec.len() && n2.postorder_id < k_window
+                }) {
+                    if n2.postorder_id > k + n1.postorder_id {
+                        break;
+                    }
+
+                    let l1_region_distance = n1.nodes_left.abs_diff(n2.nodes_left)
+                        + n1.nodes_right.abs_diff(n2.nodes_right)
+                        + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
+                        + n1.nodes_descendants.abs_diff(n2.nodes_descendants);
+
+                    if l1_region_distance <= k {
+                        overlap += 1;
+                        break;
+                    }
+                }
+            }
+
         }
     }
     
