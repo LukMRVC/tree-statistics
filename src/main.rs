@@ -298,7 +298,7 @@ fn main() -> Result<(), anyhow::Error> {
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
 
                     candidates = structural_sets
-                        .par_iter()
+                        .iter()
                         .enumerate()
                         .flat_map(|(i, t1)| {
                             let mut lower_bound_candidates = vec![];
