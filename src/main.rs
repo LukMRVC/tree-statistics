@@ -294,7 +294,7 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Structural => {
                     let start = Instant::now();
                     let mut lc = lb::structural_filter::LabelSetConverter::default();
-                    let structural_sets = lc.create(&trees);
+                    let mut structural_sets = lc.create(&trees);
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
 
                     candidates = structural_sets

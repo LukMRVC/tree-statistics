@@ -13,19 +13,19 @@ type StructHashMapKeys = FxHashSet<LabelId>;
 /// the count of ancestral nodes, descendants nodes, to the left and to the right
 // difference between children and descendants? Children nodes are only 1 level below current node level
 // while descendants are all nodes below the current node
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct StructuralVec {
     /// Id of postorder tree traversal
     pub postorder_id: usize,
     /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
     pub mapping_region: [i32; 4],
-
-    // pub unmapped_mapping_region: [i32; 4],
+    pub unmapped_mapping_region: [i32; 4],
+    pub mapped: bool,
 }
 
 /// This is an element holding relevant data of a set.
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LabelSetElement {
     pub id: LabelId,
     pub weight: usize,
@@ -35,6 +35,7 @@ pub struct LabelSetElement {
 }
 
 /// Base struct tuple for structural filter
+#[derive(Clone)]
 pub struct StructuralFilterTuple(usize, StructHashMap);
 
 /// Takes a collection of trees and converts them into a collection of label
@@ -192,6 +193,8 @@ impl LabelSetConverter {
                 self.actual_depth as i32,
                 (subtree_size - 1) as i32,
             ],
+            unmapped_mapping_region: [0; 4],
+            mapped: false,
         };
 
         if let Some(se) = record_labels.get_mut(root_label) {
@@ -267,6 +270,73 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
         }
     }
     
+    bigger - overlap
+}
+
+pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
+    use std::cmp::max;
+    let bigger = max(s1.0, s2.0);
+    let mut overlap = 0;
+
+    if s1.0.abs_diff(s2.0) > k {
+        return k + 1;
+    }
+
+    let (mut s1, mut s2) = (s1.clone(), s2.clone());
+    #[inline(always)]
+    fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
+        n1.mapping_region.iter().zip_eq(n2.mapping_region.iter())
+            .fold(0, |acc, (a, b)| a.abs_diff(*b))
+    }
+
+    // TODO: Change unnmapped regions according to the unmapped nodes!
+    for (lblid, set1) in s1.1.iter_mut() {
+        if let Some(set2) = s2.1.get_mut(lblid) {
+            if set1.weight == 1 && set2.weight == 1 {
+                let (n1, n2) = (&mut set1.struct_vec[0], &mut set2.struct_vec[0]);
+                let l1_region_distance = svec_l1(n1, n2);
+                if l1_region_distance as usize <= k {
+                    n1.mapped = true;
+                    n2.mapped = true;
+                    overlap += 1;
+                    continue;
+                }
+            }
+
+            let mut s1c = set1;
+            let mut s2c = set2;
+
+            if s2c.weight < s1c.weight {
+                (s1c, s2c) = (s2c, s1c);
+            }
+
+            for n1 in s1c.struct_vec.iter_mut() {
+                let k_window = n1.postorder_id.saturating_sub(k);
+
+                // apply postorder filter
+                let s2clen = s2c.struct_vec.len();
+                for n2 in s2c.struct_vec.iter_mut() {
+                    if k_window < s2clen && n2.postorder_id < k_window {
+                        continue;
+                    }
+
+                    if n2.postorder_id > k + n1.postorder_id {
+                        break;
+                    }
+                    let l1_region_distance = svec_l1(n1, n2);
+
+                    if l1_region_distance as usize <= k {
+                        n1.mapped = true;
+                        n2.mapped = true;
+                        overlap += 1;
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
     bigger - overlap
 }
 
