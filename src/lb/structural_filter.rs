@@ -2,10 +2,12 @@ use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use std::collections::HashMap;
-use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
+type StructHashMapKeys = FxHashSet<LabelId>;
 
 /// The building block for structural filter, holds information about
 /// the count of ancestral nodes, descendants nodes, to the left and to the right
@@ -15,14 +17,15 @@ type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 pub struct StructuralVec {
     /// Id of postorder tree traversal
     pub postorder_id: usize,
+    
     /// Number of nodes to left of this node
-    pub nodes_left: usize,
+    pub nodes_left: i32,
     /// Number of nodes to right of this node
-    pub nodes_right: usize,
+    pub nodes_right: i32,
     /// Number of ancestral nodes
-    pub nodes_ancestors: usize,
+    pub nodes_ancestors: i32,
     /// Number of descendants nodes
-    pub nodes_descendants: usize,
+    pub nodes_descendants: i32,
 }
 
 /// This is an element holding relevant data of a set.
@@ -37,7 +40,7 @@ pub struct LabelSetElement {
 }
 
 /// Base struct tuple for structural filter
-pub struct StructuralFilterTuple(usize, StructHashMap);
+pub struct StructuralFilterTuple(usize, StructHashMap, StructHashMapKeys);
 
 /// Takes a collection of trees and converts them into a collection of label
 /// sets. A label set consists of labels and each label holds all nodes with that
@@ -81,8 +84,8 @@ impl LabelSetConverter {
             // reset state variables needed for positional evaluation
             self.actual_depth = 0;
             self.actual_pre_order_number = 0;
-
-            sets_collection.push(StructuralFilterTuple(tree_size, record_labels));
+            let keys = record_labels.keys().cloned().collect::<FxHashSet<LabelId>>();
+            sets_collection.push(StructuralFilterTuple(tree_size, record_labels, keys));
         }
         sets_collection
     }
@@ -190,10 +193,16 @@ impl LabelSetConverter {
         let root_label = tree.get(*root_id).unwrap().get();
         let node_struct_vec = StructuralVec {
             postorder_id: *postorder_id,
-            nodes_left: self.actual_pre_order_number - subtree_size,
-            nodes_right: tree_size - (self.actual_pre_order_number + self.actual_depth),
-            nodes_ancestors: self.actual_depth,
-            nodes_descendants: subtree_size - 1,
+            // vec: [
+            //     (self.actual_pre_order_number - subtree_size) as i32,
+            //     (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
+            //     self.actual_depth as i32,
+            //     (subtree_size - 1) as i32,
+            // ],
+            nodes_left: (self.actual_pre_order_number - subtree_size) as i32,
+            nodes_right: (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
+            nodes_ancestors: self.actual_depth as i32,
+            nodes_descendants: (subtree_size - 1) as i32,
         };
 
         if let Some(se) = record_labels.get_mut(root_label) {
@@ -218,16 +227,25 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     let bigger = max(s1.0, s2.0);
     let mut overlap = 0;
 
+    if s1.0.abs_diff(s2.0) > k {
+        return k + 1;
+    }
+
+    #[inline(always)]
+    fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
+        n1.nodes_left.abs_diff(n2.nodes_left)
+            + n1.nodes_right.abs_diff(n2.nodes_right)
+            + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
+            + n1.nodes_descendants.abs_diff(n2.nodes_descendants)
+    }
+
 
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
             if set1.weight == 1 && set2.weight == 1 {
                 let (n1, n2) = (&set1.struct_vec[0], &set2.struct_vec[0]);
-                let l1_region_distance = n1.nodes_left.abs_diff(n2.nodes_left)
-                    + n1.nodes_right.abs_diff(n2.nodes_right)
-                    + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
-                    + n1.nodes_descendants.abs_diff(n2.nodes_descendants);
-                if l1_region_distance <= k {
+                let l1_region_distance = svec_l1(n1, n2);
+                if l1_region_distance as usize <= k {
                     overlap += 1;
                     continue;
                 }
@@ -250,21 +268,18 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
                     if n2.postorder_id > k + n1.postorder_id {
                         break;
                     }
+                    let l1_region_distance = svec_l1(n1, n2);
 
-                    let l1_region_distance = n1.nodes_left.abs_diff(n2.nodes_left)
-                        + n1.nodes_right.abs_diff(n2.nodes_right)
-                        + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
-                        + n1.nodes_descendants.abs_diff(n2.nodes_descendants);
-
-                    if l1_region_distance <= k {
+                    if l1_region_distance as usize <= k {
                         overlap += 1;
                         break;
                     }
                 }
             }
+
         }
     }
-
+    
     bigger - overlap
 }
 
