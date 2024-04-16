@@ -10,7 +10,7 @@ pub fn validate(
     results: PathBuf,
     k: usize,
 ) -> Result<Vec<(usize, usize)>, anyhow::Error> {
-    let cfile = File::open(&candidates_file)?;
+    let cfile = File::open(candidates_file)?;
     let rfile = File::open(results)?;
 
     let mut real_result = vec![];
@@ -67,7 +67,7 @@ pub fn validate(
         candidates.len()
     );
 
-    if not_found.len() > 0 {
+    if !not_found.is_empty() {
         let max = std::cmp::min(5, not_found.len());
         println!("Some not found candidates");
         for (c1, c2) in &not_found[..max] {

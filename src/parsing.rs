@@ -43,8 +43,7 @@ fn tree_to_graphviz(tree: &ParsedTree) -> String {
     };
     let root_id = tree.get_node_id(root).expect("Root ID not found!");
     nodeid_stack.push((root_id, format!("A{}", root.get())));
-    while !nodeid_stack.is_empty() {
-        let (nid, lbl_str) = nodeid_stack.pop().unwrap();
+    while let Some((nid, lbl_str)) = nodeid_stack.pop() {
         for (idx, cnid) in nid.children(tree).enumerate() {
             let label = tree.get(cnid).unwrap().get();
             let ascii_char = char::from_u32(idx as u32 + 65).unwrap();

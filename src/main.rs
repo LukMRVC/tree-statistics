@@ -377,10 +377,12 @@ fn write_precision_and_filter_times(
     precision_output.push(format!("precision-hist-{hist_method}-{k}.txt"));
     let times_file = File::options()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(times_output)?;
     let mut precision_file = File::options()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(precision_output)?;
     let mut times_writer = BufWriter::new(times_file);

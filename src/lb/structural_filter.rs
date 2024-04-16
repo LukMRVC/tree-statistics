@@ -17,15 +17,10 @@ type StructHashMapKeys = FxHashSet<LabelId>;
 pub struct StructuralVec {
     /// Id of postorder tree traversal
     pub postorder_id: usize,
-    
-    /// Number of nodes to left of this node
-    pub nodes_left: i32,
-    /// Number of nodes to right of this node
-    pub nodes_right: i32,
-    /// Number of ancestral nodes
-    pub nodes_ancestors: i32,
-    /// Number of descendants nodes
-    pub nodes_descendants: i32,
+    /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
+    pub mapping_region: [i32; 4],
+
+    // pub unmapped_mapping_region: [i32; 4],
 }
 
 /// This is an element holding relevant data of a set.
@@ -40,7 +35,7 @@ pub struct LabelSetElement {
 }
 
 /// Base struct tuple for structural filter
-pub struct StructuralFilterTuple(usize, StructHashMap, StructHashMapKeys);
+pub struct StructuralFilterTuple(usize, StructHashMap);
 
 /// Takes a collection of trees and converts them into a collection of label
 /// sets. A label set consists of labels and each label holds all nodes with that
@@ -51,7 +46,6 @@ pub struct StructuralFilterTuple(usize, StructHashMap, StructHashMapKeys);
 pub struct LabelSetConverter {
     actual_depth: usize,
     actual_pre_order_number: usize,
-    next_token_id: usize,
 }
 
 impl LabelSetConverter {
@@ -84,8 +78,7 @@ impl LabelSetConverter {
             // reset state variables needed for positional evaluation
             self.actual_depth = 0;
             self.actual_pre_order_number = 0;
-            let keys = record_labels.keys().cloned().collect::<FxHashSet<LabelId>>();
-            sets_collection.push(StructuralFilterTuple(tree_size, record_labels, keys));
+            sets_collection.push(StructuralFilterTuple(tree_size, record_labels));
         }
         sets_collection
     }
@@ -183,7 +176,7 @@ impl LabelSetConverter {
 
         for cid in root_id.children(tree) {
             subtree_size +=
-                self.create_record(&cid, tree, &mut postorder_id, tree_size, record_labels);
+                self.create_record(&cid, tree, postorder_id, tree_size, record_labels);
         }
 
         *postorder_id += 1;
@@ -193,16 +186,12 @@ impl LabelSetConverter {
         let root_label = tree.get(*root_id).unwrap().get();
         let node_struct_vec = StructuralVec {
             postorder_id: *postorder_id,
-            // vec: [
-            //     (self.actual_pre_order_number - subtree_size) as i32,
-            //     (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
-            //     self.actual_depth as i32,
-            //     (subtree_size - 1) as i32,
-            // ],
-            nodes_left: (self.actual_pre_order_number - subtree_size) as i32,
-            nodes_right: (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
-            nodes_ancestors: self.actual_depth as i32,
-            nodes_descendants: (subtree_size - 1) as i32,
+            mapping_region: [
+                (self.actual_pre_order_number - subtree_size) as i32,
+                (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
+                self.actual_depth as i32,
+                (subtree_size - 1) as i32,
+            ],
         };
 
         if let Some(se) = record_labels.get_mut(root_label) {
@@ -233,10 +222,8 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
 
     #[inline(always)]
     fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-        n1.nodes_left.abs_diff(n2.nodes_left)
-            + n1.nodes_right.abs_diff(n2.nodes_right)
-            + n1.nodes_ancestors.abs_diff(n2.nodes_ancestors)
-            + n1.nodes_descendants.abs_diff(n2.nodes_descendants)
+        n1.mapping_region.iter().zip_eq(n2.mapping_region.iter())
+            .fold(0, |acc, (a, b)| a.abs_diff(*b))
     }
 
 

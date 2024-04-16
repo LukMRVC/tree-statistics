@@ -64,7 +64,7 @@ fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     {
         s1len -= 1;
         s2len -= 1;
-        if s1len <= 0 {
+        if s1len == 0 {
             break;
         }
     }
