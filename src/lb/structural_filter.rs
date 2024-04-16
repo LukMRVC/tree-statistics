@@ -220,6 +220,10 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     let bigger = max(s1.0, s2.0);
     let mut overlap = 0;
 
+    if s1.0.abs_diff(s2.0) > k {
+        return k + 1;
+    }
+
 
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
