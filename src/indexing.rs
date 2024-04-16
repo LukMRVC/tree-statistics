@@ -1,8 +1,6 @@
 use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use std::collections::HashMap;
-use rustc_hash::FxHashMap;
-
 
 pub trait Indexer {
     fn index_tree(tree: &ParsedTree, label_dict: &LabelDict) -> Self
@@ -54,8 +52,7 @@ fn traverse(nid: NodeId, tree: &ParsedTree, pre: &mut Vec<i32>, post: &mut Vec<i
     post.push(*label);
 }
 
-// pub type InvListLblPost = FxHashMap<LabelId, Vec<i32>>;
-pub type InvListLblPost = Vec<(LabelId, Vec<i32>)>;
+pub type InvListLblPost = HashMap<LabelId, Vec<i32>>;
 
 /// Inverted list of nodes, key is index which is the label id in label dict
 /// and postings list contains postorder traversal number
@@ -70,7 +67,7 @@ impl Indexer for InvertedListLabelPostorderIndex {
         let Some(root) = tree.iter().next() else {
             panic!("Unable to get root but tree is not empty!");
         };
-        let mut inverted_list = InvListLblPost::default();
+        let mut inverted_list = HashMap::new();
         let root_id = tree.get_node_id(root).unwrap();
         traverse_inverted(root_id, tree, &mut inverted_list, 0);
 
@@ -96,18 +93,10 @@ fn traverse_inverted(
         postorder_id += traverse_inverted(cnid, tree, inverted_list, postorder_id);
         children += 1;
     }
-    
-    if let Ok(index) = inverted_list.binary_search_by_key(&label, |(l, v)| l) {
-        inverted_list[index].1.push(postorder_id);
-    } else {
-        inverted_list.push((*label, vec![postorder_id]));
-        inverted_list.sort_by_key(|(a, b)| *a);
-    }
-    
-    // inverted_list
-    //     .entry(*label)
-    //     .and_modify(|postings| postings.push(postorder_id))
-    //     .or_insert(vec![postorder_id]);
+    inverted_list
+        .entry(*label)
+        .and_modify(|postings| postings.push(postorder_id))
+        .or_insert(vec![postorder_id]);
     children + 1
 }
 
@@ -156,21 +145,15 @@ mod tests {
         assert!(parse_result.is_ok(), "Tree parsing failed, which shouldn't");
         let tree = parse_result.unwrap();
         let idx = InvertedListLabelPostorderIndex::index_tree(&tree, &label_dict);
-        let tuples = Vec::from([
-            (0, vec![3, 6]),
-            (1, vec![0]),
-            (2, vec![1, 4]),
-            (3, vec![2]),
-            (4, vec![5]),
-        ]);
-        // let mut hm = InvListLblPost::default();
-        // 
-        // for (k, v) in tuples {
-        //     hm.insert(k, v);
-        // }
         assert_eq!(
             idx.inverted_list,
-            tuples
+            InvListLblPost::from([
+                (0, vec![3, 6]),
+                (1, vec![0]),
+                (2, vec![1, 4]),
+                (3, vec![2]),
+                (4, vec![5]),
+            ])
         );
     }
 }
