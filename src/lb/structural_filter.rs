@@ -1,10 +1,9 @@
 use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
-use std::collections::HashMap;
-use std::collections::BTreeMap;
 use rustc_hash::{FxHashMap, FxHashSet};
-
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type StructHashMapKeys = FxHashSet<LabelId>;
@@ -176,8 +175,7 @@ impl LabelSetConverter {
         self.actual_depth += 1;
 
         for cid in root_id.children(tree) {
-            subtree_size +=
-                self.create_record(&cid, tree, postorder_id, tree_size, record_labels);
+            subtree_size += self.create_record(&cid, tree, postorder_id, tree_size, record_labels);
         }
 
         *postorder_id += 1;
@@ -225,10 +223,11 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
 
     #[inline(always)]
     fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-        n1.mapping_region.iter().zip_eq(n2.mapping_region.iter())
-            .fold(0, |acc, (a, b)| a.abs_diff(*b))
+        n1.mapping_region
+            .iter()
+            .zip_eq(n2.mapping_region.iter())
+            .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
     }
-
 
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
@@ -252,9 +251,11 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
                 let k_window = n1.postorder_id.saturating_sub(k);
 
                 // apply postorder filter
-                for n2 in s2c.struct_vec.iter().skip_while(|n2| {
-                    k_window < s2c.struct_vec.len() && n2.postorder_id < k_window
-                }) {
+                for n2 in s2c
+                    .struct_vec
+                    .iter()
+                    .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
+                {
                     if n2.postorder_id > k + n1.postorder_id {
                         break;
                     }
@@ -266,10 +267,9 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
                     }
                 }
             }
-
         }
     }
-    
+
     bigger - overlap
 }
 
@@ -285,8 +285,10 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
     let (mut s1, mut s2) = (s1.clone(), s2.clone());
     #[inline(always)]
     fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-        n1.mapping_region.iter().zip_eq(n2.mapping_region.iter())
-            .fold(0, |acc, (a, b)| a.abs_diff(*b))
+        n1.mapping_region
+            .iter()
+            .zip_eq(n2.mapping_region.iter())
+            .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
     }
 
     // TODO: Change unnmapped regions according to the unmapped nodes!
@@ -328,12 +330,11 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
                     if l1_region_distance as usize <= k {
                         n1.mapped = true;
                         n2.mapped = true;
-                        overlap += 1;
+                        // overlap += 1;
                         break;
                     }
                 }
             }
-
         }
     }
 
