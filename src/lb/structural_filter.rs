@@ -1,12 +1,18 @@
 use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
-use itertools::Itertools;
+use itertools::{all, Itertools};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::{borrow::BorrowMut, cell::RefCell};
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type StructHashMapKeys = FxHashSet<LabelId>;
+
+const REGION_LEFT_IDX: usize = 0;
+const REGION_RIGHT_IDX: usize = 2;
+/// ancestors
+const REGION_ANC_IDX: usize = 1;
+/// descendants
+const REGION_DESC_IDX: usize = 3;
 
 /// The building block for structural filter, holds information about
 /// the count of ancestral nodes, descendants nodes, to the left and to the right
@@ -35,7 +41,7 @@ pub struct LabelSetElement {
     pub weight: usize,
     pub weigh_so_far: usize,
 
-    pub struct_vec: Vec<StructuralVec>,
+    pub struct_vec: Vec<RefCell<StructuralVec>>,
 }
 
 /// Base struct tuple for structural filter
@@ -214,14 +220,14 @@ impl LabelSetConverter {
 
         if let Some(se) = record_labels.get_mut(root_label) {
             se.weight += 1;
-            se.struct_vec.push(node_struct_vec);
+            se.struct_vec.push(RefCell::new(node_struct_vec));
         } else {
             let mut se = LabelSetElement {
                 id: *tree.get(*root_id).unwrap().get(),
                 weight: 1,
                 ..LabelSetElement::default()
             };
-            se.struct_vec.push(node_struct_vec);
+            se.struct_vec.push(RefCell::new(node_struct_vec));
             record_labels.insert(*root_label, se);
         }
         subtree_size
@@ -249,7 +255,7 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
             if set1.weight == 1 && set2.weight == 1 {
-                let (n1, n2) = (&set1.struct_vec[0], &set2.struct_vec[0]);
+                let (n1, n2) = (&set1.struct_vec[0].borrow(), &set2.struct_vec[0].borrow());
                 let l1_region_distance = svec_l1(n1, n2);
                 if l1_region_distance as usize <= k {
                     overlap += 1;
@@ -265,18 +271,18 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
             }
 
             for n1 in s1c.struct_vec.iter() {
+                let n1 = n1.borrow();
                 let k_window = n1.postorder_id.saturating_sub(k);
 
                 // apply postorder filter
-                for n2 in s2c
-                    .struct_vec
-                    .iter()
-                    .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
-                {
+                for n2 in s2c.struct_vec.iter().skip_while(|n2| {
+                    k_window < s2c.struct_vec.len() && n2.borrow().postorder_id < k_window
+                }) {
+                    let n2 = n2.borrow();
                     if n2.postorder_id > k + n1.postorder_id {
                         break;
                     }
-                    let l1_region_distance = svec_l1(n1, n2);
+                    let l1_region_distance = svec_l1(&n1, &n2);
 
                     if l1_region_distance as usize <= k {
                         overlap += 1;
@@ -303,11 +309,59 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
     fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
         n1.mapping_region
             .iter()
-            .zip_eq(n2.mapping_region.iter())
-            .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
+            .zip_eq(n1.unmapped_mapping_region.iter())
+            .zip_eq(
+                n2.mapping_region
+                    .iter()
+                    .zip_eq(n2.unmapped_mapping_region.iter()),
+            )
+            .fold(0, |acc, ((n1reg, n1umreg), (n2reg, n2umreg))| {
+                acc + max(
+                    (n1reg - n1umreg).abs_diff(n2reg - n2umreg),
+                    max(n1umreg.abs() as u32, n2umreg.abs() as u32),
+                )
+            })
     }
 
     let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+
+    let all_nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
+    let unmapped_nodes = all_nodes
+        .iter()
+        .filter(|un| !un.borrow().mapped)
+        .collect_vec();
+    for n in all_nodes.iter() {
+        // Vector of unmmaped nodes to the left, ancestors, nodes to right and descendants
+        let mut unmapped_regions = [0; 4];
+        let (post, pre) = {
+            let n1 = n.borrow();
+            (n1.postorder_id, n1.preorder_id)
+        };
+
+        for unmapped_node in unmapped_nodes.iter() {
+            let n2 = unmapped_node.borrow();
+            if n2.postorder_id == post {
+                continue;
+            }
+            if n2.postorder_id < post && n2.preorder_id < pre {
+                unmapped_regions[REGION_LEFT_IDX] += 1;
+            } else if n2.postorder_id > post && n2.preorder_id > pre {
+                unmapped_regions[REGION_RIGHT_IDX] += 1;
+            } else if n2.postorder_id > post && n2.preorder_id < pre {
+                unmapped_regions[REGION_ANC_IDX] += 1;
+            } else {
+                unmapped_regions[REGION_DESC_IDX] += 1;
+            }
+        }
+
+        {
+            let mut n1 = (*n).borrow_mut();
+            n1.unmapped_mapping_region = unmapped_regions;
+        }
+    }
+
+    let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+
     bigger - overlap
 }
 
@@ -320,11 +374,14 @@ fn get_nodes_overlap_with_region_distance(
     let mut overlap = 0;
 
     // TODO: Change unnmapped regions according to the unmapped nodes!
-    for (lblid, set1) in s1.1.iter_mut() {
-        if let Some(set2) = s2.1.get_mut(lblid) {
+    for (lblid, set1) in s1.1.iter() {
+        if let Some(set2) = s2.1.get(lblid) {
             if set1.weight == 1 && set2.weight == 1 {
-                let (n1, n2) = (&mut set1.struct_vec[0], &mut set2.struct_vec[0]);
-                let l1_region_distance = region_distance_closure(n1, n2);
+                let (mut n1, mut n2) = (
+                    set1.struct_vec[0].borrow_mut(),
+                    set2.struct_vec[0].borrow_mut(),
+                );
+                let l1_region_distance = region_distance_closure(&n1, &n2);
                 if l1_region_distance as usize <= k {
                     n1.mapped = true;
                     n2.mapped = true;
@@ -340,12 +397,13 @@ fn get_nodes_overlap_with_region_distance(
                 (s1c, s2c) = (s2c, s1c);
             }
 
-            for n1 in s1c.struct_vec.iter_mut() {
-                let k_window = n1.postorder_id.saturating_sub(k);
-
+            for n1 in s1c.struct_vec.iter() {
+                let k_window = n1.borrow().postorder_id.saturating_sub(k);
+                let mut n1 = n1.borrow_mut();
                 // apply postorder filter
                 let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter_mut() {
+                for n2 in s2c.struct_vec.iter() {
+                    let mut n2 = n2.borrow_mut();
                     if k_window < s2clen && n2.postorder_id < k_window {
                         continue;
                     }
@@ -353,7 +411,7 @@ fn get_nodes_overlap_with_region_distance(
                     if n2.postorder_id > k + n1.postorder_id {
                         break;
                     }
-                    let l1_region_distance = region_distance_closure(n1, n2);
+                    let l1_region_distance = region_distance_closure(&n1, &n2);
 
                     if l1_region_distance as usize <= k {
                         n1.mapped = true;
@@ -394,27 +452,27 @@ mod tests {
             weight: 3,
             weigh_so_far: 0,
             struct_vec: vec![
-                StructuralVec {
+                RefCell::new(StructuralVec {
                     mapped: false,
                     mapping_region: [3, 2, 1, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 4,
                     preorder_id: 6,
-                },
-                StructuralVec {
+                }),
+                RefCell::new(StructuralVec {
                     mapped: false,
                     mapping_region: [1, 1, 1, 3],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 5,
                     preorder_id: 3,
-                },
-                StructuralVec {
+                }),
+                RefCell::new(StructuralVec {
                     mapped: false,
                     mapping_region: [0, 0, 0, 6],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 7,
                     preorder_id: 1,
-                },
+                }),
             ],
         };
 
@@ -423,27 +481,27 @@ mod tests {
             weight: 3,
             weigh_so_far: 0,
             struct_vec: vec![
-                StructuralVec {
+                RefCell::new(StructuralVec {
                     mapped: false,
                     mapping_region: [0, 1, 5, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 1,
                     preorder_id: 2,
-                },
-                StructuralVec {
+                }),
+                RefCell::new(StructuralVec {
                     mapped: false,
                     mapping_region: [1, 2, 3, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 2,
                     preorder_id: 4,
-                },
-                StructuralVec {
+                }),
+                RefCell::new(StructuralVec {
                     mapped: false,
                     mapping_region: [5, 1, 0, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 6,
                     preorder_id: 7,
-                },
+                }),
             ],
         };
 
