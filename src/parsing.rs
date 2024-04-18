@@ -1,7 +1,6 @@
 use indextree::{Arena, NodeEdge};
 use memchr::memchr2_iter;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};

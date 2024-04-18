@@ -12,19 +12,24 @@ type StructHashMapKeys = FxHashSet<LabelId>;
 /// the count of ancestral nodes, descendants nodes, to the left and to the right
 // difference between children and descendants? Children nodes are only 1 level below current node level
 // while descendants are all nodes below the current node
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct StructuralVec {
     /// Id of postorder tree traversal
     pub postorder_id: usize,
+    pub preorder_id: usize,
     /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
     pub mapping_region: [i32; 4],
+
+    // regions according to postorder and preorder ID are relative to current node
+    // left region -> smaller pre and post IDs, ancestor region -> bigger post, smaller pre
+    // right region -> bigger pre and post IDS, descendants region -> smaller post, bigger pre
     pub unmapped_mapping_region: [i32; 4],
     pub mapped: bool,
 }
 
 /// This is an element holding relevant data of a set.
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct LabelSetElement {
     pub id: LabelId,
     pub weight: usize,
@@ -66,10 +71,12 @@ impl LabelSetConverter {
             let root_id = tree.get_node_id(root).unwrap();
             // for recursive postorder traversal
             let mut postorder_id = 0;
+
             // array of records stored in sets_collection
             self.create_record(
                 &root_id,
                 tree,
+                1,
                 &mut postorder_id,
                 tree_size,
                 &mut record_labels,
@@ -113,6 +120,7 @@ impl LabelSetConverter {
             self.create_record(
                 &root_id,
                 tree,
+                1,
                 &mut postorder_id,
                 tree_size,
                 &mut record_labels,
@@ -164,6 +172,7 @@ impl LabelSetConverter {
         &mut self,
         root_id: &NodeId,
         tree: &ParsedTree,
+        preorder_id: usize,
         mut postorder_id: &mut usize,
         tree_size: usize,
         record_labels: &mut StructHashMap,
@@ -175,7 +184,14 @@ impl LabelSetConverter {
         self.actual_depth += 1;
 
         for cid in root_id.children(tree) {
-            subtree_size += self.create_record(&cid, tree, postorder_id, tree_size, record_labels);
+            subtree_size += self.create_record(
+                &cid,
+                tree,
+                preorder_id + subtree_size,
+                postorder_id,
+                tree_size,
+                record_labels,
+            );
         }
 
         *postorder_id += 1;
@@ -184,11 +200,12 @@ impl LabelSetConverter {
 
         let root_label = tree.get(*root_id).unwrap().get();
         let node_struct_vec = StructuralVec {
+            preorder_id,
             postorder_id: *postorder_id,
             mapping_region: [
                 (self.actual_pre_order_number - subtree_size) as i32,
-                (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
                 self.actual_depth as i32,
+                (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
                 (subtree_size - 1) as i32,
             ],
             unmapped_mapping_region: [0; 4],
@@ -276,7 +293,6 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
 pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
     use std::cmp::max;
     let bigger = max(s1.0, s2.0);
-    let mut overlap = 0;
 
     if s1.0.abs_diff(s2.0) > k {
         return k + 1;
@@ -291,12 +307,24 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
     }
 
+    let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+    bigger - overlap
+}
+
+fn get_nodes_overlap_with_region_distance(
+    s1: &mut StructuralFilterTuple,
+    s2: &mut StructuralFilterTuple,
+    k: usize,
+    region_distance_closure: impl Fn(&StructuralVec, &StructuralVec) -> u32,
+) -> usize {
+    let mut overlap = 0;
+
     // TODO: Change unnmapped regions according to the unmapped nodes!
     for (lblid, set1) in s1.1.iter_mut() {
         if let Some(set2) = s2.1.get_mut(lblid) {
             if set1.weight == 1 && set2.weight == 1 {
                 let (n1, n2) = (&mut set1.struct_vec[0], &mut set2.struct_vec[0]);
-                let l1_region_distance = svec_l1(n1, n2);
+                let l1_region_distance = region_distance_closure(n1, n2);
                 if l1_region_distance as usize <= k {
                     n1.mapped = true;
                     n2.mapped = true;
@@ -325,7 +353,7 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
                     if n2.postorder_id > k + n1.postorder_id {
                         break;
                     }
-                    let l1_region_distance = svec_l1(n1, n2);
+                    let l1_region_distance = region_distance_closure(n1, n2);
 
                     if l1_region_distance as usize <= k {
                         n1.mapped = true;
@@ -338,7 +366,7 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
         }
     }
 
-    bigger - overlap
+    overlap
 }
 
 #[cfg(test)]
@@ -348,15 +376,80 @@ mod tests {
 
     #[test]
     fn test_set_converting() {
-        let t1input = "{1{2{2 Beware}{2{2 the}{2{2 quirky}{2 Brit-com}}}}{2 .}}".to_owned();
-        let t2input = "{3{3{2{2 A}{2 film}}{3{2 of}{3{2 quiet}{2 power}}}}{2 .}}".to_owned();
+        let t1input = "{a{b}{a{b}{c}{a}}{b}}".to_owned();
+        let t2input = "{a{c}{b{a{a}{b}{c}}}}".to_owned();
         let mut label_dict = LabelDict::new();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
-
         let mut sc = LabelSetConverter::default();
-        let sets = sc.create_with_frequency(&v, &label_dict);
+        let sets = sc.create(&v);
+
+        // 0 are labels A
+        // 1 are labels B
+        // 2 are labelcs C
+
+        let lse_for_a = LabelSetElement {
+            id: 0,
+            weight: 3,
+            weigh_so_far: 0,
+            struct_vec: vec![
+                StructuralVec {
+                    mapped: false,
+                    mapping_region: [3, 2, 1, 0],
+                    unmapped_mapping_region: [0, 0, 0, 0],
+                    postorder_id: 4,
+                    preorder_id: 6,
+                },
+                StructuralVec {
+                    mapped: false,
+                    mapping_region: [1, 1, 1, 3],
+                    unmapped_mapping_region: [0, 0, 0, 0],
+                    postorder_id: 5,
+                    preorder_id: 3,
+                },
+                StructuralVec {
+                    mapped: false,
+                    mapping_region: [0, 0, 0, 6],
+                    unmapped_mapping_region: [0, 0, 0, 0],
+                    postorder_id: 7,
+                    preorder_id: 1,
+                },
+            ],
+        };
+
+        let lse_for_b = LabelSetElement {
+            id: 1,
+            weight: 3,
+            weigh_so_far: 0,
+            struct_vec: vec![
+                StructuralVec {
+                    mapped: false,
+                    mapping_region: [0, 1, 5, 0],
+                    unmapped_mapping_region: [0, 0, 0, 0],
+                    postorder_id: 1,
+                    preorder_id: 2,
+                },
+                StructuralVec {
+                    mapped: false,
+                    mapping_region: [1, 2, 3, 0],
+                    unmapped_mapping_region: [0, 0, 0, 0],
+                    postorder_id: 2,
+                    preorder_id: 4,
+                },
+                StructuralVec {
+                    mapped: false,
+                    mapping_region: [5, 1, 0, 0],
+                    unmapped_mapping_region: [0, 0, 0, 0],
+                    postorder_id: 6,
+                    preorder_id: 7,
+                },
+            ],
+        };
+
+        assert_eq!(sets[0].1.get(&0).unwrap(), &lse_for_a);
+        assert_eq!(sets[0].1.get(&1).unwrap(), &lse_for_b);
+
         println!("{}", sets.len());
     }
 }
