@@ -323,7 +323,7 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             })
     }
 
-    let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+    get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
 
     let all_nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
     let unmapped_nodes = all_nodes
@@ -509,5 +509,23 @@ mod tests {
         assert_eq!(sets[0].1.get(&1).unwrap(), &lse_for_b);
 
         println!("{}", sets.len());
+    }
+
+    #[test]
+    fn test_struct_ted() {
+        let t1input = "{a{b}{a{b}{c}{a}}{b}}".to_owned();
+        let t2input = "{a{c}{b{a{a}{b}{c}}}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+        let v = vec![t1, t2];
+        let mut sc = LabelSetConverter::default();
+        let sets = sc.create(&v);
+
+        let lb = ted(&sets[0], &sets[1], 4);
+
+        assert_eq!(lb, 2);
+        let lb = ted_variant(&sets[0], &sets[1], 4);
+        assert_eq!(lb, 7);
     }
 }

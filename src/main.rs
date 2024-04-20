@@ -46,6 +46,8 @@ enum LowerBoundMethods {
     Sed,
     /// Structural filter lower bound
     Structural,
+    /// Structural variant filter lower bound
+    StructuralVariant,
 }
 
 #[derive(Subcommand, Debug)]
@@ -291,26 +293,43 @@ fn main() -> Result<(), anyhow::Error> {
                         })
                         .collect::<Vec<_>>();
                 }
-                LBM::Structural => {
+                LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
                     let mut lc = lb::structural_filter::LabelSetConverter::default();
-                    let mut structural_sets = lc.create(&trees);
+                    let structural_sets = lc.create(&trees);
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
 
-                    candidates = structural_sets
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(i, t1)| {
-                            let mut lower_bound_candidates = vec![];
-                            for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
-                                let lb = lb::structural_filter::ted(t1, t2, k);
-                                if lb <= k {
-                                    lower_bound_candidates.push((i, j));
+                    if let LBM::StructuralVariant = method {
+                        candidates = structural_sets
+                            .iter()
+                            .enumerate()
+                            .flat_map(|(i, t1)| {
+                                let mut lower_bound_candidates = vec![];
+                                for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
+                                    let lb = lb::structural_filter::ted_variant(t1, t2, k);
+                                    if lb <= k {
+                                        lower_bound_candidates.push((i, j));
+                                    }
                                 }
-                            }
-                            lower_bound_candidates
-                        })
-                        .collect::<Vec<_>>();
+                                lower_bound_candidates
+                            })
+                            .collect::<Vec<_>>();
+                    } else {
+                        candidates = structural_sets
+                            .iter()
+                            .enumerate()
+                            .flat_map(|(i, t1)| {
+                                let mut lower_bound_candidates = vec![];
+                                for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
+                                    let lb = lb::structural_filter::ted(t1, t2, k);
+                                    if lb <= k {
+                                        lower_bound_candidates.push((i, j));
+                                    }
+                                }
+                                lower_bound_candidates
+                            })
+                            .collect::<Vec<_>>();
+                    }
                 }
             }
             candidates.par_sort();
@@ -452,7 +471,11 @@ fn write_file<T>(file_name: impl AsRef<Path>, data: &[T]) -> Result<(), std::io:
 where
     T: Display,
 {
-    let f = File::options().create(true).write(true).truncate(true).open(file_name.as_ref())?;
+    let f = File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(file_name.as_ref())?;
     let mut w = BufWriter::new(f);
 
     for d in data.iter() {
