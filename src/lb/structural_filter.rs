@@ -30,7 +30,7 @@ pub struct StructuralVec {
     // left region -> smaller pre and post IDs, ancestor region -> bigger post, smaller pre
     // right region -> bigger pre and post IDS, descendants region -> smaller post, bigger pre
     pub unmapped_mapping_region: [i32; 4],
-    pub mapped: bool,
+    pub mapped: Option<usize>,
 }
 
 /// This is an element holding relevant data of a set.
@@ -214,8 +214,7 @@ impl LabelSetConverter {
                 (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32,
                 (subtree_size - 1) as i32,
             ],
-            unmapped_mapping_region: [0; 4],
-            mapped: false,
+            ..Default::default()
         };
 
         if let Some(se) = record_labels.get_mut(root_label) {
@@ -325,12 +324,58 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
 
     get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
 
-    let all_nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
+    let t1nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
+    let t2nodes =
+        s2.1.values()
+            .flat_map(|se| &se.struct_vec)
+            .sorted_by_cached_key(|se| se.borrow().postorder_id)
+            .collect_vec();
+    set_unmapped_regions(&t1nodes);
+    set_unmapped_regions(&t2nodes);
+
+    // let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+    let mut overlap = 0;
+
+    for mapped_node_ref in t1nodes.iter().filter(|n| n.borrow().mapped.is_some()) {
+        let mapped_node = mapped_node_ref.borrow();
+        let Some(n2post_id) = mapped_node.mapped else {
+            panic!("Filter does not work!");
+        };
+        let Ok(n2node_idx) =
+            t2nodes.binary_search_by_key(&n2post_id, |n2node| n2node.borrow().postorder_id)
+        else {
+            panic!("Uncorrectly mapped nodes!");
+        };
+
+        if svec_l1(&mapped_node, &t2nodes[n2node_idx].borrow()) as usize <= k {
+            overlap += 1;
+        }
+    }
+
+    reset_mappings(&t1nodes);
+    reset_mappings(&t2nodes);
+
+    bigger - overlap
+}
+
+fn reset_mappings(all_nodes: &[&RefCell<StructuralVec>]) {
+    all_nodes.iter().for_each(|node| {
+        let mut n = (*node).borrow_mut();
+        n.mapped = None;
+        n.unmapped_mapping_region = [0; 4];
+    })
+}
+
+fn set_unmapped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
+    // let all_nodes = s.1.values().flat_map(|se| &se.struct_vec).collect_vec();
     let unmapped_nodes = all_nodes
         .iter()
-        .filter(|un| !un.borrow().mapped)
+        .filter(|un| !un.borrow().mapped.is_none())
         .collect_vec();
-    for n in all_nodes.iter() {
+    for n in all_nodes.iter().filter(|al| {
+        let k = al.borrow();
+        k.mapped.is_some()
+    }) {
         // Vector of unmmaped nodes to the left, ancestors, nodes to right and descendants
         let mut unmapped_regions = [0; 4];
         let (post, pre) = {
@@ -359,10 +404,6 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             n1.unmapped_mapping_region = unmapped_regions;
         }
     }
-
-    let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
-
-    bigger - overlap
 }
 
 fn get_nodes_overlap_with_region_distance(
@@ -383,8 +424,8 @@ fn get_nodes_overlap_with_region_distance(
                 );
                 let l1_region_distance = region_distance_closure(&n1, &n2);
                 if l1_region_distance as usize <= k {
-                    n1.mapped = true;
-                    n2.mapped = true;
+                    n1.mapped = Some(n2.postorder_id);
+                    n2.mapped = Some(n1.postorder_id);
                     overlap += 1;
                     continue;
                 }
@@ -414,8 +455,8 @@ fn get_nodes_overlap_with_region_distance(
                     let l1_region_distance = region_distance_closure(&n1, &n2);
 
                     if l1_region_distance as usize <= k {
-                        n1.mapped = true;
-                        n2.mapped = true;
+                        n1.mapped = Some(n2.postorder_id);
+                        n2.mapped = Some(n1.postorder_id);
                         // overlap += 1;
                         break;
                     }
@@ -453,21 +494,21 @@ mod tests {
             weigh_so_far: 0,
             struct_vec: vec![
                 RefCell::new(StructuralVec {
-                    mapped: false,
+                    mapped: None,
                     mapping_region: [3, 2, 1, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 4,
                     preorder_id: 6,
                 }),
                 RefCell::new(StructuralVec {
-                    mapped: false,
+                    mapped: None,
                     mapping_region: [1, 1, 1, 3],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 5,
                     preorder_id: 3,
                 }),
                 RefCell::new(StructuralVec {
-                    mapped: false,
+                    mapped: None,
                     mapping_region: [0, 0, 0, 6],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 7,
@@ -482,21 +523,21 @@ mod tests {
             weigh_so_far: 0,
             struct_vec: vec![
                 RefCell::new(StructuralVec {
-                    mapped: false,
+                    mapped: None,
                     mapping_region: [0, 1, 5, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 1,
                     preorder_id: 2,
                 }),
                 RefCell::new(StructuralVec {
-                    mapped: false,
+                    mapped: None,
                     mapping_region: [1, 2, 3, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 2,
                     preorder_id: 4,
                 }),
                 RefCell::new(StructuralVec {
-                    mapped: false,
+                    mapped: None,
                     mapping_region: [5, 1, 0, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
                     postorder_id: 6,

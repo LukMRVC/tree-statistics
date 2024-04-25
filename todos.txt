@@ -1,0 +1,12 @@
+Udělat různé kolekce se strukturalnimi rozdily
+
+Doladit strukturalni filtr
+
+
+Při prvních průchodu součet L1 vzdálenosti mapovacích regionů
+Při druhém průchodu součet maximálních hodnot L1 vzdálenosti a nenamapovaných uzlů v každém stromu mapovacích regionů
+
+tj. při prvním průchodu po regionu {vpravo, potomci, vlevo a předchůdci}
+0 6 0 0 -> (0 4 0 0, 0 2 0 0)
+
+
