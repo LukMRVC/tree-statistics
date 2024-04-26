@@ -3,6 +3,7 @@ use indextree::NodeId;
 use itertools::{all, Itertools};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::{borrow::BorrowMut, cell::RefCell};
+use std::time::Instant;
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type StructHashMapKeys = FxHashSet<LabelId>;
@@ -305,6 +306,15 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
     }
 
     let (mut s1, mut s2) = (s1.clone(), s2.clone());
+
+    #[inline(always)]
+    fn simple_svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
+        n1.mapping_region
+            .iter()
+            .zip_eq(n2.mapping_region.iter())
+            .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
+    }
+    
     #[inline(always)]
     fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
         n1.mapping_region
@@ -323,9 +333,28 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             })
     }
 
-    get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+    let comp_time = Instant::now();
+    get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, simple_svec_l1);
+    // println!("Node overlap: {} us", comp_time.elapsed().as_micros());
+    
+    let comp_time = Instant::now();
+    set_unmapped_regions(&mut s1);
+    set_unmapped_regions(&mut s2);
+    
+    // println!("Tree unmapped traversal: {} us", comp_time.elapsed().as_micros());
 
-    let all_nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
+    let comp_time = Instant::now();
+    let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
+    // println!("Second overlap computation: {} us", comp_time.elapsed().as_micros());
+    
+    reset_mappings(&mut s1);
+    reset_mappings(&mut s2);
+    
+    bigger - overlap
+}
+
+fn set_unmapped_regions(s: &mut StructuralFilterTuple) {
+    let all_nodes = s.1.values().flat_map(|se| &se.struct_vec).collect_vec();
     let unmapped_nodes = all_nodes
         .iter()
         .filter(|un| !un.borrow().mapped)
@@ -359,10 +388,15 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             n1.unmapped_mapping_region = unmapped_regions;
         }
     }
+}
 
-    let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
-
-    bigger - overlap
+fn reset_mappings(s: &mut StructuralFilterTuple) {
+    s.1.values().for_each(|label_map| {
+        label_map.struct_vec.iter().for_each(|node| {
+            let mut mutnode = node.borrow_mut();
+            mutnode.mapped = false;
+        });
+    })
 }
 
 fn get_nodes_overlap_with_region_distance(
@@ -416,7 +450,7 @@ fn get_nodes_overlap_with_region_distance(
                     if l1_region_distance as usize <= k {
                         n1.mapped = true;
                         n2.mapped = true;
-                        // overlap += 1;
+                        overlap += 1;
                         break;
                     }
                 }

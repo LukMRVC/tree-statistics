@@ -43,7 +43,7 @@ pub fn validate(
                 .binary_search(&(*p1, *p2))
                 .map_or_else(|_| {
                     let flipped = &(*p2, *p1);
-                    candidates.binary_search(flipped).map_or(Some((p1, p2)), |_| None)
+                    candidates.binary_search(flipped).map_or(Some((*p1, *p2)), |_| None)
                 }, |_| None)
         })
         .collect::<Vec<_>>();
@@ -75,7 +75,7 @@ pub fn validate(
         }
     }
 
-    Ok(false_positives)
+    Ok(not_found)
 }
 
 pub fn get_precision(
