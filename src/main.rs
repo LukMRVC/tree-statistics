@@ -306,7 +306,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .flat_map(|(i, t1)| {
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
-                                    let lb = lb::structural_filter::ted_variant(t1, t2, k);
+                                    let lb = lb::structural_filter::ted_variant(t1, t2, k, i, j);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
                                     }
@@ -347,7 +347,7 @@ fn main() -> Result<(), anyhow::Error> {
             candidates_path,
         } => {
             let false_positives = validation::validate(candidates_path, results_path, threshold)?;
-            println!("Printing false positives in bracket");
+            println!("Printing not found in bracket");
             write_file(
                 PathBuf::from("./resources/results/false-positives.bracket"),
                 &false_positives
@@ -361,7 +361,7 @@ fn main() -> Result<(), anyhow::Error> {
                     })
                     .collect_vec(),
             )?;
-            println!("Printing false positives in graphviz");
+            println!("Printing not found in graphviz");
             write_file(
                 PathBuf::from("./resources/results/false-positives.graphviz"),
                 &false_positives

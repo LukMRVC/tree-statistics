@@ -3,14 +3,16 @@ use indextree::NodeId;
 use itertools::{all, Itertools};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::{borrow::BorrowMut, cell::RefCell};
+use std::cmp::max;
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type StructHashMapKeys = FxHashSet<LabelId>;
 
 const REGION_LEFT_IDX: usize = 0;
-const REGION_RIGHT_IDX: usize = 2;
 /// ancestors
 const REGION_ANC_IDX: usize = 1;
+
+const REGION_RIGHT_IDX: usize = 2;
 /// descendants
 const REGION_DESC_IDX: usize = 3;
 
@@ -45,7 +47,7 @@ pub struct LabelSetElement {
 }
 
 /// Base struct tuple for structural filter
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StructuralFilterTuple(usize, StructHashMap);
 
 /// Takes a collection of trees and converts them into a collection of label
@@ -233,6 +235,14 @@ impl LabelSetConverter {
     }
 }
 
+#[inline(always)]
+fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
+    n1.mapping_region
+        .iter()
+        .zip_eq(n2.mapping_region.iter())
+        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
+}
+
 /// Given two sets
 pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
     use std::cmp::max;
@@ -243,13 +253,6 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
         return k + 1;
     }
 
-    #[inline(always)]
-    fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-        n1.mapping_region
-            .iter()
-            .zip_eq(n2.mapping_region.iter())
-            .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
-    }
 
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
@@ -295,7 +298,26 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     bigger - overlap
 }
 
-pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
+
+#[inline(always)]
+fn svec_l1_unmapped(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
+    n1.mapping_region
+        .iter()
+        .zip_eq(n1.unmapped_mapping_region.iter())
+        .zip_eq(
+            n2.mapping_region
+                .iter()
+                .zip_eq(n2.unmapped_mapping_region.iter()),
+        )
+        .fold(0, |acc, ((n1reg, n1umreg), (n2reg, n2umreg))| {
+            acc + max(
+                (n1reg - n1umreg).abs_diff(n2reg - n2umreg),
+                max(n1umreg.abs() as u32, n2umreg.abs() as u32),
+            )
+        })
+}
+
+pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize, i: usize, j: usize) -> usize {
     use std::cmp::max;
     let bigger = max(s1.0, s2.0);
 
@@ -304,53 +326,41 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
     }
 
     let (mut s1, mut s2) = (s1.clone(), s2.clone());
-    #[inline(always)]
-    fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-        n1.mapping_region
-            .iter()
-            .zip_eq(n1.unmapped_mapping_region.iter())
-            .zip_eq(
-                n2.mapping_region
-                    .iter()
-                    .zip_eq(n2.unmapped_mapping_region.iter()),
-            )
-            .fold(0, |acc, ((n1reg, n1umreg), (n2reg, n2umreg))| {
-                acc + max(
-                    (n1reg - n1umreg).abs_diff(n2reg - n2umreg),
-                    max(n1umreg.abs() as u32, n2umreg.abs() as u32),
-                )
-            })
-    }
 
     get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
-
+    
     let t1nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
     let t2nodes =
         s2.1.values()
             .flat_map(|se| &se.struct_vec)
             .sorted_by_cached_key(|se| se.borrow().postorder_id)
             .collect_vec();
+    let mapped = t1nodes.iter().filter(|n| n.borrow().mapped.is_some()).collect_vec();
+
     set_unmapped_regions(&t1nodes);
     set_unmapped_regions(&t2nodes);
 
     // let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
     let mut overlap = 0;
 
-    for mapped_node_ref in t1nodes.iter().filter(|n| n.borrow().mapped.is_some()) {
+
+    for mapped_node_ref in mapped.iter() {
         let mapped_node = mapped_node_ref.borrow();
         let Some(n2post_id) = mapped_node.mapped else {
             panic!("Filter does not work!");
         };
+        
         let Ok(n2node_idx) =
             t2nodes.binary_search_by_key(&n2post_id, |n2node| n2node.borrow().postorder_id)
         else {
             panic!("Uncorrectly mapped nodes!");
         };
 
-        if svec_l1(&mapped_node, &t2nodes[n2node_idx].borrow()) as usize <= k {
+        if svec_l1_unmapped(&mapped_node, &t2nodes[n2node_idx].borrow()) as usize <= k {
             overlap += 1;
         }
     }
+
 
     reset_mappings(&t1nodes);
     reset_mappings(&t2nodes);
@@ -366,11 +376,12 @@ fn reset_mappings(all_nodes: &[&RefCell<StructuralVec>]) {
     })
 }
 
+
 fn set_unmapped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
     // let all_nodes = s.1.values().flat_map(|se| &se.struct_vec).collect_vec();
     let unmapped_nodes = all_nodes
         .iter()
-        .filter(|un| !un.borrow().mapped.is_none())
+        .filter(|un| un.borrow().mapped.is_none())
         .collect_vec();
     for n in all_nodes.iter().filter(|al| {
         let k = al.borrow();
@@ -431,19 +442,15 @@ fn get_nodes_overlap_with_region_distance(
                 }
             }
 
-            let mut s1c = set1;
-            let mut s2c = set2;
-
-            if s2c.weight < s1c.weight {
-                (s1c, s2c) = (s2c, s1c);
-            }
-
+            let (s1c, s2c) = if set2.weight < set1.weight { (set2, set1) } else { (set1, set2) };
+            
+            let mut already_mapped = vec![];
             for n1 in s1c.struct_vec.iter() {
                 let k_window = n1.borrow().postorder_id.saturating_sub(k);
                 let mut n1 = n1.borrow_mut();
                 // apply postorder filter
                 let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter() {
+                for n2 in s2c.struct_vec.iter().filter(|nn| !already_mapped.contains(&(*nn).borrow().postorder_id)) {
                     let mut n2 = n2.borrow_mut();
                     if k_window < s2clen && n2.postorder_id < k_window {
                         continue;
@@ -457,7 +464,8 @@ fn get_nodes_overlap_with_region_distance(
                     if l1_region_distance as usize <= k {
                         n1.mapped = Some(n2.postorder_id);
                         n2.mapped = Some(n1.postorder_id);
-                        // overlap += 1;
+                        overlap += 1;
+                        already_mapped.push(n2.postorder_id);
                         break;
                     }
                 }
@@ -566,7 +574,38 @@ mod tests {
         let lb = ted(&sets[0], &sets[1], 4);
 
         assert_eq!(lb, 2);
-        let lb = ted_variant(&sets[0], &sets[1], 4);
-        assert_eq!(lb, 7);
+    }
+
+    #[test]
+    fn test_struct_ted_variant_simple() {
+        let t1input = "{a{b}{a{a{b}{a}{b}}}{b}}".to_owned();
+        let t2input = "{a{c}{b{a{a}{b}{b}}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+        let v = vec![t1, t2];
+        let mut sc = LabelSetConverter::default();
+        let sets = sc.create(&v);
+        let lb = ted_variant(&sets[0], &sets[1], 4, 0, 0);
+        assert!(lb <= 4);
+        assert_eq!(lb, 3);
+    }
+    
+    #[test]
+    fn test_struct_ted_variant() {
+        let t1input = "{20{20{20{1203}{1204}}{20{460}{20{465}{1205}}}}{24}}".to_owned();
+        let t2input = "{0{0{0{118}{0{1456}{251}}}{20{460}{20{537}{1457}}}}{2}}".to_owned();
+        let t3input = "{20{142}{20{20{375}{376}}{2}}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+        let t3 = parse_tree(Ok(t3input), &mut label_dict).unwrap();
+        let v = vec![t1, t2, t3];
+        let mut sc = LabelSetConverter::default();
+        let sets = sc.create(&v);
+        let lb = ted_variant(&sets[0], &sets[1], 10, 0, 0);
+        assert!(lb <= 10);
+        let lb = ted_variant(&sets[0], &sets[2], 10, 0, 0);
+        assert!(lb <= 10);
     }
 }
