@@ -305,8 +305,13 @@ fn main() -> Result<(), anyhow::Error> {
                             .enumerate()
                             .flat_map(|(i, t1)| {
                                 let mut lower_bound_candidates = vec![];
+                                
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
-                                    let lb = lb::structural_filter::ted_variant(t1, t2, k, i, j);
+                                    // if i == 53 && j == 485 {
+                                    //     dbg!(tree_to_string(&trees[i], TreeOutput::BracketNotation));
+                                    //     dbg!(tree_to_string(&trees[j], TreeOutput::BracketNotation));
+                                    // }
+                                    let lb = lb::structural_filter::ted_variant(t1, t2, k);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
                                     }
