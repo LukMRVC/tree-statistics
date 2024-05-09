@@ -250,7 +250,7 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
         return k + 1;
     }
 
-    let overlap = get_nodes_overlap_with_region_distance(s1, s2, k, svec_l1);
+    let overlap = get_nodes_overlap_with_region_distance(s1, s2, k, svec_l1, Some(()));
 
     bigger - overlap
 }
@@ -282,7 +282,7 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
         return k + 1;
     }
 
-    let ov = get_nodes_overlap_with_region_distance(s1, s2, k, svec_l1);
+    get_nodes_overlap_with_region_distance(s1, s2, k, svec_l1, None);
 
     let t1nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
     let t2nodes =
@@ -381,11 +381,10 @@ fn get_nodes_overlap_with_region_distance(
     s2: &StructuralFilterTuple,
     k: usize,
     region_distance_closure: impl Fn(&StructuralVec, &StructuralVec) -> u32,
+    break_on_first_mapping: Option<()>,
 ) -> usize {
     let mut overlap = 0;
 
-
-    // Force 1:1 mapping
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
             if set1.weight == 1 && set2.weight == 1 {
@@ -404,13 +403,11 @@ fn get_nodes_overlap_with_region_distance(
 
             let (s1c, s2c) = if set2.weight < set1.weight { (set2, set1) } else { (set1, set2) };
 
-            // let mut already_mapped = vec![];
             for n1 in s1c.struct_vec.iter() {
                 let k_window = n1.borrow().postorder_id.saturating_sub(k);
                 let mut n1 = n1.borrow_mut();
                 // apply postorder filter
                 let s2clen = s2c.struct_vec.len();
-                // let s2nodes = s2c.struct_vec.iter().filter(|nn| !already_mapped.contains(&(*nn).borrow().postorder_id)).collect_vec();
                 for n2 in s2c.struct_vec.iter() {
                     let mut n2 = n2.borrow_mut();
                     if k_window < s2clen && n2.postorder_id < k_window {
@@ -435,7 +432,9 @@ fn get_nodes_overlap_with_region_distance(
                         }
                         overlap += 1;
                         // already_mapped.push(n2.postorder_id);
-                        // break;
+                        if break_on_first_mapping.is_some() {
+                            break;
+                        }
                     }
                 }
             }
