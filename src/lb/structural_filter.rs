@@ -314,6 +314,8 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
 
             if svec_l1_unmapped(&mapped_node, &t2nodes[n2node_idx].borrow()) as usize <= k {
                 overlap += 1;
+                // force 1:1 mapping by only allowing at most one node to have an overlap
+                break;
             }
         }
 
