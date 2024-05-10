@@ -3,14 +3,30 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub fn validate(
-    candidates_file: PathBuf,
-    results: PathBuf,
-    k: usize,
+pub fn read_candidates(
+    candidates_file: &impl AsRef<Path>,
 ) -> Result<Vec<(usize, usize)>, anyhow::Error> {
     let cfile = File::open(candidates_file)?;
+    let mut candidates = vec![];
+
+    let creader = BufReader::new(cfile);
+    let mut creader = csv::Reader::from_reader(creader);
+    for result in creader.records() {
+        let record = result?;
+        let (t1, t2): (usize, usize) = (record[0].parse()?, record[1].parse()?);
+        candidates.push((t1, t2));
+    }
+    candidates.par_sort();
+    Ok(candidates)
+}
+
+pub fn validate(
+    candidates_file: &impl AsRef<Path>,
+    results: &impl AsRef<Path>,
+    k: usize,
+) -> Result<Vec<(usize, usize)>, anyhow::Error> {
     let rfile = File::open(results)?;
 
     let mut real_result = vec![];
@@ -25,26 +41,20 @@ pub fn validate(
         }
     }
     real_result.par_sort();
-    let mut candidates = vec![];
-
-    let creader = BufReader::new(cfile);
-    let mut creader = csv::Reader::from_reader(creader);
-    for result in creader.records() {
-        let record = result?;
-        let (t1, t2): (usize, usize) = (record[0].parse()?, record[1].parse()?);
-        candidates.push((t1, t2));
-    }
-    candidates.par_sort();
+    let candidates = read_candidates(candidates_file)?;
 
     let not_found = real_result
         .iter()
         .filter_map(|(p1, p2)| {
-            candidates
-                .binary_search(&(*p1, *p2))
-                .map_or_else(|_| {
+            candidates.binary_search(&(*p1, *p2)).map_or_else(
+                |_| {
                     let flipped = &(*p2, *p1);
-                    candidates.binary_search(flipped).map_or(Some((*p1, *p2)), |_| None)
-                }, |_| None)
+                    candidates
+                        .binary_search(flipped)
+                        .map_or(Some((*p1, *p2)), |_| None)
+                },
+                |_| None,
+            )
         })
         .collect::<Vec<_>>();
 
@@ -55,7 +65,9 @@ pub fn validate(
                 .binary_search(&(*p1, *p2))
                 .map_or(Some((*p1, *p2)), |_| {
                     let flipped = &(*p2, *p1);
-                    real_result.binary_search(flipped).map_or(Some((*p1, *p2)), |_| None)
+                    real_result
+                        .binary_search(flipped)
+                        .map_or(Some((*p1, *p2)), |_| None)
                 })
         })
         .collect::<Vec<_>>();
@@ -96,11 +108,13 @@ pub fn get_precision(
         }
     }
     real_result.sort();
-    let candidates = candidates.iter().sorted().cloned().collect_vec();
-    let extra = candidates.iter().fold(0usize, |acc, candidate| {
-        match real_result.binary_search(candidate) {
+    let extra = candidates.iter().fold(0usize, |acc, (c1, c2)| {
+        match real_result.binary_search(&(*c1, *c2)) {
             Ok(_) => acc,
-            Err(_) => acc + 1,
+            Err(_) => match real_result.binary_search(&(*c2, *c1)) {
+                Ok(_) => acc,
+                Err(_) => acc + 1,
+            },
         }
     });
 

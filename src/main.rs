@@ -305,7 +305,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .enumerate()
                             .flat_map(|(i, t1)| {
                                 let mut lower_bound_candidates = vec![];
-                                
+
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
                                     // if i == 53 && j == 485 {
                                     //     dbg!(tree_to_string(&trees[i], TreeOutput::BracketNotation));
@@ -351,7 +351,14 @@ fn main() -> Result<(), anyhow::Error> {
             threshold,
             candidates_path,
         } => {
-            let false_positives = validation::validate(candidates_path, results_path, threshold)?;
+            let false_positives = validation::validate(&candidates_path, &results_path, threshold)?;
+            let candidates = validation::read_candidates(&candidates_path)?;
+            let (correct, extra, precision) =
+                validation::get_precision(&candidates, &results_path, threshold)?;
+
+            println!("Correct trees;Extra trees;Precision");
+            println!("{correct};{extra};{precision}");
+
             println!("Printing not found in bracket");
             write_file(
                 PathBuf::from("./resources/results/false-positives.bracket"),
