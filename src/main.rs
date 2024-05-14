@@ -91,6 +91,18 @@ enum Commands {
         #[arg()]
         threshold: usize,
     },
+    /// Compares 2 candidate files TED execution time 
+    TedTime {
+        /// First candidates path
+        #[arg(long = "cf")]
+        candidates_first: PathBuf,
+        /// Second candidates path
+        #[arg(long = "cs")]
+        candidates_second: PathBuf,
+        /// Threshold for validation
+        #[arg()]
+        threshold: usize,
+    }
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -300,6 +312,7 @@ fn main() -> Result<(), anyhow::Error> {
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
 
                     if let LBM::StructuralVariant = method {
+                        let start = Instant::now();
                         candidates = structural_sets
                             .iter()
                             .enumerate()
@@ -319,7 +332,9 @@ fn main() -> Result<(), anyhow::Error> {
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
+                        println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
                     } else {
+                        let start = Instant::now();
                         candidates = structural_sets
                             .iter()
                             .enumerate()
@@ -334,6 +349,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
+                        println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
                     }
                 }
             }
@@ -388,6 +404,13 @@ fn main() -> Result<(), anyhow::Error> {
                     .collect_vec(),
             )?;
         }
+        Commands::TedTime { 
+            candidates_first,
+            candidates_second,
+            threshold,
+        } => {
+            todo!();
+        },
     }
 
     Ok(())
