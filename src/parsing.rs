@@ -78,7 +78,7 @@ fn tree_to_bracket(tree: &ParsedTree) -> String {
 }
 
 pub fn parse_dataset(
-    dataset_file: PathBuf,
+    dataset_file: &PathBuf,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let f = File::open(dataset_file)?;

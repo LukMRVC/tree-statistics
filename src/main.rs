@@ -116,9 +116,8 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .exit();
     }
-
     let mut label_dict = LabelDict::new();
-    let trees = match parsing::parse_dataset(cli.dataset_path, &mut label_dict) {
+    let trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
@@ -185,6 +184,7 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             use LowerBoundMethods as LBM;
             let mut candidates: Vec<(usize, usize)> = vec![];
+            println!("Running for dataset: {} and method: {:?}", cli.dataset_path.to_str().unwrap(), method);
             // TODO: Fix this unwrap_or
             let k = threshold.unwrap_or(0);
             match method {
