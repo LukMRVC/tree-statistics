@@ -290,10 +290,10 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
                 n.mapped = Some(vec![]);
             });
 
-            s2vec.struct_vec.iter().for_each(|node| {
-                let mut n = node.borrow_mut();
-                n.mapped = Some(vec![]);
-            });
+            // s2vec.struct_vec.iter().for_each(|node| {
+            //     let mut n = node.borrow_mut();
+            //     n.mapped = Some(vec![]);
+            // });
         }
     });
 
@@ -302,14 +302,9 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             .flat_map(|se| &se.struct_vec)
             .sorted_by_key(|n| n.borrow().preorder_id)
             .collect_vec();
-    let t2nodes =
-        s2.1.values()
-            .flat_map(|se| &se.struct_vec)
-            .sorted_by_key(|n| n.borrow().preorder_id)
-            .collect_vec();
 
     better_set_unmmaped_regions(&t1nodes);
-    better_set_unmmaped_regions(&t2nodes);
+    // better_set_unmmaped_regions(&t2nodes);
 
     // let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
     let mut overlap = 0;
@@ -329,7 +324,6 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
     }
 
     reset_mappings(&t1nodes);
-    reset_mappings(&t2nodes);
 
     bigger.saturating_sub(overlap)
 }
@@ -354,7 +348,6 @@ fn better_set_unmmaped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
 
     for t1n in all_nodes.iter().filter(|n| n.borrow().mapped.is_some()) {
         let mut n1 = t1n.borrow_mut();
-        let mut new_follow: Vec<&RefCell<StructuralVec>> = vec![];
         loop {
             let Some(t2n) = anc.pop() else {
                 break;
@@ -396,7 +389,7 @@ fn better_set_unmmaped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
                 preceding += 1;
                 return false;
             } else if n2.postorder_id > n1.postorder_id && n2.preorder_id > n1.preorder_id {
-                new_follow.push(t2n);
+                follow.push(t2n);
                 return false;
             } else if n2.postorder_id > n1.postorder_id && n2.preorder_id < n1.preorder_id {
                 anc.push(t2n);
@@ -406,8 +399,7 @@ fn better_set_unmmaped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
             true
         });
 
-        new_follow.append(&mut follow);
-        follow = new_follow;
+        follow.sort_by_key(|n| n.borrow().preorder_id);
 
         // follow.sort_by_key(|n| n.borrow().preorder_id);
 
