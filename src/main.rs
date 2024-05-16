@@ -1,7 +1,5 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
-use crate::lb::indexes::histograms::{
-    create_collection_histograms, index_lookup,
-};
+use crate::lb::indexes::histograms::{create_collection_histograms, index_lookup};
 use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
@@ -90,7 +88,7 @@ enum Commands {
         #[arg()]
         threshold: usize,
     },
-    /// Compares 2 candidate files TED execution time 
+    /// Compares 2 candidate files TED execution time
     TedTime {
         /// First candidates path
         #[arg(long = "cf")]
@@ -101,7 +99,7 @@ enum Commands {
         /// Threshold for validation
         #[arg()]
         threshold: usize,
-    }
+    },
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -183,7 +181,11 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             use LowerBoundMethods as LBM;
             let mut candidates: Vec<(usize, usize)> = vec![];
-            println!("Running for dataset: {} and method: {:?}", cli.dataset_path.to_str().unwrap(), method);
+            println!(
+                "Running for dataset: {} and method: {:?}",
+                cli.dataset_path.to_str().unwrap(),
+                method
+            );
             // TODO: Fix this unwrap_or
             let k = threshold.unwrap_or(0);
             match method {
@@ -331,7 +333,10 @@ fn main() -> Result<(), anyhow::Error> {
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
-                        println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
+                        println!(
+                            "SF-Adjusted Filter elapsed time: {}ms",
+                            start.elapsed().as_millis()
+                        );
                     } else {
                         let start = Instant::now();
                         candidates = structural_sets
@@ -403,13 +408,13 @@ fn main() -> Result<(), anyhow::Error> {
                     .collect_vec(),
             )?;
         }
-        Commands::TedTime { 
+        Commands::TedTime {
             candidates_first: _,
             candidates_second: _,
             threshold: _,
         } => {
             todo!();
-        },
+        }
     }
 
     Ok(())

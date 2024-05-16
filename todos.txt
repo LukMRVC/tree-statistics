@@ -13,10 +13,11 @@ tj. při prvním průchodu po regionu {vpravo, potomci, vlevo a předchůdci}
 Jak zrychlit pruchod nenamapovaných:
 
 Pri pruchodu je potreba mit mnoziny:
+    preceding -> nemusim mit mnozinu, staci jen pocet preceding
     ancestor -> kontroluju pozpatku, jako stack, dokud nenarazim na prvni opravdovy ancestor. Presouvaji se jen do preceding.
-    descendants -> Musim zkontrolovat vsechny
     following -> kontroluju dokud nenarazim na opravdovy following
-    preceding: nemusim mit mnozinu, staci jen pocet preceding
+    descendants -> Musim zkontrolovat vsechny
+    
 
 
 
@@ -25,3 +26,10 @@ ignorujeme možné špatné mapování kvůli L1 distance.
 
 
 
+
+Druhy zpusob:
+
+Pri pocitani LB, najit X nejvice spolecnych labelu v obou stromech a pak rozdelit jakoby na 2 osy kazdy strom.
+Prvni budou mapovaci regiony BEZ nalezenych nejvice spolecny, druha osa mapovaci regiony a POUZE nalezene nejvice spolecne labely.
+
+Vysledek je pak L1(OSA 1) + L1(OSA 2)

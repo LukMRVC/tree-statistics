@@ -1,5 +1,5 @@
 use crate::parsing::{LabelDict, LabelId, ParsedTree};
-use indextree::NodeId;
+use indextree::{Descendants, NodeId};
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
@@ -21,6 +21,7 @@ const REGION_DESC_IDX: usize = 3;
 // while descendants are all nodes below the current node
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct StructuralVec {
+    label_id: LabelId,
     /// Id of postorder tree traversal
     pub postorder_id: usize,
     pub preorder_id: usize,
@@ -206,6 +207,7 @@ impl LabelSetConverter {
 
         let root_label = tree.get(*root_id).unwrap().get();
         let node_struct_vec = StructuralVec {
+            label_id: *root_label,
             preorder_id,
             postorder_id: *postorder_id,
             mapping_region: [
@@ -280,41 +282,47 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
         return k + 1;
     }
 
-    get_nodes_overlap_with_region_distance(s1, s2, k, svec_l1, None);
+    // find mapped and unmapped nodes based on labels only, dont match with L1 distance
+    s1.1.keys().for_each(|key| {
+        if let Some(s2vec) = s2.1.get(key) {
+            s1.1.get(key).unwrap().struct_vec.iter().for_each(|node| {
+                let mut n = node.borrow_mut();
+                n.mapped = Some(vec![]);
+            });
 
-    let t1nodes = s1.1.values().flat_map(|se| &se.struct_vec).collect_vec();
+            s2vec.struct_vec.iter().for_each(|node| {
+                let mut n = node.borrow_mut();
+                n.mapped = Some(vec![]);
+            });
+        }
+    });
+
+    let t1nodes =
+        s1.1.values()
+            .flat_map(|se| &se.struct_vec)
+            .sorted_by_key(|n| n.borrow().preorder_id)
+            .collect_vec();
     let t2nodes =
         s2.1.values()
             .flat_map(|se| &se.struct_vec)
-            .sorted_by_cached_key(|se| se.borrow().postorder_id)
+            .sorted_by_key(|n| n.borrow().preorder_id)
             .collect_vec();
-    let mapped = t1nodes
-        .iter()
-        .filter(|n| n.borrow().mapped.is_some())
-        .collect_vec();
 
-    set_unmapped_regions(&t1nodes);
-    set_unmapped_regions(&t2nodes);
+    better_set_unmmaped_regions(&t1nodes);
+    better_set_unmmaped_regions(&t2nodes);
 
     // let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
     let mut overlap = 0;
 
-    for mapped_node_ref in mapped.iter() {
-        let mapped_node = mapped_node_ref.borrow();
-        let Some(n2post_id_vec) = &mapped_node.mapped else {
-            panic!("Filter does not work!");
+    for n1t in t1nodes.iter().filter(|n| n.borrow().mapped.is_some()) {
+        let n1 = n1t.borrow();
+        let Some(s2vec) = s2.1.get(&n1.label_id) else {
+            panic!("Mapping failed!");
         };
 
-        for n2post_id in n2post_id_vec.iter() {
-            let Ok(n2node_idx) =
-                t2nodes.binary_search_by_key(n2post_id, |n2node| n2node.borrow().postorder_id)
-            else {
-                panic!("Uncorrectly mapped nodes!");
-            };
-
-            if svec_l1_unmapped(&mapped_node, &t2nodes[n2node_idx].borrow()) as usize <= k {
+        for n2 in s2vec.struct_vec.iter() {
+            if svec_l1_unmapped(&n1, &n2.borrow()) <= k as u32 {
                 overlap += 1;
-                // force 1:1 mapping by only allowing at most one node to have an overlap
                 break;
             }
         }
@@ -332,6 +340,84 @@ fn reset_mappings(all_nodes: &[&RefCell<StructuralVec>]) {
         n.mapped = None;
         n.unmapped_mapping_region = [0; 4];
     })
+}
+
+fn better_set_unmmaped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
+    let mut preceding = 0;
+    let mut dec: Vec<&RefCell<StructuralVec>> = all_nodes
+        .iter()
+        .cloned()
+        .filter(|n| n.borrow().mapped.is_none())
+        .collect();
+    let mut follow: Vec<&RefCell<StructuralVec>> = vec![];
+    let mut anc: Vec<&RefCell<StructuralVec>> = vec![];
+
+    for t1n in all_nodes.iter().filter(|n| n.borrow().mapped.is_some()) {
+        let mut n1 = t1n.borrow_mut();
+        let mut new_follow: Vec<&RefCell<StructuralVec>> = vec![];
+        loop {
+            let Some(t2n) = anc.pop() else {
+                break;
+            };
+
+            let n2 = t2n.borrow();
+            if n2.postorder_id > n1.postorder_id && n2.preorder_id < n1.preorder_id {
+                anc.push(t2n);
+                break;
+            } else {
+                preceding += 1;
+            }
+        }
+
+        let mut drain = None;
+        for (idx, t2n) in follow.iter().enumerate() {
+            let n2 = t2n.borrow();
+            if n2.postorder_id < n1.postorder_id && n2.preorder_id < n1.preorder_id {
+                preceding += 1;
+                continue;
+            } else if n2.postorder_id > n1.postorder_id && n2.preorder_id < n1.preorder_id {
+                anc.push(t2n);
+                continue;
+            } else if n2.postorder_id < n1.postorder_id && n2.preorder_id > n1.preorder_id {
+                dec.push(t2n);
+                continue;
+            }
+            drain = Some(idx);
+            break;
+        }
+
+        if let Some(drain_cnt) = drain {
+            follow.drain(0..drain_cnt);
+        }
+
+        dec.retain(|t2n| {
+            let n2 = t2n.borrow();
+            if n2.postorder_id < n1.postorder_id && n2.preorder_id < n1.preorder_id {
+                preceding += 1;
+                return false;
+            } else if n2.postorder_id > n1.postorder_id && n2.preorder_id > n1.preorder_id {
+                new_follow.push(t2n);
+                return false;
+            } else if n2.postorder_id > n1.postorder_id && n2.preorder_id < n1.preorder_id {
+                anc.push(t2n);
+                return false;
+            }
+
+            true
+        });
+
+        new_follow.append(&mut follow);
+        follow = new_follow;
+
+        // follow.sort_by_key(|n| n.borrow().preorder_id);
+
+        n1.unmapped_mapping_region = [
+            preceding,
+            anc.len() as i32,
+            follow.len() as i32,
+            dec.len() as i32,
+        ];
+    }
 }
 
 fn set_unmapped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
@@ -472,6 +558,7 @@ mod tests {
             weigh_so_far: 0,
             struct_vec: vec![
                 RefCell::new(StructuralVec {
+                    label_id: 0,
                     mapped: None,
                     mapping_region: [3, 2, 1, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
@@ -479,6 +566,7 @@ mod tests {
                     preorder_id: 6,
                 }),
                 RefCell::new(StructuralVec {
+                    label_id: 0,
                     mapped: None,
                     mapping_region: [1, 1, 1, 3],
                     unmapped_mapping_region: [0, 0, 0, 0],
@@ -486,6 +574,7 @@ mod tests {
                     preorder_id: 3,
                 }),
                 RefCell::new(StructuralVec {
+                    label_id: 0,
                     mapped: None,
                     mapping_region: [0, 0, 0, 6],
                     unmapped_mapping_region: [0, 0, 0, 0],
@@ -501,6 +590,7 @@ mod tests {
             weigh_so_far: 0,
             struct_vec: vec![
                 RefCell::new(StructuralVec {
+                    label_id: 1,
                     mapped: None,
                     mapping_region: [0, 1, 5, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
@@ -508,6 +598,7 @@ mod tests {
                     preorder_id: 2,
                 }),
                 RefCell::new(StructuralVec {
+                    label_id: 1,
                     mapped: None,
                     mapping_region: [1, 2, 3, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
@@ -515,6 +606,7 @@ mod tests {
                     preorder_id: 4,
                 }),
                 RefCell::new(StructuralVec {
+                    label_id: 1,
                     mapped: None,
                     mapping_region: [5, 1, 0, 0],
                     unmapped_mapping_region: [0, 0, 0, 0],
@@ -558,7 +650,7 @@ mod tests {
         let sets = sc.create(&v);
         let lb = ted_variant(&sets[0], &sets[1], 4);
         assert!(lb <= 4);
-        assert_eq!(lb, 1);
+        assert_eq!(lb, 2);
     }
 
     #[test]
@@ -619,5 +711,51 @@ mod tests {
         let sets = sc.create(&v);
         let lb = ted_variant(&sets[0], &sets[1], 10);
         assert!(lb <= 10);
+    }
+
+    #[test]
+    fn test_unmmaped_regions_are_correct() {
+        let t1input = "{a{1}{2{b}{c{d}{3}}{4{e}}{f}}{5}{6}}".to_owned();
+        let t2input = "{a{b}{c{d}}{e}{f}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+        let v = vec![t1, t2];
+        let mut sc = LabelSetConverter::default();
+        let sets = sc.create(&v);
+
+        let s1 = &sets[0];
+        let s2 = &sets[1];
+
+        // find mapped and unmapped nodes based on labels only, dont match with L1 distance
+        s1.1.keys().for_each(|key| {
+            if let Some(s2vec) = s2.1.get(key) {
+                s1.1.get(key).unwrap().struct_vec.iter().for_each(|node| {
+                    let mut n = node.borrow_mut();
+                    n.mapped = Some(vec![]);
+                });
+
+                s2vec.struct_vec.iter().for_each(|node| {
+                    let mut n = node.borrow_mut();
+                    n.mapped = Some(vec![]);
+                });
+            }
+        });
+
+        let t1nodes =
+            s1.1.values()
+                .flat_map(|se| &se.struct_vec)
+                .sorted_by_key(|n| n.borrow().preorder_id)
+                .collect_vec();
+        let t2nodes =
+            s2.1.values()
+                .flat_map(|se| &se.struct_vec)
+                .sorted_by_key(|n| n.borrow().preorder_id)
+                .collect_vec();
+
+        better_set_unmmaped_regions(&t1nodes);
+        better_set_unmmaped_regions(&t2nodes);
+
+        assert_eq!(t1nodes.len(), 12);
     }
 }
