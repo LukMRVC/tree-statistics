@@ -1,7 +1,6 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
 use crate::lb::indexes::histograms::{
-    create_collection_histograms, degree_index_lookup, index_lookup, label_index_lookup,
-    leaf_index_lookup,
+    create_collection_histograms, index_lookup,
 };
 use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
@@ -405,9 +404,9 @@ fn main() -> Result<(), anyhow::Error> {
             )?;
         }
         Commands::TedTime { 
-            candidates_first,
-            candidates_second,
-            threshold,
+            candidates_first: _,
+            candidates_second: _,
+            threshold: _,
         } => {
             todo!();
         },

@@ -179,7 +179,7 @@ impl LabelSetConverter {
         root_id: &NodeId,
         tree: &ParsedTree,
         preorder_id: usize,
-        mut postorder_id: &mut usize,
+        postorder_id: &mut usize,
         tree_size: usize,
         record_labels: &mut StructHashMap,
     ) -> usize {
@@ -268,7 +268,7 @@ fn svec_l1_unmapped(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
         .fold(0, |acc, ((n1reg, n1umreg), (n2reg, n2umreg))| {
             acc + max(
                 (n1reg - n1umreg).abs_diff(n2reg - n2umreg),
-                max(n1umreg.abs() as u32, n2umreg.abs() as u32),
+                max(n1umreg.unsigned_abs(), n2umreg.unsigned_abs()),
             )
         })
 }

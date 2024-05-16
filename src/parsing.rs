@@ -196,7 +196,7 @@ pub(crate) fn parse_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::error::ContextValue::String;
+    
 
     #[test]
     fn test_parses() {

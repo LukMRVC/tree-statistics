@@ -1,5 +1,5 @@
 use crate::lb::indexes::histograms::Candidates;
-use itertools::Itertools;
+
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::BufReader;
@@ -58,7 +58,7 @@ pub fn validate(
         })
         .collect::<Vec<_>>();
 
-    let false_positives = candidates
+    let _false_positives = candidates
         .par_iter()
         .filter_map(|(p1, p2)| {
             real_result
