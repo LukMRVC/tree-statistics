@@ -10,3 +10,18 @@ tj. při prvním průchodu po regionu {vpravo, potomci, vlevo a předchůdci}
 0 6 0 0 -> (0 4 0 0, 0 2 0 0)
 
 
+Jak zrychlit pruchod nenamapovaných:
+
+Pri pruchodu je potreba mit mnoziny:
+    ancestor -> kontroluju pozpatku, jako stack, dokud nenarazim na prvni opravdovy ancestor. Presouvaji se jen do preceding.
+    descendants -> Musim zkontrolovat vsechny
+    following -> kontroluju dokud nenarazim na opravdovy following
+    preceding: nemusim mit mnozinu, staci jen pocet preceding
+
+
+
+Zkusit udělat SF-Adjusted už při prvním průchodu -> nenamapované uzly zjišťovat jen podle labelu (nalezen, nenalezen), takže
+ignorujeme možné špatné mapování kvůli L1 distance. 
+
+
+

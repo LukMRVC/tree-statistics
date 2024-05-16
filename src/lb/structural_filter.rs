@@ -255,7 +255,6 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     bigger - overlap
 }
 
-
 #[inline(always)]
 fn svec_l1_unmapped(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
     n1.mapping_region
@@ -275,7 +274,6 @@ fn svec_l1_unmapped(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
 }
 
 pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
-    use std::cmp::max;
     let bigger = max(s1.0, s2.0);
 
     if s1.0.abs_diff(s2.0) > k {
@@ -290,14 +288,16 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
             .flat_map(|se| &se.struct_vec)
             .sorted_by_cached_key(|se| se.borrow().postorder_id)
             .collect_vec();
-    let mapped = t1nodes.iter().filter(|n| n.borrow().mapped.is_some()).collect_vec();
+    let mapped = t1nodes
+        .iter()
+        .filter(|n| n.borrow().mapped.is_some())
+        .collect_vec();
 
     set_unmapped_regions(&t1nodes);
     set_unmapped_regions(&t2nodes);
 
     // let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
     let mut overlap = 0;
-
 
     for mapped_node_ref in mapped.iter() {
         let mapped_node = mapped_node_ref.borrow();
@@ -308,9 +308,9 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
         for n2post_id in n2post_id_vec.iter() {
             let Ok(n2node_idx) =
                 t2nodes.binary_search_by_key(n2post_id, |n2node| n2node.borrow().postorder_id)
-                else {
-                    panic!("Uncorrectly mapped nodes!");
-                };
+            else {
+                panic!("Uncorrectly mapped nodes!");
+            };
 
             if svec_l1_unmapped(&mapped_node, &t2nodes[n2node_idx].borrow()) as usize <= k {
                 overlap += 1;
@@ -318,10 +318,7 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
                 break;
             }
         }
-
-
     }
-
 
     reset_mappings(&t1nodes);
     reset_mappings(&t2nodes);
@@ -336,7 +333,6 @@ fn reset_mappings(all_nodes: &[&RefCell<StructuralVec>]) {
         n.unmapped_mapping_region = [0; 4];
     })
 }
-
 
 fn set_unmapped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
     // let all_nodes = s.1.values().flat_map(|se| &se.struct_vec).collect_vec();
@@ -403,7 +399,11 @@ fn get_nodes_overlap_with_region_distance(
                 continue;
             }
 
-            let (s1c, s2c) = if set2.weight < set1.weight { (set2, set1) } else { (set1, set2) };
+            let (s1c, s2c) = if set2.weight < set1.weight {
+                (set2, set1)
+            } else {
+                (set1, set2)
+            };
 
             for n1 in s1c.struct_vec.iter() {
                 let k_window = n1.borrow().postorder_id.saturating_sub(k);
