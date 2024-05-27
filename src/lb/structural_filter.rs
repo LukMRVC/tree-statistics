@@ -32,7 +32,7 @@ pub struct StructuralVec {
     // left region -> smaller pre and post IDs, ancestor region -> bigger post, smaller pre
     // right region -> bigger pre and post IDS, descendants region -> smaller post, bigger pre
     pub unmapped_mapping_region: [i32; 4],
-    pub mapped: Option<Vec<usize>>,
+    pub mapped: Option<()>,
 }
 
 /// This is an element holding relevant data of a set.
@@ -287,7 +287,7 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
         if let Some(s2vec) = s2.1.get(key) {
             s1.1.get(key).unwrap().struct_vec.iter().for_each(|node| {
                 let mut n = node.borrow_mut();
-                n.mapped = Some(vec![]);
+                n.mapped = Some(());
             });
 
             // s2vec.struct_vec.iter().for_each(|node| {
@@ -300,10 +300,10 @@ pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: us
     let t1nodes =
         s1.1.values()
             .flat_map(|se| &se.struct_vec)
-            .sorted_by_key(|n| n.borrow().preorder_id)
+            .sorted_by_cached_key(|n| n.borrow().preorder_id)
             .collect_vec();
 
-    better_set_unmmaped_regions(&t1nodes);
+    set_unmapped_regions(&t1nodes);
     // better_set_unmmaped_regions(&t2nodes);
 
     // let overlap = get_nodes_overlap_with_region_distance(&mut s1, &mut s2, k, svec_l1);
@@ -395,11 +395,10 @@ fn better_set_unmmaped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
                 anc.push(t2n);
                 return false;
             }
-
             true
         });
 
-        follow.sort_by_key(|n| n.borrow().preorder_id);
+        // follow.sort_by_cached_key(|n| n.borrow().preorder_id);
 
         // follow.sort_by_key(|n| n.borrow().preorder_id);
 
@@ -431,9 +430,6 @@ fn set_unmapped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
 
         for unmapped_node in unmapped_nodes.iter() {
             let n2 = unmapped_node.borrow();
-            if n2.postorder_id == post {
-                continue;
-            }
             if n2.postorder_id < post && n2.preorder_id < pre {
                 unmapped_regions[REGION_LEFT_IDX] += 1;
             } else if n2.postorder_id > post && n2.preorder_id > pre {
@@ -444,6 +440,8 @@ fn set_unmapped_regions(all_nodes: &[&RefCell<StructuralVec>]) {
                 unmapped_regions[REGION_DESC_IDX] += 1;
             }
         }
+        // because the node counted  itself into descendants
+        unmapped_regions[REGION_DESC_IDX] -= 1;
 
         {
             let mut n1 = (*n).borrow_mut();
@@ -470,8 +468,8 @@ fn get_nodes_overlap_with_region_distance(
                 );
                 let l1_region_distance = region_distance_closure(&n1, &n2);
                 if l1_region_distance as usize <= k {
-                    n1.mapped = Some(vec![n2.postorder_id]);
-                    n2.mapped = Some(vec![n1.postorder_id]);
+                    n1.mapped = Some(());
+                    n2.mapped = Some(());
                     overlap += 1;
                 }
                 continue;
@@ -500,16 +498,19 @@ fn get_nodes_overlap_with_region_distance(
                     let l1_region_distance = region_distance_closure(&n1, &n2);
 
                     if l1_region_distance as usize <= k {
-                        if let Some(ref mut n1mapped) = &mut n1.mapped {
-                            n1mapped.push(n2.postorder_id);
-                        } else {
-                            n1.mapped = Some(vec![n2.postorder_id]);
-                        }
-                        if let Some(ref mut n2mapped) = &mut n2.mapped {
-                            n2mapped.push(n1.postorder_id);
-                        } else {
-                            n2.mapped = Some(vec![n1.postorder_id]);
-                        }
+                        n1.mapped = Some(());
+                        n2.mapped = Some(());
+
+                        // if let Some(ref mut n1mapped) = &mut n1.mapped {
+                        //     n1mapped.push(n2.postorder_id);
+                        // } else {
+                        //     n1.mapped = Some(());
+                        // }
+                        // if let Some(ref mut n2mapped) = &mut n2.mapped {
+                        //     n2mapped.push(n1.postorder_id);
+                        // } else {
+                        //     n2.mapped = Some(());
+                        // }
                         overlap += 1;
                         // already_mapped.push(n2.postorder_id);
                         if break_on_first_mapping.is_some() {
@@ -724,12 +725,12 @@ mod tests {
             if let Some(s2vec) = s2.1.get(key) {
                 s1.1.get(key).unwrap().struct_vec.iter().for_each(|node| {
                     let mut n = node.borrow_mut();
-                    n.mapped = Some(vec![]);
+                    n.mapped = Some(());
                 });
 
                 s2vec.struct_vec.iter().for_each(|node| {
                     let mut n = node.borrow_mut();
-                    n.mapped = Some(vec![]);
+                    n.mapped = Some(());
                 });
             }
         });
