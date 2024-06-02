@@ -309,7 +309,10 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
                     let mut lc = lb::structural_filter::LabelSetConverter::default();
-                    let structural_sets = lc.create(&trees);
+                    let half = label_dict.len() / 2;
+                    let structural_sets = lc.create(&trees, &move |lbl| {
+                        usize::from(half < (*lbl as usize))
+                    });
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
 
                     if let LBM::StructuralVariant = method {
