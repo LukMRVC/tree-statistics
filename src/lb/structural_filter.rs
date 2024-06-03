@@ -49,9 +49,9 @@ pub struct StructuralFilterTuple(usize, StructHashMap);
 /// of the input collection.
 #[derive(Debug, Default)]
 pub struct LabelSetConverter {
-    actual_depth: usize,
-    actual_pre_order_number: usize,
-    splits: [i32; 4],
+    actual_depth: [i32; 4],
+    actual_pre_order_number: [i32; 4],
+    tree_size_by_split_id: [i32; 4],
 }
 
 impl LabelSetConverter {
@@ -65,8 +65,6 @@ impl LabelSetConverter {
             // contains structural vectors for the current tree
             // is it a hash map of Label -> Vec<StructVec>
             let mut record_labels = StructHashMap::default();
-            // nodes in a tree
-            let tree_size = tree.count();
 
             let Some(root) = tree.iter().next() else {
                 panic!("tree is empty");
@@ -74,23 +72,27 @@ impl LabelSetConverter {
             let root_id = tree.get_node_id(root).unwrap();
             // for recursive postorder traversal
             let mut postorder_id = 0;
+            
+            for n in root_id.descendants(tree) {
+                let root_label = tree.get(n).unwrap().get();
+                let split_id = split(root_label);
+                self.tree_size_by_split_id[split_id] += 1;
+            }
 
             // array of records stored in sets_collection
             self.create_record(
                 &root_id,
                 tree,
-                1,
                 &mut postorder_id,
-                tree_size,
                 &mut record_labels,
                 split,
             );
 
             // reset state variables needed for positional evaluation
-            self.actual_depth = 0;
-            self.actual_pre_order_number = 0;
-            self.splits = [0; 4];
-            sets_collection.push(StructuralFilterTuple(tree_size, record_labels));
+            self.actual_depth = [0; 4];
+            self.actual_pre_order_number = [0; 4];
+            self.tree_size_by_split_id = [0; 4];
+            sets_collection.push(StructuralFilterTuple(tree.count(), record_labels));
         }
         sets_collection
     }
@@ -142,48 +144,45 @@ impl LabelSetConverter {
         &mut self,
         root_id: &NodeId,
         tree: &ParsedTree,
-        preorder_id: usize,
         postorder_id: &mut usize,
-        tree_size: usize,
         record_labels: &mut StructHashMap,
         split: &impl Fn(&LabelId) -> usize,
-    ) -> usize {
+    ) -> [i32; 4] {
         // number of children = subtree_size - 1
         // subtree_size = 1 -> actual node + sum of children
-        let mut subtree_size = 1;
-
-        self.actual_depth += 1;
+        let mut subtree_size = [1; 4];
+        let root_label = tree.get(*root_id).unwrap().get();
+        let split_id = split(root_label);
+        
+        self.actual_depth[split_id] += 1;
+        
         for cid in root_id.children(tree) {
-            subtree_size += self.create_record(
+            let sizes= self.create_record(
                 &cid,
                 tree,
-                preorder_id + subtree_size,
                 postorder_id,
-                tree_size,
                 record_labels,
                 split,
             );
+            
+            for (zref, b) in subtree_size.iter_mut().zip_eq(&sizes) {
+                *zref += *b;
+            }
         }
 
 
         *postorder_id += 1;
-        self.actual_depth -= 1;
-        self.actual_pre_order_number += 1;
-
-        let root_label = tree.get(*root_id).unwrap().get();
-        let split_id = split(root_label);
-        self.splits[split_id] += 1;
-        let other_splits = self.splits.iter().sum::<i32>() - self.splits[split_id];
+        self.actual_depth[split_id] -= 1;
+        self.actual_pre_order_number[split_id] += 1;
 
         let node_struct_vec = StructuralVec {
             label_id: *root_label,
-            preorder_id,
             postorder_id: *postorder_id,
             mapping_region: [
-                (self.actual_pre_order_number - subtree_size) as i32 - other_splits,
-                self.actual_depth as i32 - other_splits,
-                (tree_size - (self.actual_pre_order_number + self.actual_depth)) as i32  - other_splits,
-                (subtree_size - 1) as i32  - other_splits,
+                self.actual_pre_order_number[split_id] - subtree_size[split_id],
+                self.actual_depth[split_id],
+                self.tree_size_by_split_id[split_id] - (self.actual_pre_order_number[split_id] + self.actual_depth[split_id]),
+                subtree_size[split_id] - 1,
             ],
             ..Default::default()
         };
@@ -334,6 +333,22 @@ fn get_nodes_overlap_with_region_distance(
 mod tests {
     use super::*;
     use crate::parsing::parse_tree;
+    
+    #[test]
+    fn test_axes_set_converting() {
+        let t1input = "{1{1}{2{2}{1}{3}}}".to_owned();
+        let t2input = "{1{1{1}{2}{1}}{3}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+        let v = vec![t1, t2];
+        let mut sc = LabelSetConverter::default();
+        let half = label_dict.len() - 1 / 2;
+        let sets = sc.create(&v, &move |lbl| {
+            usize::from(half < (*lbl as usize))
+        });
+        assert!(true);
+    }
 
     #[test]
     fn test_set_converting() {
@@ -351,7 +366,7 @@ mod tests {
 
         // 0 are labels A
         // 1 are labels B
-        // 2 are labelcs C
+        // 2 are labels C
 
         let lse_for_a = LabelSetElement {
             id: 0,
