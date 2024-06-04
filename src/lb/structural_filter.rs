@@ -25,7 +25,7 @@ pub struct StructuralVec {
     pub postorder_id: usize,
     pub preorder_id: usize,
     /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
-    pub mapping_region: [i32; 4],
+    pub mapping_region_axes: [[i32; 4]; 4],
 }
 
 /// This is an element holding relevant data of a set.
@@ -55,8 +55,11 @@ pub struct LabelSetConverter {
 }
 
 impl LabelSetConverter {
-    pub fn create(&mut self, trees: &[ParsedTree],
-                  split: &impl Fn(&LabelId) -> usize,
+    const MAX_SPLIT: usize = 4;
+    pub fn create(
+        &mut self,
+        trees: &[ParsedTree],
+        split: &impl Fn(&LabelId) -> usize,
     ) -> Vec<StructuralFilterTuple> {
         // add one because range are end exclusive
         // frequency vector of pair (label weight, labelId)
@@ -72,7 +75,7 @@ impl LabelSetConverter {
             let root_id = tree.get_node_id(root).unwrap();
             // for recursive postorder traversal
             let mut postorder_id = 0;
-            
+
             for n in root_id.descendants(tree) {
                 let root_label = tree.get(n).unwrap().get();
                 let split_id = split(root_label);
@@ -80,13 +83,7 @@ impl LabelSetConverter {
             }
 
             // array of records stored in sets_collection
-            self.create_record(
-                &root_id,
-                tree,
-                &mut postorder_id,
-                &mut record_labels,
-                split,
-            );
+            self.create_record(&root_id, tree, &mut postorder_id, &mut record_labels, split);
 
             // reset state variables needed for positional evaluation
             self.actual_depth = [0; 4];
@@ -153,37 +150,36 @@ impl LabelSetConverter {
         let mut subtree_size = [1; 4];
         let root_label = tree.get(*root_id).unwrap().get();
         let split_id = split(root_label);
-        
+
         self.actual_depth[split_id] += 1;
-        
+
         for cid in root_id.children(tree) {
-            let sizes= self.create_record(
-                &cid,
-                tree,
-                postorder_id,
-                record_labels,
-                split,
-            );
-            
+            let sizes = self.create_record(&cid, tree, postorder_id, record_labels, split);
+
             for (zref, b) in subtree_size.iter_mut().zip_eq(&sizes) {
                 *zref += *b;
             }
         }
 
-
         *postorder_id += 1;
         self.actual_depth[split_id] -= 1;
         self.actual_pre_order_number[split_id] += 1;
 
+        let mut mapping_axes = [[0; 4]; Self::MAX_SPLIT];
+        for i in 0..Self::MAX_SPLIT {
+            mapping_axes[i] = [
+                self.actual_pre_order_number[i] - subtree_size[i],
+                self.actual_depth[i],
+                self.tree_size_by_split_id[i]
+                    - (self.actual_pre_order_number[i] + self.actual_depth[i]),
+                subtree_size[i] - 1,
+            ]
+        }
+
         let node_struct_vec = StructuralVec {
             label_id: *root_label,
             postorder_id: *postorder_id,
-            mapping_region: [
-                self.actual_pre_order_number[split_id] - subtree_size[split_id],
-                self.actual_depth[split_id],
-                self.tree_size_by_split_id[split_id] - (self.actual_pre_order_number[split_id] + self.actual_depth[split_id]),
-                subtree_size[split_id] - 1,
-            ],
+            mapping_region_axes: mapping_axes,
             ..Default::default()
         };
 
@@ -205,10 +201,16 @@ impl LabelSetConverter {
 
 #[inline(always)]
 fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-    n1.mapping_region
+    n1.mapping_region_axes
         .iter()
-        .zip_eq(n2.mapping_region.iter())
-        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
+        .zip_eq(&n2.mapping_region_axes)
+        .fold(0, |acc, (a, b)| {
+            acc + {
+                (*a).iter()
+                    .zip_eq(b.iter())
+                    .fold(0, |acc, (ac, bc)| acc + ac.abs_diff(*bc))
+            }
+        })
 }
 
 /// Given two sets
@@ -225,11 +227,7 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     bigger - overlap
 }
 
-pub fn ted_variant(
-    s1: &StructuralFilterTuple,
-    s2: &StructuralFilterTuple,
-    k: usize,
-) -> usize {
+pub fn ted_variant(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> usize {
     let bigger = max(s1.0, s2.0);
     if s1.0.abs_diff(s2.0) > k {
         return k + 1;
@@ -275,7 +273,6 @@ pub fn ted_variant(
         }
     }
 
-
     bigger.saturating_sub(overlap)
 }
 
@@ -290,7 +287,8 @@ fn get_nodes_overlap_with_region_distance(
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
             if set1.weight == 1 && set2.weight == 1 {
-                let l1_region_distance = region_distance_closure(&set1.struct_vec[0], &set2.struct_vec[0]);
+                let l1_region_distance =
+                    region_distance_closure(&set1.struct_vec[0], &set2.struct_vec[0]);
                 if l1_region_distance as usize <= k {
                     overlap += 1;
                 }
@@ -333,7 +331,7 @@ fn get_nodes_overlap_with_region_distance(
 mod tests {
     use super::*;
     use crate::parsing::parse_tree;
-    
+
     #[test]
     fn test_axes_set_converting() {
         let t1input = "{1{1}{2{2}{1}{3}}}".to_owned();
@@ -344,9 +342,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() - 1 / 2;
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
         assert!(true);
     }
 
@@ -360,9 +356,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
 
         // 0 are labels A
         // 1 are labels B
@@ -436,9 +430,7 @@ mod tests {
         let v = vec![t1, t2];
         let half = label_dict.len() / 2;
         let mut sc = LabelSetConverter::default();
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
 
         let lb = ted(&sets[0], &sets[1], 4);
 
@@ -455,9 +447,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
         let lb = ted_variant(&sets[0], &sets[1], 4);
         assert!(lb <= 4);
         assert_eq!(lb, 2);
@@ -475,9 +465,7 @@ mod tests {
         let v = vec![t1, t2, t3];
         let half = label_dict.len() / 2;
         let mut sc = LabelSetConverter::default();
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
 
         let lb = ted_variant(&sets[0], &sets[1], 10);
         assert!(lb <= 10, "T1 and T2 failed");
@@ -495,9 +483,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
         let lb = ted_variant(&sets[0], &sets[1], 10);
         assert!(lb <= 10);
     }
@@ -512,9 +498,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
         let lb = ted_variant(&sets[0], &sets[1], 10);
         assert!(lb <= 10);
     }
@@ -529,9 +513,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| {
-            usize::from(half < (*lbl as usize))
-        });
+        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
         let lb = ted_variant(&sets[0], &sets[1], 10);
         assert!(lb <= 10);
     }
