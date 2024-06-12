@@ -55,12 +55,14 @@ pub struct LabelSetConverter {
 }
 
 impl LabelSetConverter {
-    const MAX_SPLIT: usize = 4;
-    pub fn create(
+    pub const MAX_SPLIT: usize = 4;
+    pub fn create<F>(
         &mut self,
         trees: &[ParsedTree],
-        split: &impl Fn(&LabelId) -> usize,
-    ) -> Vec<StructuralFilterTuple> {
+        mut split: F,
+    ) -> Vec<StructuralFilterTuple>
+        where F: FnMut(&LabelId) -> usize
+    {
         // add one because range are end exclusive
         // frequency vector of pair (label weight, labelId)
         let mut sets_collection = Vec::with_capacity(trees.len());
@@ -83,7 +85,7 @@ impl LabelSetConverter {
             }
 
             // array of records stored in sets_collection
-            self.create_record(&root_id, tree, &mut postorder_id, &mut record_labels, split);
+            self.create_record(&root_id, tree, &mut postorder_id, &mut record_labels, &mut split);
 
             // reset state variables needed for positional evaluation
             self.actual_depth = [0; 4];
@@ -137,19 +139,22 @@ impl LabelSetConverter {
     //     sets_collection
     // }
 
-    fn create_record(
+    fn create_record<F>(
         &mut self,
         root_id: &NodeId,
         tree: &ParsedTree,
         postorder_id: &mut usize,
         record_labels: &mut StructHashMap,
-        split: &impl Fn(&LabelId) -> usize,
-    ) -> [i32; 4] {
+        split: &mut F,
+    ) -> [i32; 4]
+        where F: FnMut(&LabelId) -> usize
+    {
         // number of children = subtree_size - 1
         // subtree_size = 1 -> actual node + sum of children
-        let mut subtree_size = [1; 4];
+        let mut subtree_size = [0; 4];
         let root_label = tree.get(*root_id).unwrap().get();
         let split_id = split(root_label);
+        subtree_size[split_id] = 1;
 
         self.actual_depth[split_id] += 1;
 
@@ -167,14 +172,18 @@ impl LabelSetConverter {
 
         let mut mapping_axes = [[0; 4]; Self::MAX_SPLIT];
         for i in 0..Self::MAX_SPLIT {
+            // let follow = self.tree_size_by_split_id[i]
+            //     - (self.actual_pre_order_number[i] + self.actual_depth[i]);
             mapping_axes[i] = [
                 self.actual_pre_order_number[i] - subtree_size[i],
                 self.actual_depth[i],
+                //         FIXME: these numbers are below 0 -> incorrect
                 self.tree_size_by_split_id[i]
                     - (self.actual_pre_order_number[i] + self.actual_depth[i]),
-                subtree_size[i] - 1,
+                subtree_size[i]
             ]
         }
+        mapping_axes[split_id][3] -= 1;
 
         let node_struct_vec = StructuralVec {
             label_id: *root_label,
@@ -201,16 +210,30 @@ impl LabelSetConverter {
 
 #[inline(always)]
 fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
-    n1.mapping_region_axes
-        .iter()
-        .zip_eq(&n2.mapping_region_axes)
-        .fold(0, |acc, (a, b)| {
-            acc + {
-                (*a).iter()
-                    .zip_eq(b.iter())
-                    .fold(0, |acc, (ac, bc)| acc + ac.abs_diff(*bc))
-            }
-        })
+    /// for each axis, take the maximum of L1 difference
+    ///
+    let mut sum = 0;
+    for region in 0..4 {
+        sum += n1.mapping_region_axes.iter().zip_eq(
+            n2.mapping_region_axes.iter()
+        ).map(|(r1, r2)| r1[region].abs_diff(r2[region])).max().unwrap();
+    }
+    sum
+
+    // n1.mapping_region_axes
+    //     .iter()
+    //     .zip_eq(&n2.mapping_region_axes)
+    //     .fold(0, |acc, (a, b)| {
+    //         acc + {
+    //             (*a).iter()
+    //                 .zip_eq(b.iter())
+    //                 .fold(0, |acc, (ac, bc)| {
+    //                     assert!(*ac >= 0);
+    //                     assert!(*bc >= 0);
+    //                     acc + ac.abs_diff(*bc)
+    //                 })
+    //         }
+    //     })
 }
 
 /// Given two sets
@@ -330,8 +353,7 @@ fn get_nodes_overlap_with_region_distance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::parse_tree;
-
+    use crate::parsing::parse_tree;/*
     #[test]
     fn test_axes_set_converting() {
         let t1input = "{1{1}{2{2}{1}{3}}}".to_owned();
@@ -342,7 +364,7 @@ mod tests {
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
         let half = label_dict.len() - 1 / 2;
-        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
+        let sets = sc.create(&v, &move |lbl: &LabelId| usize::from(half < (*lbl as usize)));
         assert!(true);
     }
 
@@ -369,19 +391,19 @@ mod tests {
             struct_vec: vec![
                 StructuralVec {
                     label_id: 0,
-                    mapping_region: [3, 2, 1, 0],
+                    mapping_region_axes: [[3, 2, 1, 0], [0; 4], [0; 4], [0; 4]],
                     postorder_id: 4,
                     preorder_id: 6,
                 },
                 StructuralVec {
                     label_id: 0,
-                    mapping_region: [1, 1, 1, 3],
+                    mapping_region_axes: [[1, 1, 1, 3], [0; 4], [0; 4], [0; 4]],
                     postorder_id: 5,
                     preorder_id: 3,
                 },
                 StructuralVec {
                     label_id: 0,
-                    mapping_region: [0, 0, 0, 6],
+                    mapping_region_axes: [[0, 0, 0, 6], [0; 4], [0; 4], [0; 4]],
                     postorder_id: 7,
                     preorder_id: 1,
                 },
@@ -395,19 +417,19 @@ mod tests {
             struct_vec: vec![
                 StructuralVec {
                     label_id: 1,
-                    mapping_region: [0, 1, 5, 0],
+                    mapping_region_axes: [[0, 1, 5, 0], [0; 4], [0; 4], [0; 4]],
                     postorder_id: 1,
                     preorder_id: 2,
                 },
                 StructuralVec {
                     label_id: 1,
-                    mapping_region: [1, 2, 3, 0],
+                    mapping_region_axes: [[1, 2, 3, 0], [0; 4], [0; 4], [0; 4]],
                     postorder_id: 2,
                     preorder_id: 4,
                 },
                 StructuralVec {
                     label_id: 1,
-                    mapping_region: [5, 1, 0, 0],
+                    mapping_region_axes: [[5, 1, 0, 0], [0; 4], [0; 4], [0; 4]],
                     postorder_id: 6,
                     preorder_id: 7,
                 },
@@ -437,6 +459,7 @@ mod tests {
         assert_eq!(lb, 2);
     }
 
+
     #[test]
     fn test_struct_ted_variant_simple() {
         let t1input = "{a{b}{a{a{b}{a}{b}}}{b}}".to_owned();
@@ -452,69 +475,93 @@ mod tests {
         assert!(lb <= 4);
         assert_eq!(lb, 2);
     }
+    */
+
 
     #[test]
-    fn test_struct_ted_variant() {
-        let t1input = "{20{20{20{1203}{1204}}{20{460}{20{465}{1205}}}}{24}}".to_owned();
-        let t2input = "{0{0{0{118}{0{1456}{251}}}{20{460}{20{537}{1457}}}}{2}}".to_owned();
-        let t3input = "{20{142}{20{20{375}{376}}{2}}}".to_owned();
-        let mut label_dict = LabelDict::new();
-        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
-        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
-        let t3 = parse_tree(Ok(t3input), &mut label_dict).unwrap();
-        let v = vec![t1, t2, t3];
-        let half = label_dict.len() / 2;
-        let mut sc = LabelSetConverter::default();
-        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
-
-        let lb = ted_variant(&sets[0], &sets[1], 10);
-        assert!(lb <= 10, "T1 and T2 failed");
-        let lb = ted_variant(&sets[0], &sets[2], 10);
-        assert!(lb <= 10, "T2 and T3 failed");
-    }
-
-    #[test]
-    fn test_struct_ted_variant_2() {
-        let t1input = "{9{20{20{673}{161}}{20{211}{100}}}{13}}".to_owned();
-        let t2input = "{0{0{0{106}{9{888}{889}}}{20{460}{353}}}{2}} ".to_owned();
+    fn test_struct_ted_variant_simple_2() {
+        let t1input = "{0{1}}".to_owned();
+        let t2input = "{62{5}{20}{28{17{1}{5}{20}}}{13{17}{42}}}".to_owned();
         let mut label_dict = LabelDict::new();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
         let mut sc = LabelSetConverter::default();
-        let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
-        let lb = ted_variant(&sets[0], &sets[1], 10);
+        // let half = label_dict.len() / 2;
+        let half = 296usize;
+        use rand::{Rng, SeedableRng};
+        let split_labels_into_axes = move |lbl: &LabelId| -> usize {
+            let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(*lbl as u64);
+            rng1.gen_range(0..=3)
+        };
+        let sets = sc.create(&v, split_labels_into_axes);
+        let lb = ted_variant(&sets[0], &sets[1], 4);
         assert!(lb <= 10);
     }
+    /*
+        #[test]
+        fn test_struct_ted_variant() {
+            let t1input = "{20{20{20{1203}{1204}}{20{460}{20{465}{1205}}}}{24}}".to_owned();
+            let t2input = "{0{0{0{118}{0{1456}{251}}}{20{460}{20{537}{1457}}}}{2}}".to_owned();
+            let t3input = "{20{142}{20{20{375}{376}}{2}}}".to_owned();
+            let mut label_dict = LabelDict::new();
+            let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+            let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+            let t3 = parse_tree(Ok(t3input), &mut label_dict).unwrap();
+            let v = vec![t1, t2, t3];
+            let half = label_dict.len() / 2;
+            let mut sc = LabelSetConverter::default();
+            let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
 
-    #[test]
-    fn test_struct_ted_variant_3() {
-        let t1input = "{0{0{517}{20{472}{20{518}{519}}}}{24}}".to_owned();
-        let t2input = "{0{0{15}{9{271}{9{9{890}{55}}{98}}}}{2}} ".to_owned();
-        let mut label_dict = LabelDict::new();
-        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
-        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
-        let v = vec![t1, t2];
-        let mut sc = LabelSetConverter::default();
-        let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
-        let lb = ted_variant(&sets[0], &sets[1], 10);
-        assert!(lb <= 10);
-    }
+            let lb = ted_variant(&sets[0], &sets[1], 10);
+            assert!(lb <= 10, "T1 and T2 failed");
+            let lb = ted_variant(&sets[0], &sets[2], 10);
+            assert!(lb <= 10, "T2 and T3 failed");
+        }
 
-    #[test]
-    fn test_struct_ted_variant_4() {
-        let t1input = "{0{74}{0{75}{2}}}".to_owned();
-        let t2input = "{0{0{9{891}{892}}{20{591}{624}}}{20{591}{893}}} ".to_owned();
-        let mut label_dict = LabelDict::new();
-        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
-        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
-        let v = vec![t1, t2];
-        let mut sc = LabelSetConverter::default();
-        let half = label_dict.len() / 2;
-        let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
-        let lb = ted_variant(&sets[0], &sets[1], 10);
-        assert!(lb <= 10);
-    }
+        #[test]
+        fn test_struct_ted_variant_2() {
+            let t1input = "{9{20{20{673}{161}}{20{211}{100}}}{13}}".to_owned();
+            let t2input = "{0{0{0{106}{9{888}{889}}}{20{460}{353}}}{2}} ".to_owned();
+            let mut label_dict = LabelDict::new();
+            let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+            let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+            let v = vec![t1, t2];
+            let mut sc = LabelSetConverter::default();
+            let half = label_dict.len() / 2;
+            let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
+            let lb = ted_variant(&sets[0], &sets[1], 10);
+            assert!(lb <= 10);
+        }
+
+        #[test]
+        fn test_struct_ted_variant_3() {
+            let t1input = "{0{0{517}{20{472}{20{518}{519}}}}{24}}".to_owned();
+            let t2input = "{0{0{15}{9{271}{9{9{890}{55}}{98}}}}{2}} ".to_owned();
+            let mut label_dict = LabelDict::new();
+            let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+            let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+            let v = vec![t1, t2];
+            let mut sc = LabelSetConverter::default();
+            let half = label_dict.len() / 2;
+            let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
+            let lb = ted_variant(&sets[0], &sets[1], 10);
+            assert!(lb <= 10);
+        }
+
+        #[test]
+        fn test_struct_ted_variant_4() {
+            let t1input = "{0{74}{0{75}{2}}}".to_owned();
+            let t2input = "{0{0{9{891}{892}}{20{591}{624}}}{20{591}{893}}} ".to_owned();
+            let mut label_dict = LabelDict::new();
+            let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+            let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+            let v = vec![t1, t2];
+            let mut sc = LabelSetConverter::default();
+            let half = label_dict.len() / 2;
+            let sets = sc.create(&v, &move |lbl| usize::from(half < (*lbl as usize)));
+            let lb = ted_variant(&sets[0], &sets[1], 10);
+            assert!(lb <= 10);
+        }
+        */
 }

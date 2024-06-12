@@ -18,7 +18,7 @@ pub enum DatasetParseError {
 
 pub type LabelId = i32;
 
-pub type LabelDict = HashMap<String, LabelId>;
+pub type LabelDict = HashMap<String, (LabelId, usize)>;
 pub(crate) type ParsedTree = Arena<LabelId>;
 
 pub enum TreeOutput {
@@ -137,7 +137,7 @@ pub(crate) fn parse_tree(
             "Minimal of 2 brackets not found!".to_owned(),
         ));
     }
-    let mut max_node_id = label_map.values().max().cloned().unwrap_or(0);
+    let (mut max_node_id, mut counter) = label_map.values().max().cloned().unwrap_or((0, 1));
 
     let mut tokens = token_positions.iter().peekable();
     let root_start = *tokens.next().unwrap();
@@ -145,13 +145,15 @@ pub(crate) fn parse_tree(
 
     let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
     let is_first_label_in_map = label_map.is_empty();
-    let root_label = label_map.entry(root_label).or_insert_with(|| {
+    let root_label = label_map.entry(root_label).and_modify(|(_, counter)| {
+        *counter += 1;
+    }).or_insert_with(|| {
         if !is_first_label_in_map {
             max_node_id += 1;
         }
-        max_node_id
+        (max_node_id, counter)
     });
-    let root = tree.new_node(*root_label);
+    let root = tree.new_node(root_label.0);
 
     let mut node_stack = vec![root];
 
@@ -166,12 +168,14 @@ pub(crate) fn parse_tree(
                 let label =
                     String::from_utf8(tree_bytes[(*token + 1)..**token_end].to_vec()).unwrap();
 
-                let node_label = label_map.entry(label).or_insert_with(|| {
+                let node_label = label_map.entry(label).and_modify(|(_, counter)| {
+                    *counter += 1;
+                }).or_insert_with(|| {
                     max_node_id += 1;
-                    max_node_id
+                    (max_node_id, 1)
                 });
 
-                let n = tree.new_node(*node_label);
+                let n = tree.new_node(node_label.0);
                 let Some(last_node) = node_stack.last() else {
                     let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));
@@ -234,13 +238,13 @@ mod tests {
         assert_eq!(
             ld,
             LabelDict::from([
-                ("b".to_owned(), 0),
-                ("e".to_owned(), 1),
-                ("d".to_owned(), 2),
-                ("a".to_owned(), 3),
-                ("c".to_owned(), 4),
-                ("f".to_owned(), 5),
-                ("g".to_owned(), 6),
+                ("b".to_owned(), (0, 1)),
+                ("e".to_owned(), (1, 1)),
+                ("d".to_owned(), (2, 3)),
+                ("a".to_owned(), (3, 2)),
+                ("c".to_owned(), (4, 1)),
+                ("f".to_owned(), (5, 1)),
+                ("g".to_owned(), (6, 1)),
             ]),
             "Label dict label ids were not preserved!"
         );
