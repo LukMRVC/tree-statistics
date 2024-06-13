@@ -327,7 +327,14 @@ fn main() -> Result<(), anyhow::Error> {
             threshold,
             candidates_path,
         } => {
-            let false_positives = validation::validate(candidates_path, results_path, threshold)?;
+            let false_positives =
+                validation::validate(candidates_path.clone(), results_path.clone(), threshold)?;
+            let candidates = validation::read_candidates(&candidates_path)?;
+            let (correct, extra, precision) =
+                validation::get_precision(&candidates, &results_path, threshold)?;
+
+            println!("Correct trees;Extra trees;Precision");
+            println!("{correct};{extra};{precision}");
             println!("Printing false positives in bracket");
             write_file(
                 PathBuf::from("./resources/results/false-positives.bracket"),
@@ -452,7 +459,11 @@ fn write_file<T>(file_name: impl AsRef<Path>, data: &[T]) -> Result<(), std::io:
 where
     T: Display,
 {
-    let f = File::options().create(true).write(true).truncate(true).open(file_name.as_ref())?;
+    let f = File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(file_name.as_ref())?;
     let mut w = BufWriter::new(f);
 
     for d in data.iter() {
