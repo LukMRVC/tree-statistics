@@ -1,10 +1,11 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
 use crate::lb::indexes::histograms::{create_collection_histograms, index_lookup};
-use crate::parsing::{tree_to_string, LabelDict, TreeOutput, LabelId};
+use crate::parsing::{tree_to_string, LabelDict, LabelId, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
+use lb::structural_filter::LabelSetConverter;
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
@@ -312,39 +313,51 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
                     let mut lc = lb::structural_filter::LabelSetConverter::default();
-                    let half = label_dict.len() / 2;
                     // let half = dbg!(half);
-                    let sorted_labels = label_dict.values().sorted_unstable_by_key(|(_, c)| c).collect_vec();
-                    let most_used_labels = sorted_labels.iter().rev().map(|(lbl, _) | *lbl).take(3).collect_vec();
-                    assert_eq!(most_used_labels.len(), 3);
+                    let sorted_labels = label_dict
+                        .values()
+                        .sorted_unstable_by_key(|(_, c)| c)
+                        .collect_vec();
+                    let most_used_labels = sorted_labels
+                        .iter()
+                        .rev()
+                        .map(|(lbl, _)| *lbl)
+                        .take(8)
+                        .collect_vec();
+                    // assert_eq!(most_used_labels.len(), 3);
                     use rand::{Rng, SeedableRng};
 
                     let mut label_distribution = FxHashMap::default();
-                    let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(1512);
+                    let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(1);
                     label_dict.values().for_each(|(lbl, _)| {
-                        label_distribution.insert(*lbl, rng1.gen_range(0..=3));
+                        label_distribution
+                            .insert(*lbl, rng1.gen_range(0..LabelSetConverter::MAX_SPLIT));
                     });
-                    // dbg!(tree_to_string(&trees[0], TreeOutput::BracketNotation));
-                    // dbg!(tree_to_string(&trees[38], TreeOutput::BracketNotation));
-                    //
-                    // dbg!(label_distribution.get(&0).unwrap());
-                    // dbg!(label_distribution.get(&1).unwrap());
-                    // dbg!(label_distribution.get(&62).unwrap());
-                    // dbg!(label_distribution.get(&5).unwrap());
-                    // dbg!(label_distribution.get(&20).unwrap());
-                    // dbg!(label_distribution.get(&28).unwrap());
-                    // dbg!(label_distribution.get(&17).unwrap());
-                    // dbg!(label_distribution.get(&13).unwrap());
-                    // dbg!(label_distribution.get(&42).unwrap());
+                    // let mut i = 0;
+                    // most_used_labels.iter().for_each(|lbl| {
+                    //     label_distribution.insert(lbl, 0);
+                    //     i += 1;
+                    // });
 
+                    // sorted_labels
+                    //     .iter()
+                    //     .rev()
+                    //     .skip(most_used_labels.len())
+                    //     .for_each(|(lbl, _)| {
+                    //         label_distribution.insert(lbl, 1);
+                    //         i += 1;
+                    //     });
 
                     let split_labels_into_axes = move |lbl: &LabelId| -> usize {
                         *label_distribution.get(lbl).unwrap() as usize
                     };
                     let structural_sets = lc.create(&trees, split_labels_into_axes);
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
-                    // dbg!(&structural_sets[38]);
-                    // dbg!(&structural_sets[0]);
+
+                    // dbg!(tree_to_string(&trees[11], TreeOutput::BracketNotation));
+                    // dbg!(tree_to_string(&trees[39], TreeOutput::BracketNotation));
+                    // dbg!(&structural_sets[11]);
+                    // dbg!(&structural_sets[39]);
 
                     if let LBM::StructuralVariant = method {
                         let start = Instant::now();
