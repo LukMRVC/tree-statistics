@@ -25,7 +25,8 @@ pub struct StructuralVec {
     pub postorder_id: usize,
     pub preorder_id: usize,
     /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
-    pub mapping_region_axes: [[i32; 4]; LabelSetConverter::MAX_SPLIT],
+    pub mapping_region_splits: [[i32; 4]; LabelSetConverter::MAX_SPLIT],
+    pub mapping_regions: [i32; 4],
 }
 
 /// This is an element holding relevant data of a set.
@@ -174,11 +175,12 @@ impl LabelSetConverter {
         self.actual_depth[split_id] -= 1;
         self.actual_pre_order_number[split_id] += 1;
 
-        let mut mapping_axes = [[0; 4]; Self::MAX_SPLIT];
+        let mut mapping_splits = [[0; 4]; Self::MAX_SPLIT];
+        let mut mapping_regions = [0; 4];
         for i in 0..Self::MAX_SPLIT {
             // let follow = self.tree_size_by_split_id[i]
             //     - (self.actual_pre_order_number[i] + self.actual_depth[i]);
-            mapping_axes[i] = [
+            mapping_splits[i] = [
                 self.actual_pre_order_number[i] - subtree_size[i],
                 self.actual_depth[i],
                 //         FIXME: these numbers are below 0 -> incorrect
@@ -187,12 +189,18 @@ impl LabelSetConverter {
                 subtree_size[i],
             ]
         }
-        mapping_axes[split_id][3] -= 1;
+        mapping_splits[split_id][3] -= 1;
+        for split in mapping_splits.iter() {
+            mapping_regions.iter_mut().zip_eq(split).for_each(|(region, split_region)| {
+                *region += split_region;
+            })
+        }
 
         let node_struct_vec = StructuralVec {
             label_id: *root_label,
             postorder_id: *postorder_id,
-            mapping_region_axes: mapping_axes,
+            mapping_region_splits: mapping_splits,
+            mapping_regions,
             ..Default::default()
         };
 
@@ -214,55 +222,27 @@ impl LabelSetConverter {
 
 #[inline(always)]
 fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
+    use std::cmp::{min, max};
+
     // for each axis, take the maximum of L1 difference
     let mut sum = 0;
     for region in 0..4 {
-        let mut r1s = 0;
-        let mut r2s = 0;
-        let maximum = n1
-            .mapping_region_axes
+        sum +=
+            max(n1.mapping_regions[region], n2.mapping_regions[region])
+            -
+            n1
+            .mapping_region_splits
             .iter()
-            .zip_eq(n2.mapping_region_axes.iter())
+            .zip_eq(n2.mapping_region_splits.iter())
             .map(|(r1, r2)| {
                 assert!(r1[region] >= 0);
                 assert!(r2[region] >= 0);
-                r1s += r1[region];
-                r2s += r2[region];
-                r1[region].abs_diff(r2[region])
+                min(r1[region], r2[region])
             })
-            .max()
-            .unwrap();
-
-        // let om = n1
-        //     .mapping_region_axes
-        //     .iter()
-        //     .map(|r| r[region])
-        //     .sum::<i32>()
-        //     .abs_diff(
-        //         n2.mapping_region_axes
-        //             .iter()
-        //             .map(|r| r[region])
-        //             .sum::<i32>(),
-        //     );
-
-        sum += std::cmp::max(maximum, r1s.abs_diff(r2s));
+            .sum::<i32>();
     }
-    sum
-
-    // n1.mapping_region_axes
-    //     .iter()
-    //     .zip_eq(&n2.mapping_region_axes)
-    //     .fold(0, |acc, (a, b)| {
-    //         acc + {
-    //             (*a).iter()
-    //                 .zip_eq(b.iter())
-    //                 .fold(0, |acc, (ac, bc)| {
-    //                     assert!(*ac >= 0);
-    //                     assert!(*bc >= 0);
-    //                     acc + ac.abs_diff(*bc)
-    //                 })
-    //         }
-    //     })
+    assert!(sum >= 0);
+    sum as u32
 }
 
 /// Given two sets
@@ -530,11 +510,11 @@ mod tests {
     #[test]
     fn test_svec_l1_distance_with_axes() {
         let a = StructuralVec {
-            mapping_region_axes: [[0; 4], [0, 1, 0, 0]],
+            mapping_region_splits: [[0; 4], [0, 1, 0, 0]],
             ..Default::default()
         };
         let b = StructuralVec {
-            mapping_region_axes: [[0, 0, 0, 1], [0; 4]],
+            mapping_region_splits: [[0, 0, 0, 1], [0; 4]],
             ..Default::default()
         };
         let dist = svec_l1(&a, &b);

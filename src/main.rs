@@ -312,7 +312,7 @@ fn main() -> Result<(), anyhow::Error> {
                 }
                 LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
-                    let mut lc = lb::structural_filter::LabelSetConverter::default();
+                    let mut lc = LabelSetConverter::default();
                     // let half = dbg!(half);
                     let sorted_labels = label_dict
                         .values()
@@ -328,28 +328,28 @@ fn main() -> Result<(), anyhow::Error> {
                     use rand::{Rng, SeedableRng};
 
                     let mut label_distribution = FxHashMap::default();
-                    let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(1);
+                    let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::from_entropy();
                     label_dict.values().for_each(|(lbl, _)| {
                         label_distribution
                             .insert(*lbl, rng1.gen_range(0..LabelSetConverter::MAX_SPLIT));
                     });
                     // let mut i = 0;
                     // most_used_labels.iter().for_each(|lbl| {
-                    //     label_distribution.insert(lbl, 0);
+                    //     label_distribution.insert(lbl, i % 4);
                     //     i += 1;
                     // });
-
+                    //
                     // sorted_labels
                     //     .iter()
                     //     .rev()
                     //     .skip(most_used_labels.len())
                     //     .for_each(|(lbl, _)| {
-                    //         label_distribution.insert(lbl, 1);
+                    //         label_distribution.insert(lbl, i % LabelSetConverter::MAX_SPLIT);
                     //         i += 1;
                     //     });
 
                     let split_labels_into_axes = move |lbl: &LabelId| -> usize {
-                        *label_distribution.get(lbl).unwrap() as usize
+                        *label_distribution.get(lbl).unwrap()
                     };
                     let structural_sets = lc.create(&trees, split_labels_into_axes);
                     println!("Creating sets took {}ms", start.elapsed().as_millis());
