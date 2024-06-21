@@ -31,7 +31,7 @@ pub struct StructuralVec {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SplitStructuralVec {
     svec: StructuralVec,
-    pub mapping_region_splits: [[i32; 4]; LabelSetConverter::MAX_SPLIT],
+    pub mapping_region_splits: [[i32; LabelSetConverter::MAX_SPLIT]; 4],
 }
 
 /// This is an element holding relevant data of a set.
@@ -68,7 +68,7 @@ pub struct SplitStructuralFilterTuple(usize, SplitStructHashMap);
 /// of the input collection.
 #[derive(Debug, Default)]
 pub struct LabelSetConverter {
-    actual_depth: [i32; 4],
+    actual_depth: [i32; Self::MAX_SPLIT],
     actual_pre_order_number: [i32; Self::MAX_SPLIT],
     tree_size_by_split_id: [i32; Self::MAX_SPLIT],
 }
@@ -115,7 +115,7 @@ impl LabelSetConverter {
             );
 
             // reset state variables needed for positional evaluation
-            self.actual_depth = [0; 4];
+            self.actual_depth = [0; Self::MAX_SPLIT];
             self.actual_pre_order_number = [0; Self::MAX_SPLIT];
             self.tree_size_by_split_id = [0; Self::MAX_SPLIT];
             sets_collection.push(SplitStructuralFilterTuple(tree.count(), record_labels));
@@ -211,7 +211,7 @@ impl LabelSetConverter {
     {
         // number of children = subtree_size - 1
         // subtree_size = 1 -> actual node + sum of children
-        let mut subtree_size = [0; 4];
+        let mut subtree_size = [0; Self::MAX_SPLIT];
         let root_label = tree.get(*root_id).unwrap().get();
         let split_id = split(root_label);
         subtree_size[split_id] = 1;
@@ -230,28 +230,27 @@ impl LabelSetConverter {
         self.actual_depth[split_id] -= 1;
         self.actual_pre_order_number[split_id] += 1;
 
-        let mut mapping_splits = [[0; 4]; Self::MAX_SPLIT];
-        let mut mapping_regions = [0; 4];
+        let mut mapping_splits = [[0; Self::MAX_SPLIT]; 4];
         for i in 0..Self::MAX_SPLIT {
             // let follow = self.tree_size_by_split_id[i]
             //     - (self.actual_pre_order_number[i] + self.actual_depth[i]);
-            mapping_splits[i] = [
-                self.actual_pre_order_number[i] - subtree_size[i],
-                self.actual_depth[i],
-                self.tree_size_by_split_id[i]
-                    - (self.actual_pre_order_number[i] + self.actual_depth[i]),
-                subtree_size[i],
-            ]
+            mapping_splits[REGION_LEFT_IDX][i] = self.actual_pre_order_number[i] - subtree_size[i];
+            mapping_splits[REGION_ANC_IDX][i] = self.actual_depth[i];
+
+            mapping_splits[REGION_RIGHT_IDX][i] = self.tree_size_by_split_id[i]
+                - (self.actual_pre_order_number[i] + self.actual_depth[i]);
+
+            mapping_splits[REGION_DESC_IDX][i] = subtree_size[i];
         }
-        mapping_splits[split_id][3] -= 1;
-        for split in mapping_splits.iter() {
-            mapping_regions
-                .iter_mut()
-                .zip_eq(split)
-                .for_each(|(region, split_region)| {
-                    *region += split_region;
-                })
-        }
+        mapping_splits[REGION_DESC_IDX][split_id] -= 1;
+
+        let mut mapping_regions = [0; 4];
+        mapping_regions
+            .iter_mut()
+            .enumerate()
+            .for_each(|(region_idx, region)| {
+                *region = mapping_splits[region_idx].iter().sum();
+            });
 
         let node_struct_vec = SplitStructuralVec {
             svec: StructuralVec {
@@ -339,22 +338,36 @@ fn split_svec_l1(n1: &SplitStructuralVec, n2: &SplitStructuralVec) -> u32 {
     use std::cmp::{max, min};
 
     // for each axis, take the maximum of L1 difference
-    let mut sum = 0;
-    for region in 0..4 {
-        sum += max(
-            n1.svec.mapping_regions[region],
-            n2.svec.mapping_regions[region],
-        ) - n1
-            .mapping_region_splits
-            .iter()
-            .zip_eq(n2.mapping_region_splits.iter())
-            .map(|(r1, r2)| {
-                assert!(r1[region] >= 0);
-                assert!(r2[region] >= 0);
-                min(r1[region], r2[region])
-            })
-            .sum::<i32>();
-    }
+    let sum = n1
+        .svec
+        .mapping_regions
+        .iter()
+        .zip_eq(&n2.svec.mapping_regions)
+        .enumerate()
+        .fold(0, |acc, (region, (a, b))| {
+            acc + (max(a, b)
+                - n1.mapping_region_splits[region]
+                    .iter()
+                    .zip_eq(&n2.mapping_region_splits[region])
+                    .map(|(s1, s2)| min(s1, s2))
+                    .sum::<i32>())
+        });
+
+    // for region in 0..4 {
+    //     sum += max(
+    //         n1.svec.mapping_regions[region],
+    //         n2.svec.mapping_regions[region],
+    //     ) - n1
+    //         .mapping_region_splits
+    //         .iter()
+    //         .zip_eq(n2.mapping_region_splits.iter())
+    //         .map(|(r1, r2)| {
+    //             assert!(r1[region] >= 0);
+    //             assert!(r2[region] >= 0);
+    //             min(r1[region], r2[region])
+    //         })
+    //         .sum::<i32>();
+    // }
     assert!(sum >= 0);
     sum as u32
 }
@@ -386,10 +399,10 @@ pub fn ted_variant(
     s2: &SplitStructuralFilterTuple,
     k: usize,
 ) -> usize {
-    let bigger = max(s1.0, s2.0);
     if s1.0.abs_diff(s2.0) > k {
         return k + 1;
     }
+    let bigger = max(s1.0, s2.0);
     let mut overlap = 0;
 
     for (lblid, set1) in s1.1.iter() {
