@@ -137,7 +137,7 @@ pub(crate) fn parse_tree(
             "Minimal of 2 brackets not found!".to_owned(),
         ));
     }
-    let (mut max_node_id, mut counter) = label_map.values().max().cloned().unwrap_or((0, 1));
+    let (mut max_node_id, _) = label_map.values().max().cloned().unwrap_or((0, 1));
 
     let mut tokens = token_positions.iter().peekable();
     let root_start = *tokens.next().unwrap();
@@ -145,14 +145,17 @@ pub(crate) fn parse_tree(
 
     let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
     let is_first_label_in_map = label_map.is_empty();
-    let root_label = label_map.entry(root_label).and_modify(|(_, counter)| {
-        *counter += 1;
-    }).or_insert_with(|| {
-        if !is_first_label_in_map {
-            max_node_id += 1;
-        }
-        (max_node_id, counter)
-    });
+    let root_label = label_map
+        .entry(root_label)
+        .and_modify(|(_, counter)| {
+            *counter += 1;
+        })
+        .or_insert_with(|| {
+            if !is_first_label_in_map {
+                max_node_id += 1;
+            }
+            (max_node_id, 1)
+        });
     let root = tree.new_node(root_label.0);
 
     let mut node_stack = vec![root];
@@ -168,12 +171,15 @@ pub(crate) fn parse_tree(
                 let label =
                     String::from_utf8(tree_bytes[(*token + 1)..**token_end].to_vec()).unwrap();
 
-                let node_label = label_map.entry(label).and_modify(|(_, counter)| {
-                    *counter += 1;
-                }).or_insert_with(|| {
-                    max_node_id += 1;
-                    (max_node_id, 1)
-                });
+                let node_label = label_map
+                    .entry(label)
+                    .and_modify(|(_, counter)| {
+                        *counter += 1;
+                    })
+                    .or_insert_with(|| {
+                        max_node_id += 1;
+                        (max_node_id, 1)
+                    });
 
                 let n = tree.new_node(node_label.0);
                 let Some(last_node) = node_stack.last() else {
@@ -195,12 +201,9 @@ pub(crate) fn parse_tree(
     Ok(tree)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_parses() {

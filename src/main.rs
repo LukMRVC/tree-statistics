@@ -324,7 +324,6 @@ fn main() -> Result<(), anyhow::Error> {
                         .map(|(lbl, _)| *lbl)
                         .take(8)
                         .collect_vec();
-                    // assert_eq!(most_used_labels.len(), 3);
                     use rand::{Rng, SeedableRng};
 
                     let mut label_distribution = FxHashMap::default();
@@ -333,6 +332,10 @@ fn main() -> Result<(), anyhow::Error> {
                         label_distribution
                             .insert(*lbl, rng1.gen_range(0..LabelSetConverter::MAX_SPLIT));
                     });
+
+                    let split_labels_into_axes =
+                        move |lbl: &LabelId| -> usize { *label_distribution.get(lbl).unwrap() };
+
                     // let mut i = 0;
                     // most_used_labels.iter().for_each(|lbl| {
                     //     label_distribution.insert(lbl, i % 4);
@@ -348,18 +351,11 @@ fn main() -> Result<(), anyhow::Error> {
                     //         i += 1;
                     //     });
 
-                    let split_labels_into_axes = move |lbl: &LabelId| -> usize {
-                        *label_distribution.get(lbl).unwrap()
-                    };
-                    let structural_sets = lc.create(&trees, split_labels_into_axes);
-                    println!("Creating sets took {}ms", start.elapsed().as_millis());
-
-                    // dbg!(tree_to_string(&trees[11], TreeOutput::BracketNotation));
-                    // dbg!(tree_to_string(&trees[39], TreeOutput::BracketNotation));
-                    // dbg!(&structural_sets[11]);
-                    // dbg!(&structural_sets[39]);
-
                     if let LBM::StructuralVariant = method {
+                        let structural_sets: Vec<
+                            lb::structural_filter::SplitStructuralFilterTuple,
+                        > = lc.create_split(&trees, split_labels_into_axes);
+                        println!("Creating sets took {}ms", start.elapsed().as_millis());
                         let start = Instant::now();
                         candidates = structural_sets
                             .iter()
@@ -368,10 +364,6 @@ fn main() -> Result<(), anyhow::Error> {
                                 let mut lower_bound_candidates = vec![];
 
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
-                                    // if i == 5 && j == 41 {
-                                    //     dbg!(tree_to_string(&trees[i], TreeOutput::BracketNotation));
-                                    //     dbg!(tree_to_string(&trees[j], TreeOutput::BracketNotation));
-                                    // }
                                     let lb = lb::structural_filter::ted_variant(t1, t2, k);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
@@ -385,6 +377,8 @@ fn main() -> Result<(), anyhow::Error> {
                             start.elapsed().as_millis()
                         );
                     } else {
+                        let structural_sets = lc.create(&trees);
+                        println!("Creating sets took {}ms", start.elapsed().as_millis());
                         let start = Instant::now();
                         candidates = structural_sets
                             .iter()
