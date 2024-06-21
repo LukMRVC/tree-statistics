@@ -1,13 +1,11 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
-use crate::lb::indexes::histograms::{
-    create_collection_histograms, degree_index_lookup, index_lookup, label_index_lookup,
-    leaf_index_lookup,
-};
-use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
+use crate::lb::indexes::histograms::{create_collection_histograms, index_lookup};
+use crate::parsing::{tree_to_string, LabelDict, LabelId, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
+use lb::structural_filter::LabelSetConverter;
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
@@ -15,6 +13,9 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::time::Instant;
+
+use rand::prelude::*;
+use rustc_hash::FxHashMap;
 
 mod indexing;
 mod lb;
@@ -46,6 +47,8 @@ enum LowerBoundMethods {
     Sed,
     /// Structural filter lower bound
     Structural,
+    /// Structural variant filter lower bound
+    StructuralVariant,
 }
 
 #[derive(Subcommand, Debug)]
@@ -89,6 +92,18 @@ enum Commands {
         #[arg()]
         threshold: usize,
     },
+    /// Compares 2 candidate files TED execution time
+    TedTime {
+        /// First candidates path
+        #[arg(long = "cf")]
+        candidates_first: PathBuf,
+        /// Second candidates path
+        #[arg(long = "cs")]
+        candidates_second: PathBuf,
+        /// Threshold for validation
+        #[arg()]
+        threshold: usize,
+    },
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -102,9 +117,8 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .exit();
     }
-
     let mut label_dict = LabelDict::new();
-    let trees = match parsing::parse_dataset(cli.dataset_path, &mut label_dict) {
+    let trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
@@ -171,6 +185,11 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             use LowerBoundMethods as LBM;
             let mut candidates: Vec<(usize, usize)> = vec![];
+            println!(
+                "Running for dataset: {} and method: {:?}",
+                cli.dataset_path.to_str().unwrap(),
+                method
+            );
             // TODO: Fix this unwrap_or
             let k = threshold.unwrap_or(0);
             match method {
@@ -291,26 +310,103 @@ fn main() -> Result<(), anyhow::Error> {
                         })
                         .collect::<Vec<_>>();
                 }
-                LBM::Structural => {
+                LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
-                    let mut lc = lb::structural_filter::LabelSetConverter::default();
-                    let mut structural_sets = lc.create(&trees);
-                    println!("Creating sets took {}ms", start.elapsed().as_millis());
-
-                    candidates = structural_sets
+                    let mut lc = LabelSetConverter::default();
+                    // let half = dbg!(half);
+                    let sorted_labels = label_dict
+                        .values()
+                        .sorted_unstable_by_key(|(_, c)| c)
+                        .collect_vec();
+                    let most_used_labels = sorted_labels
                         .iter()
-                        .enumerate()
-                        .flat_map(|(i, t1)| {
-                            let mut lower_bound_candidates = vec![];
-                            for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
-                                let lb = lb::structural_filter::ted(t1, t2, k);
-                                if lb <= k {
-                                    lower_bound_candidates.push((i, j));
+                        .rev()
+                        .map(|(lbl, _)| *lbl)
+                        .take(8)
+                        .collect_vec();
+                    use rand::{Rng, SeedableRng};
+
+                    let mut label_distribution = FxHashMap::default();
+                    let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::from_entropy();
+                    label_dict.values().for_each(|(lbl, _)| {
+                        label_distribution
+                            .insert(*lbl, rng1.gen_range(0..LabelSetConverter::MAX_SPLIT));
+                    });
+
+                    let split_labels_into_axes =
+                        move |lbl: &LabelId| -> usize { *label_distribution.get(lbl).unwrap() };
+
+                    // let mut i = 0;
+                    // most_used_labels.iter().for_each(|lbl| {
+                    //     label_distribution.insert(lbl, i % 4);
+                    //     i += 1;
+                    // });
+                    //
+                    // sorted_labels
+                    //     .iter()
+                    //     .rev()
+                    //     .skip(most_used_labels.len())
+                    //     .for_each(|(lbl, _)| {
+                    //         label_distribution.insert(lbl, i % LabelSetConverter::MAX_SPLIT);
+                    //         i += 1;
+                    //     });
+
+                    let mut selectivities = vec![];
+                    if let LBM::StructuralVariant = method {
+                        let structural_sets: Vec<
+                            lb::structural_filter::SplitStructuralFilterTuple,
+                        > = lc.create_split(&trees, split_labels_into_axes);
+                        println!("Creating sets took {}ms", start.elapsed().as_millis());
+                        let start = Instant::now();
+                        candidates = structural_sets
+                            .iter()
+                            .enumerate()
+                            .flat_map(|(i, t1)| {
+                                let mut lower_bound_candidates = vec![];
+
+                                for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
+                                    let lb = lb::structural_filter::ted_variant(t1, t2, k);
+                                    if lb <= k {
+                                        lower_bound_candidates.push((i, j));
+                                    }
                                 }
-                            }
-                            lower_bound_candidates
-                        })
-                        .collect::<Vec<_>>();
+                                let sel = 100f64
+                                    * (lower_bound_candidates.len() as f64
+                                        / (trees.len() - i) as f64);
+                                selectivities.push(sel);
+                                lower_bound_candidates
+                            })
+                            .collect::<Vec<_>>();
+                        println!(
+                            "SF-Adjusted Filter elapsed time: {}ms",
+                            start.elapsed().as_millis()
+                        );
+                    } else {
+                        let structural_sets = lc.create(&trees);
+                        println!("Creating sets took {}ms", start.elapsed().as_millis());
+                        let start = Instant::now();
+                        candidates = structural_sets
+                            .iter()
+                            .enumerate()
+                            .flat_map(|(i, t1)| {
+                                let mut lower_bound_candidates = vec![];
+                                for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
+                                    let lb = lb::structural_filter::ted(t1, t2, k);
+                                    if lb <= k {
+                                        lower_bound_candidates.push((i, j));
+                                    }
+                                }
+                                let sel = 100f64
+                                    * (lower_bound_candidates.len() as f64
+                                        / (trees.len() - i) as f64);
+                                selectivities.push(sel);
+                                lower_bound_candidates
+                            })
+                            .collect::<Vec<_>>();
+                        println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
+                    }
+                    let mean_selectivity = statistics::mean(&selectivities);
+                    println!("Mean selectivity is: {mean_selectivity:.4}");
                 }
             }
             candidates.par_sort();
@@ -327,8 +423,7 @@ fn main() -> Result<(), anyhow::Error> {
             threshold,
             candidates_path,
         } => {
-            let false_positives =
-                validation::validate(candidates_path.clone(), results_path.clone(), threshold)?;
+            let false_positives = validation::validate(&candidates_path, &results_path, threshold)?;
             let candidates = validation::read_candidates(&candidates_path)?;
             let (correct, extra, precision) =
                 validation::get_precision(&candidates, &results_path, threshold)?;
@@ -349,7 +444,7 @@ fn main() -> Result<(), anyhow::Error> {
                     })
                     .collect_vec(),
             )?;
-            println!("Printing false positives in graphviz");
+            println!("Printing not found in graphviz");
             write_file(
                 PathBuf::from("./resources/results/false-positives.graphviz"),
                 &false_positives
@@ -363,6 +458,13 @@ fn main() -> Result<(), anyhow::Error> {
                     })
                     .collect_vec(),
             )?;
+        }
+        Commands::TedTime {
+            candidates_first: _,
+            candidates_second: _,
+            threshold: _,
+        } => {
+            todo!();
         }
     }
 

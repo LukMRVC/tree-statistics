@@ -1,6 +1,6 @@
 use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
-use std::collections::HashMap;
+
 use rustc_hash::FxHashMap;
 
 pub trait Indexer {

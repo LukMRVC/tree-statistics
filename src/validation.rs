@@ -1,5 +1,5 @@
 use crate::lb::indexes::histograms::Candidates;
-use itertools::Itertools;
+
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::BufReader;
@@ -23,8 +23,8 @@ pub fn read_candidates(
 }
 
 pub fn validate(
-    candidates_file: PathBuf,
-    results: PathBuf,
+    candidates_file: &impl AsRef<Path>,
+    results: &impl AsRef<Path>,
     k: usize,
 ) -> Result<Vec<(usize, usize)>, anyhow::Error> {
     let rfile = File::open(results)?;
@@ -41,7 +41,7 @@ pub fn validate(
         }
     }
     real_result.par_sort();
-    let mut candidates = read_candidates(&candidates_file)?;
+    let candidates = read_candidates(candidates_file)?;
 
     let not_found = real_result
         .iter()
@@ -51,14 +51,14 @@ pub fn validate(
                     let flipped = &(*p2, *p1);
                     candidates
                         .binary_search(flipped)
-                        .map_or(Some((p1, p2)), |_| None)
+                        .map_or(Some((*p1, *p2)), |_| None)
                 },
                 |_| None,
             )
         })
         .collect::<Vec<_>>();
 
-    let false_positives = candidates
+    let _false_positives = candidates
         .par_iter()
         .filter_map(|(p1, p2)| {
             real_result
@@ -87,7 +87,7 @@ pub fn validate(
         }
     }
 
-    Ok(false_positives)
+    Ok(not_found)
 }
 
 pub fn get_precision(
@@ -108,11 +108,13 @@ pub fn get_precision(
         }
     }
     real_result.sort();
-    let candidates = candidates.iter().sorted().cloned().collect_vec();
-    let extra = candidates.iter().fold(0usize, |acc, candidate| {
-        match real_result.binary_search(candidate) {
+    let extra = candidates.iter().fold(0usize, |acc, (c1, c2)| {
+        match real_result.binary_search(&(*c1, *c2)) {
             Ok(_) => acc,
-            Err(_) => acc + 1,
+            Err(_) => match real_result.binary_search(&(*c2, *c1)) {
+                Ok(_) => acc,
+                Err(_) => acc + 1,
+            },
         }
     });
 
