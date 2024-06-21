@@ -351,13 +351,13 @@ fn main() -> Result<(), anyhow::Error> {
                     //         i += 1;
                     //     });
 
+                    let mut selectivities = vec![];
                     if let LBM::StructuralVariant = method {
                         let structural_sets: Vec<
                             lb::structural_filter::SplitStructuralFilterTuple,
                         > = lc.create_split(&trees, split_labels_into_axes);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
                         let start = Instant::now();
-                        let mut selectivities = vec![];
                         candidates = structural_sets
                             .iter()
                             .enumerate()
@@ -377,12 +377,10 @@ fn main() -> Result<(), anyhow::Error> {
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
-                        let mean_selectivity = statistics::mean(&selectivities);
                         println!(
                             "SF-Adjusted Filter elapsed time: {}ms",
                             start.elapsed().as_millis()
                         );
-                        println!("Mean selectivity is: {mean_selectivity:.4}");
                     } else {
                         let structural_sets = lc.create(&trees);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
@@ -398,11 +396,17 @@ fn main() -> Result<(), anyhow::Error> {
                                         lower_bound_candidates.push((i, j));
                                     }
                                 }
+                                let sel = 100f64
+                                    * (lower_bound_candidates.len() as f64
+                                        / (trees.len() - i) as f64);
+                                selectivities.push(sel);
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
                         println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
                     }
+                    let mean_selectivity = statistics::mean(&selectivities);
+                    println!("Mean selectivity is: {mean_selectivity:.4}");
                 }
             }
             candidates.par_sort();

@@ -205,7 +205,7 @@ impl LabelSetConverter {
         postorder_id: &mut usize,
         record_labels: &mut SplitStructHashMap,
         split: &mut F,
-    ) -> [i32; 4]
+    ) -> [i32; Self::MAX_SPLIT]
     where
         F: FnMut(&LabelId) -> usize,
     {
