@@ -1,9 +1,11 @@
 use crate::parsing::ParsedTree;
 
 use itertools::Itertools;
+use num_traits::Num;
 use rayon::prelude::*;
 use std::fmt;
 use std::fmt::Formatter;
+use std::iter::Sum;
 
 #[derive(Default, Debug, Clone)]
 pub struct TreeStatistics {
@@ -117,6 +119,14 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
         avg_tree_size: avg_size,
         trees: all_statistics.len(),
     }
+}
+
+pub fn mean<T>(list: &[T]) -> f64
+where
+    T: Num + Sum + Copy,
+    f64: Sum<T>,
+{
+    list.iter().copied().sum::<f64>() / list.len() as f64
 }
 
 #[cfg(test)]
