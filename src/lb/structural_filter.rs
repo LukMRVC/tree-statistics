@@ -7,6 +7,8 @@ use std::cmp::max;
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type SplitStructHashMap = FxHashMap<LabelId, SplitLabelSetElement>;
 
+type RegionNumType = i32;
+
 const REGION_LEFT_IDX: usize = 0;
 /// ancestors
 const REGION_ANC_IDX: usize = 1;
@@ -25,13 +27,13 @@ pub struct StructuralVec {
     /// Id of postorder tree traversal
     pub postorder_id: usize,
     /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
-    pub mapping_regions: [i32; 4],
+    pub mapping_regions: [RegionNumType; 4],
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SplitStructuralVec {
     svec: StructuralVec,
-    pub mapping_region_splits: [[i32; LabelSetConverter::MAX_SPLIT]; 4],
+    pub mapping_region_splits: [[RegionNumType; LabelSetConverter::MAX_SPLIT]; 4],
 }
 
 /// This is an element holding relevant data of a set.
@@ -68,9 +70,9 @@ pub struct SplitStructuralFilterTuple(usize, SplitStructHashMap);
 /// of the input collection.
 #[derive(Debug, Default)]
 pub struct LabelSetConverter {
-    actual_depth: [i32; Self::MAX_SPLIT],
-    actual_pre_order_number: [i32; Self::MAX_SPLIT],
-    tree_size_by_split_id: [i32; Self::MAX_SPLIT],
+    actual_depth: [RegionNumType; Self::MAX_SPLIT],
+    actual_pre_order_number: [RegionNumType; Self::MAX_SPLIT],
+    tree_size_by_split_id: [RegionNumType; Self::MAX_SPLIT],
 }
 
 impl LabelSetConverter {
@@ -139,7 +141,7 @@ impl LabelSetConverter {
             // for recursive postorder traversal
             let mut postorder_id = 0;
 
-            self.tree_size_by_split_id[0] = tree.count() as i32;
+            self.tree_size_by_split_id[0] = tree.count() as RegionNumType;
 
             // array of records stored in sets_collection
             self.create_record(&root_id, tree, &mut postorder_id, &mut record_labels);
@@ -205,7 +207,7 @@ impl LabelSetConverter {
         postorder_id: &mut usize,
         record_labels: &mut SplitStructHashMap,
         split: &mut F,
-    ) -> [i32; Self::MAX_SPLIT]
+    ) -> [RegionNumType; Self::MAX_SPLIT]
     where
         F: FnMut(&LabelId) -> usize,
     {
@@ -286,7 +288,7 @@ impl LabelSetConverter {
         tree: &ParsedTree,
         postorder_id: &mut usize,
         record_labels: &mut StructHashMap,
-    ) -> i32 {
+    ) -> RegionNumType {
         // number of children = subtree_size - 1
         // subtree_size = 1 -> actual node + sum of children
         let mut subtree_size = 1;
@@ -336,7 +338,6 @@ impl LabelSetConverter {
 #[inline(always)]
 fn split_svec_l1(n1: &SplitStructuralVec, n2: &SplitStructuralVec) -> u32 {
     use std::cmp::{max, min};
-
     // for each axis, take the maximum of L1 difference
     let sum = n1
         .svec
@@ -350,25 +351,8 @@ fn split_svec_l1(n1: &SplitStructuralVec, n2: &SplitStructuralVec) -> u32 {
                     .iter()
                     .zip_eq(&n2.mapping_region_splits[region])
                     .map(|(s1, s2)| min(s1, s2))
-                    .sum::<i32>())
+                    .sum::<RegionNumType>())
         });
-
-    // for region in 0..4 {
-    //     sum += max(
-    //         n1.svec.mapping_regions[region],
-    //         n2.svec.mapping_regions[region],
-    //     ) - n1
-    //         .mapping_region_splits
-    //         .iter()
-    //         .zip_eq(n2.mapping_region_splits.iter())
-    //         .map(|(r1, r2)| {
-    //             assert!(r1[region] >= 0);
-    //             assert!(r2[region] >= 0);
-    //             min(r1[region], r2[region])
-    //         })
-    //         .sum::<i32>();
-    // }
-    assert!(sum >= 0);
     sum as u32
 }
 
@@ -377,7 +361,7 @@ fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
     n1.mapping_regions
         .iter()
         .zip_eq(n2.mapping_regions.iter())
-        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
+        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b) as u32)
 }
 
 /// Given two sets
@@ -425,7 +409,8 @@ pub fn ted_variant(
                 let k_window = n1.svec.postorder_id.saturating_sub(k);
                 // apply postorder filter
                 let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter() {
+                for n2 in s2c.struct_vec.iter()
+                    {
                     if k_window < s2clen && n2.svec.postorder_id < k_window {
                         continue;
                     }

@@ -81,14 +81,22 @@ pub fn parse_dataset(
     dataset_file: &PathBuf,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
+    let mut line_counter = 0;
     let f = File::open(dataset_file)?;
     let reader = BufReader::new(f);
     let trees: Vec<ParsedTree> = reader
         .lines()
         .map(|l| parse_tree(l, label_dict))
-        .filter(|res| res.is_ok())
+        .inspect(|parse_result| {
+            line_counter += 1;
+            // if let Err(ref parse_error) = *parse_result {
+            //     println!("Parsing error occurred: {parse_error}");
+            // }
+        })
+        .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
-
+    
+    println!("Consumed {line_counter} lines of trees");
     Ok(trees)
 }
 

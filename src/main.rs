@@ -10,6 +10,7 @@ use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
+use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::time::Instant;
@@ -214,55 +215,6 @@ fn main() -> Result<(), anyhow::Error> {
                             k,
                             None,
                         )?;
-                        //
-                        // let degree_time = Instant::now();
-                        // let (degree_filter_times, mut degree_candidates) =
-                        //     degree_index_lookup(&degree_hist, &label_dict, k);
-                        // degree_candidates.sort();
-                        // let degree_time = degree_time.elapsed().as_millis();
-                        // let (correct, extra, precision) =
-                        //     validation::get_precision(&degree_candidates, &results_path, k)
-                        //         .unwrap();
-                        // write_precision_and_filter_times(
-                        //     output_dir,
-                        //     &degree_filter_times,
-                        //     (correct, extra, precision, degree_time),
-                        //     "degree",
-                        //     k,
-                        //     Some(&degree_candidates),
-                        // )?;
-                        //
-                        // let leaf_time = Instant::now();
-                        // let (leaf_filter_times, mut leaf_candidates) =
-                        //     leaf_index_lookup(&leaf_hist, &label_dict, k);
-                        // leaf_candidates.sort();
-                        // let leaf_time = leaf_time.elapsed().as_millis();
-                        // let (correct, extra, precision) =
-                        //     validation::get_precision(&leaf_candidates, &results_path, k).unwrap();
-                        // write_precision_and_filter_times(
-                        //     output_dir,
-                        //     &leaf_filter_times,
-                        //     (correct, extra, precision, leaf_time),
-                        //     "leaf",
-                        //     k,
-                        //     Some(&leaf_candidates),
-                        // )?;
-                        //
-                        // let label_time = Instant::now();
-                        // let (label_filter_times, mut label_candidates) =
-                        //     label_index_lookup(&label_hist, &label_dict, k);
-                        // label_candidates.sort();
-                        // let label_time = label_time.elapsed().as_millis();
-                        // let (correct, extra, precision) =
-                        //     validation::get_precision(&label_candidates, &results_path, k).unwrap();
-                        // write_precision_and_filter_times(
-                        //     output_dir,
-                        //     &label_filter_times,
-                        //     (correct, extra, precision, label_time),
-                        //     "label",
-                        //     k,
-                        //     Some(&label_candidates),
-                        // )?;
                     }
                 }
                 LBM::Lblint => {
@@ -313,43 +265,39 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
                     let mut lc = LabelSetConverter::default();
-                    // let half = dbg!(half);
+                    let mut label_tree_size = FxHashMap::default();
+                    trees.iter().for_each(|tree| {
+                        tree.iter().for_each(|node| {
+                            let label = node.get();
+                            label_tree_size.entry(label).and_modify(|tc| *tc += tree.count())
+                                .or_insert(tree.count());
+                        })
+                    });
+
+                    label_dict.values().for_each(|(lbl, _)| {label_tree_size.entry(lbl).or_insert(0); });
+
                     let sorted_labels = label_dict
                         .values()
-                        .sorted_unstable_by_key(|(_, c)| c)
+                        // .sorted_by_key(|(_, c)| c)
+                        .sorted_by(|(lbl, c), (lbl2, c2)| (c2 * label_tree_size.get(lbl2).unwrap()).cmp(&(c * label_tree_size.get(lbl).unwrap())) )
                         .collect_vec();
-                    let most_used_labels = sorted_labels
-                        .iter()
-                        .rev()
-                        .map(|(lbl, _)| *lbl)
-                        .take(8)
-                        .collect_vec();
-                    use rand::{Rng, SeedableRng};
+
+                    write_file("sorted_labels.txt", &sorted_labels.iter().map(|(lbl, lblcnt)| format!("{lbl},{lblcnt}")).collect_vec())?;
 
                     let mut label_distribution = FxHashMap::default();
-                    let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::from_entropy();
-                    label_dict.values().for_each(|(lbl, _)| {
-                        label_distribution
-                            .insert(*lbl, rng1.gen_range(0..LabelSetConverter::MAX_SPLIT));
-                    });
+                    let mut i = 0;
+                    sorted_labels
+                        .iter()
+                        .rev()
+                        .for_each(|(lbl, lblcnt)| {
+                            label_distribution.insert(lbl, i % LabelSetConverter::MAX_SPLIT);
+                            i += 1;
+                        });
+
 
                     let split_labels_into_axes =
                         move |lbl: &LabelId| -> usize { *label_distribution.get(lbl).unwrap() };
 
-                    // let mut i = 0;
-                    // most_used_labels.iter().for_each(|lbl| {
-                    //     label_distribution.insert(lbl, i % 4);
-                    //     i += 1;
-                    // });
-                    //
-                    // sorted_labels
-                    //     .iter()
-                    //     .rev()
-                    //     .skip(most_used_labels.len())
-                    //     .for_each(|(lbl, _)| {
-                    //         label_distribution.insert(lbl, i % LabelSetConverter::MAX_SPLIT);
-                    //         i += 1;
-                    //     });
 
                     let mut selectivities = vec![];
                     if let LBM::StructuralVariant = method {
@@ -363,7 +311,6 @@ fn main() -> Result<(), anyhow::Error> {
                             .enumerate()
                             .flat_map(|(i, t1)| {
                                 let mut lower_bound_candidates = vec![];
-
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
                                     let lb = lb::structural_filter::ted_variant(t1, t2, k);
                                     if lb <= k {
@@ -405,8 +352,8 @@ fn main() -> Result<(), anyhow::Error> {
                             .collect::<Vec<_>>();
                         println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
                     }
-                    let mean_selectivity = statistics::mean(&selectivities);
-                    println!("Mean selectivity is: {mean_selectivity:.4}");
+                    let mean_selectivity = 100.0 * statistics::mean(&selectivities);
+                    println!("Mean selectivity is: {mean_selectivity:.4}%");
                 }
             }
             candidates.par_sort();

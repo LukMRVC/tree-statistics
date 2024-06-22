@@ -533,6 +533,7 @@ dependencies = [
  "rand_xoshiro",
  "rayon",
  "rustc-hash",
+ "serde",
  "thiserror",
 ]
 
