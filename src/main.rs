@@ -295,7 +295,7 @@ fn main() -> Result<(), anyhow::Error> {
                         .sorted_by(|(lbl, c), (lbl2, c2)| (c2 * label_tree_size.get(lbl2).unwrap()).cmp(&(c * label_tree_size.get(lbl).unwrap())) )
                         .collect_vec();
 
-                    write_file("sorted_labels.txt", &sorted_labels.iter().map(|(lbl, lblcnt)| format!("{lbl},{lblcnt}")).collect_vec())?;
+                    // write_file("sorted_labels.txt", &sorted_labels.iter().map(|(lbl, lblcnt)| format!("{lbl},{lblcnt}")).collect_vec())?;
 
                     let mut label_distribution = FxHashMap::default();
                     let mut i = 0;
@@ -382,8 +382,8 @@ fn main() -> Result<(), anyhow::Error> {
             let mean_selectivity = 100.0 * statistics::mean(&selectivities);
             println!("Mean selectivity is: {mean_selectivity:.4}%");
             let ds_name: Vec<&str> = cli.dataset_path.file_name().unwrap().to_str().unwrap().split('_').collect();
-            let ds_name = ds_name[ds_name.len() - 1];
-            let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
+            let ds_name = ds_name[0];
+            // let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
             write_file(
                 output.parent().unwrap().join(format!("{ds_name}-{method:?}-times-us.txt")),
                 &times.iter().map(|t| format!("{t}") ).collect_vec()
