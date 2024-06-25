@@ -10,7 +10,6 @@ use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
-use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::time::Instant;
@@ -192,6 +191,8 @@ fn main() -> Result<(), anyhow::Error> {
                 method
             );
             // TODO: Fix this unwrap_or
+            let mut times = vec![];
+            let mut selectivities = vec![];
             let k = threshold.unwrap_or(0);
             match method {
                 LBM::Hist => {
@@ -231,12 +232,18 @@ fn main() -> Result<(), anyhow::Error> {
                         .enumerate()
                         .flat_map(|(i, t1)| {
                             let mut lc = vec![];
+                            let lb_start = Instant::now();
                             for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
                                 let lb = lb::label_intersection::label_intersection(t1, t2);
                                 if lb <= k {
                                     lc.push((i, j));
                                 }
                             }
+                            let sel = 100f64
+                                * (lc.len() as f64
+                                / (indexed_trees.len() - i) as f64);
+                            times.push(lb_start.elapsed().as_micros());
+                            selectivities.push(sel);
                             lc
                         })
                         .collect::<Vec<_>>();
@@ -252,12 +259,18 @@ fn main() -> Result<(), anyhow::Error> {
                         .enumerate()
                         .flat_map(|(i, t1)| {
                             let mut lc = vec![];
+                            let lb_start = Instant::now();
                             for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
                                 let lb = lb::sed::sed_k(t1, t2, k + 1);
                                 if lb <= k {
                                     lc.push((i, j));
                                 }
                             }
+                            let sel = 100f64
+                                * (lc.len() as f64
+                                / (indexed_trees.len() - i) as f64);
+                            times.push(lb_start.elapsed().as_micros());
+                            selectivities.push(sel);
                             lc
                         })
                         .collect::<Vec<_>>();
@@ -299,7 +312,6 @@ fn main() -> Result<(), anyhow::Error> {
                         move |lbl: &LabelId| -> usize { *label_distribution.get(lbl).unwrap() };
 
 
-                    let mut selectivities = vec![];
                     if let LBM::StructuralVariant = method {
                         let structural_sets: Vec<
                             lb::structural_filter::SplitStructuralFilterTuple,
@@ -310,6 +322,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .enumerate()
                             .flat_map(|(i, t1)| {
+                                let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
                                     let lb = lb::structural_filter::ted_variant(t1, t2, k);
@@ -320,6 +333,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
+                                times.push(lb_start.elapsed().as_micros());
                                 selectivities.push(sel);
                                 lower_bound_candidates
                             })
@@ -336,6 +350,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .enumerate()
                             .flat_map(|(i, t1)| {
+                                let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
                                     let lb = lb::structural_filter::ted(t1, t2, k);
@@ -346,23 +361,32 @@ fn main() -> Result<(), anyhow::Error> {
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
+                                times.push(lb_start.elapsed().as_micros());
                                 selectivities.push(sel);
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
                         println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
                     }
-                    let mean_selectivity = 100.0 * statistics::mean(&selectivities);
-                    println!("Mean selectivity is: {mean_selectivity:.4}%");
+
                 }
             }
             candidates.par_sort();
             write_file(
-                output,
+                output.clone(),
                 &candidates
                     .iter()
                     .map(|(c1, c2)| format!("{c1},{c2}"))
                     .collect_vec(),
+            )?;
+            let mean_selectivity = 100.0 * statistics::mean(&selectivities);
+            println!("Mean selectivity is: {mean_selectivity:.4}%");
+            let ds_name: Vec<&str> = cli.dataset_path.file_name().unwrap().to_str().unwrap().split('_').collect();
+            let ds_name = ds_name[ds_name.len() - 1];
+            let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
+            write_file(
+                output.parent().unwrap().join(format!("{ds_name}-{method:?}-times-us.txt")),
+                &times.iter().map(|t| format!("{t}") ).collect_vec()
             )?;
         }
         Commands::Validate {
