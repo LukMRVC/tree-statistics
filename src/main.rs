@@ -205,7 +205,7 @@ fn main() -> Result<(), anyhow::Error> {
                     println!("Histogram LB lookup took: {}ms", duration.as_millis());
 
                     if let Some(results_path) = results_path {
-                        let (all_correct, all_extra, all_precision) =
+                        let (all_correct, all_extra, all_precision, _) =
                             validation::get_precision(&candidates, &results_path, k).unwrap();
                         let output_dir = output.parent().expect("Output dir not found!");
                         write_precision_and_filter_times(
@@ -322,6 +322,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .enumerate()
                             .flat_map(|(i, t1)| {
+                                // println!("{i}");
                                 let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
@@ -350,6 +351,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .enumerate()
                             .flat_map(|(i, t1)| {
+                                // println!("{i}");
                                 let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
@@ -379,7 +381,7 @@ fn main() -> Result<(), anyhow::Error> {
                     .map(|(c1, c2)| format!("{c1},{c2}"))
                     .collect_vec(),
             )?;
-            let mean_selectivity = 100.0 * statistics::mean(&selectivities);
+            let mean_selectivity = statistics::mean(&selectivities);
             println!("Mean selectivity is: {mean_selectivity:.4}%");
             let ds_name: Vec<&str> = cli.dataset_path.file_name().unwrap().to_str().unwrap().split('_').collect();
             let ds_name = ds_name[0];
@@ -396,11 +398,11 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             let false_positives = validation::validate(&candidates_path, &results_path, threshold)?;
             let candidates = validation::read_candidates(&candidates_path)?;
-            let (correct, extra, precision) =
+            let (correct, extra, precision, mean_selectivity) =
                 validation::get_precision(&candidates, &results_path, threshold)?;
 
-            println!("Correct trees;Extra trees;Precision");
-            println!("{correct};{extra};{precision}");
+            println!("Correct trees;Extra trees;Precision;Mean Selectivity");
+            println!("{correct};{extra};{precision};{mean_selectivity:.3}%");
             println!("Printing false positives in bracket");
             write_file(
                 PathBuf::from("./resources/results/false-positives.bracket"),
