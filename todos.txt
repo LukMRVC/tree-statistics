@@ -1,3 +1,12 @@
+# Namerit
+
+Jaky podil ma precision LB na celkovovy TED, tzn.
+
+zmerim si cas filtru na jednotlivych stromech -> jakmile mam kandidaty pustit vypocet TED -> zmerim cas vypoctu -> ulozit cas LB filteru, TEDu a celkovy cas!
+
+
+
+
 Udělat různé kolekce se strukturalnimi rozdily
 
 Doladit strukturalni filtr
