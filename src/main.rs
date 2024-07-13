@@ -185,6 +185,7 @@ fn main() -> Result<(), anyhow::Error> {
         } => {
             use LowerBoundMethods as LBM;
             let mut candidates: Vec<(usize, usize)> = vec![];
+            let lb_start = Instant::now();
             println!(
                 "Running for dataset: {} and method: {:?}",
                 cli.dataset_path.to_str().unwrap(),
@@ -202,7 +203,6 @@ fn main() -> Result<(), anyhow::Error> {
                         index_lookup(&leaf_hist, &degree_hist, &label_hist, &label_dict, k);
                     candidates = c;
                     let duration = start.elapsed();
-                    println!("Histogram LB lookup took: {}ms", duration.as_millis());
 
                     if let Some(results_path) = results_path {
                         let (all_correct, all_extra, all_precision, _) =
@@ -317,7 +317,6 @@ fn main() -> Result<(), anyhow::Error> {
                             lb::structural_filter::SplitStructuralFilterTuple,
                         > = lc.create_split(&trees, split_labels_into_axes);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
-                        let start = Instant::now();
                         candidates = structural_sets
                             .iter()
                             .enumerate()
@@ -339,14 +338,9 @@ fn main() -> Result<(), anyhow::Error> {
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
-                        println!(
-                            "SF-Adjusted Filter elapsed time: {}ms",
-                            start.elapsed().as_millis()
-                        );
                     } else {
                         let structural_sets = lc.create(&trees);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
-                        let start = Instant::now();
                         candidates = structural_sets
                             .iter()
                             .enumerate()
@@ -368,9 +362,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 lower_bound_candidates
                             })
                             .collect::<Vec<_>>();
-                        println!("SF Filter elapsed time: {}ms", start.elapsed().as_millis());
                     }
-
                 }
             }
             candidates.par_sort();
@@ -383,6 +375,7 @@ fn main() -> Result<(), anyhow::Error> {
             )?;
             let mean_selectivity = statistics::mean(&selectivities);
             println!("Mean selectivity is: {mean_selectivity:.4}%");
+            println!("Total LB execution time: {}ms", lb_start.elapsed().as_millis());
             let ds_name: Vec<&str> = cli.dataset_path.file_name().unwrap().to_str().unwrap().split('_').collect();
             let ds_name = ds_name[0];
             // let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
