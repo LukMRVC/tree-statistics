@@ -234,7 +234,7 @@ fn main() -> Result<(), anyhow::Error> {
                             let mut lc = vec![];
                             let lb_start = Instant::now();
                             for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
-                                let lb = lb::label_intersection::label_intersection(t1, t2);
+                                let lb = lb::label_intersection::label_intersection_k(t1, t2, k);
                                 if lb <= k {
                                     lc.push((i, j));
                                 }
@@ -402,7 +402,7 @@ fn main() -> Result<(), anyhow::Error> {
                 validation::get_precision(&candidates, &results_path, threshold)?;
 
             println!("Correct trees;Extra trees;Precision;Mean Selectivity");
-            println!("{correct};{extra};{precision};{mean_selectivity:.3}%");
+            println!("{correct};{extra};{precision};{mean_selectivity:.7}%");
             println!("Printing false positives in bracket");
             write_file(
                 PathBuf::from("./resources/results/false-positives.bracket"),
