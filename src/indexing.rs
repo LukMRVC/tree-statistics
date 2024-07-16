@@ -21,6 +21,7 @@ pub struct SEDIndex {
     pub c: ConstantsIndex,
 }
 
+
 impl Indexer for SEDIndex {
     fn index_tree(tree: &ParsedTree, _label_dict: &LabelDict) -> Self {
         let Some(root) = tree.iter().next() else {
@@ -101,6 +102,160 @@ fn traverse_inverted(
     children + 1
 }
 
+pub struct AptedIndex {
+    pub c: ConstantsIndex,
+    /// Stores label id of each node in a tree.
+    /** Labels are inserted into a dictionary in their left-to-right preorder
+       appearance.
+       Indexed in left-to-right preorder.
+     */
+    pub prel_to_label_id_: Vec<i32>,
+    /// Stores label id of each node in a tree.
+    /**
+     * Labels are inserted into a dictionary in their left-to-right preorder
+     * appearance.
+     * Indexed in left-to-right postorder.
+     */
+    pub postl_to_label_id_: Vec<i32>,
+
+    /// Stores label id of each node in a tree.
+    /**
+     * Labels are inserted into a dictionary in their left-to-right preorder
+     * appearance.
+     * Indexed in right-to-left postorder.
+     */
+    pub postr_to_label_id_: Vec<i32>,
+
+    /// Stores subtree size of each node in a tree.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_size_: Vec<i32>,
+
+    /// Stores left-to-right preorder id of the parent node.
+    /**
+     * Indexed in left-to-right preorder.
+     * `-1` represents no parent.
+     */
+    pub prel_to_parent_: Vec<i32>,
+
+    /// Stores left-to-right preorder ids of each node's children.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub rel_to_children_: Vec<Vec<i32>>,
+
+    /// Stores left-to-right postorder id of the leftmost leaf descendant of a node.
+    /**
+     * Indexed in left-to-right postorder.
+     */
+    pub postl_to_lld_: Vec<i32>,
+
+    /// Stores right-to-left postorder id of the rightmost leaf descendant of a node.
+    /**
+     * Indexed in right-to-left postorder.
+     * Depends on: PreLToSize, PostRToPreL, PreLToPostR, PreLToChildren.
+     */
+    pub postr_to_rld_: Vec<i32>,
+
+    /// Stores left-to-right preorder id of the leftmost leaf descendant of a node.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_lld_: Vec<i32>,
+
+    /// Stores left-to-right preorder id of the rightmost leaf descendant of a node.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_rld_: Vec<i32>,
+
+    /// Stores preorder id of the first leaf node to the left/right.
+    /**
+     * prel_to_ln_: left-to-right preorder of the first leaf to the left.
+     * prer_to_ln_: right-to-left preorder of the first leaf to the right.
+     * `-1` represents no such node.
+     * Depends on: PreLToSize, PreRToPreL.
+     */
+    pub prel_to_ln_: Vec<i32>,
+    pub prer_to_ln_: Vec<i32>,
+
+    /// Stores true if a node is leftmost child of its parent.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_type_left_: Vec<bool>,
+
+
+
+    /// Stores true if a node is rightmost child of its parent.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_type_right_: Vec<bool>,
+
+    /// Stores right-to-left preorder id of each node.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_prer_: Vec<i32>,
+
+
+    /// Stores left-to-right preorder id of each node.
+    /**
+     * Indexed in right-to-left preorder.
+     */
+    pub prer_to_prel_: Vec<i32>,
+
+
+    /// Stores left-to-right postorder id of each node.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_postl_: Vec<i32>,
+
+    /// Stores left-to-right preorder id of each node.
+    /**
+     * Indexed in left-to-right postorder.
+     */
+    pub postl_to_prel_: Vec<i32>,
+
+
+    /// Stores right-to-left postorder id of each node.
+    /**
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_postr_: Vec<i32>,
+
+    /// Stores left-to-right preorder id of each node.
+    /**
+     * Indexed in right-to-left postorder.
+     */
+    pub postr_to_prel_: Vec<i32>,
+
+
+    /// Stores cost of a single-path function for each node [1, Section 5.2].
+    /**
+     * prel_to_cost_all_: spf_A - single-path function using inner path
+     * prel_to_cost_left_: spf_L - single-path function using left path
+     * prel_to_cost_right_: spf_R - single-path function using right path
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_cost_all_: Vec<i64>,
+    pub prel_to_cost_left_: Vec<i64>,
+    pub prel_to_cost_right_: Vec<i64>,
+
+
+    /// Stores cost of deleting/inserting entire subtree for each node.
+    /**
+     * prel_to_subtree_del_cost_: cost of deleting entire subtree
+     * prel_to_subtree_ins_cost_: cost of inserting entire subtree
+     * Indexed in left-to-right preorder.
+     */
+    pub prel_to_subtree_del_cost_: Vec<f64>,
+    pub prel_to_subtree_ins_cost_: Vec<f64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,7 +301,7 @@ mod tests {
         assert!(parse_result.is_ok(), "Tree parsing failed, which shouldn't");
         let tree = parse_result.unwrap();
         let idx = InvertedListLabelPostorderIndex::index_tree(&tree, &label_dict);
-        
+
         let kvs = [
             (0, vec![3, 6]),
             (1, vec![0]),
@@ -154,13 +309,13 @@ mod tests {
             (3, vec![2]),
             (4, vec![5]),
         ];
-        
+
         let mut qh = InvListLblPost::default();
-        
-        for (k , v) in kvs {
-            qh.insert(k , v);
+
+        for (k, v) in kvs {
+            qh.insert(k, v);
         }
-        
+
         assert_eq!(
             idx.inverted_list,
             qh

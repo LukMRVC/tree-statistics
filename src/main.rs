@@ -23,6 +23,8 @@ mod parsing;
 mod statistics;
 mod validation;
 
+mod ted;
+
 /// Tree statistics utility
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
