@@ -1,4 +1,4 @@
-use crate::parsing::{LabelDict, LabelId, ParsedTree};
+use crate::parsing::{LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
@@ -361,7 +361,7 @@ fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
     n1.mapping_regions
         .iter()
         .zip_eq(n2.mapping_regions.iter())
-        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b) as u32)
+        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
 }
 
 /// Given two sets

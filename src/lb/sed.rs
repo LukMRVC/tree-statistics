@@ -40,11 +40,20 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
 /// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
 pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     let (mut t1, mut t2) = (t1, t2);
+    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+        return k + 1;
+    }
+
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
 
     let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
+
+    if pre_dist > k {
+        return pre_dist;
+    }
+
     let post_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
 
     std::cmp::max(pre_dist, post_dist)
@@ -103,7 +112,6 @@ fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         return threshold as usize;
     }
 
-    let threshold = threshold as i64;
     let zero_k: i64 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
 
     let arr_len = size_diff + (zero_k) * 2 + 2;

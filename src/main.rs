@@ -221,8 +221,7 @@ fn main() -> Result<(), anyhow::Error> {
                 LBM::Lblint => {
                     let indexed_trees = trees
                         .iter()
-                        .enumerate()
-                        .map(|(_idx, t)| {
+                        .map(|t| {
                             InvertedListLabelPostorderIndex::index_tree(t, &label_dict)
                         })
                         .collect_vec();

@@ -110,7 +110,7 @@ pub fn get_precision(
         max_tree_id = std::cmp::max(max_tree_id, std::cmp::max(t1, t2));
     }
     real_result.par_sort();
-    let max_tree_id = real_result.iter().map(|(tup)| tup.0).max().unwrap();
+    let max_tree_id = real_result.iter().map(|tup| tup.0).max().unwrap();
     let mut matches = vec![0; max_tree_id + 1];
     matches.par_iter_mut().enumerate().for_each(|(tree_id, tau_match)| {
         for (t1, t2) in real_result.iter() {
