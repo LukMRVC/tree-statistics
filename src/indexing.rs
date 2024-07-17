@@ -9,12 +9,12 @@ pub trait Indexer {
         Self: Sized;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ConstantsIndex {
     pub tree_size: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SEDIndex {
     pub preorder: Vec<i32>,
     pub postorder: Vec<i32>,
@@ -102,6 +102,8 @@ fn traverse_inverted(
     children + 1
 }
 
+
+#[derive(Debug, Default)]
 pub struct AptedIndex {
     pub c: ConstantsIndex,
     /// Stores label id of each node in a tree.
@@ -254,6 +256,26 @@ pub struct AptedIndex {
      */
     pub prel_to_subtree_del_cost_: Vec<f64>,
     pub prel_to_subtree_ins_cost_: Vec<f64>,
+}
+
+
+impl Indexer for AptedIndex {
+    fn index_tree(tree: &ParsedTree, label_dict: &LabelDict) -> Self
+    where
+        Self: Sized
+    {
+        let tree_size = tree.count();
+        let mut aptindex = AptedIndex::default();
+        aptindex.prel_to_parent_.resize(tree_size, -1);
+        
+            
+        todo!();
+        Self {
+            c: ConstantsIndex {
+                tree_size,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
