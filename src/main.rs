@@ -193,6 +193,7 @@ fn main() -> Result<(), anyhow::Error> {
             );
             // TODO: Fix this unwrap_or
             let mut times = vec![];
+            let mut candidate_times = vec![];
             let mut selectivities = vec![];
             let k = threshold.unwrap_or(0);
             match method {
@@ -236,12 +237,13 @@ fn main() -> Result<(), anyhow::Error> {
                                 let lb = lb::label_intersection::label_intersection_k(t1, t2, k);
                                 if lb <= k {
                                     lc.push((i, j));
+                                    candidate_times.push(lb_start.elapsed().as_micros());
                                 }
                             }
+                            times.push(lb_start.elapsed().as_micros());
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
-                            times.push(lb_start.elapsed().as_micros());
                             selectivities.push(sel);
                             lc
                         })
@@ -263,12 +265,13 @@ fn main() -> Result<(), anyhow::Error> {
                                 let lb = lb::sed::sed_k(t1, t2, k + 1);
                                 if lb <= k {
                                     lc.push((i, j));
+                                    candidate_times.push(lb_start.elapsed().as_micros());
                                 }
                             }
+                            times.push(lb_start.elapsed().as_micros());
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
-                            times.push(lb_start.elapsed().as_micros());
                             selectivities.push(sel);
                             lc
                         })
@@ -327,12 +330,13 @@ fn main() -> Result<(), anyhow::Error> {
                                     let lb = lb::structural_filter::ted_variant(t1, t2, k);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
+                                        candidate_times.push(lb_start.elapsed().as_micros());
                                     }
                                 }
+                                times.push(lb_start.elapsed().as_micros());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
-                                times.push(lb_start.elapsed().as_micros());
                                 selectivities.push(sel);
                                 lower_bound_candidates
                             })
@@ -351,12 +355,13 @@ fn main() -> Result<(), anyhow::Error> {
                                     let lb = lb::structural_filter::ted(t1, t2, k);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
+                                        candidate_times.push(lb_start.elapsed().as_micros());
                                     }
                                 }
+                                times.push(lb_start.elapsed().as_micros());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
-                                times.push(lb_start.elapsed().as_micros());
                                 selectivities.push(sel);
                                 lower_bound_candidates
                             })
@@ -381,6 +386,10 @@ fn main() -> Result<(), anyhow::Error> {
             write_file(
                 output.parent().unwrap().join(format!("{ds_name}-{method:?}-times-us.txt")),
                 &times.iter().map(|t| format!("{t}") ).collect_vec()
+            )?;
+            write_file(
+                output.parent().unwrap().join(format!("{ds_name}-{method:?}-candidate-times-us.txt")),
+                &candidate_times.iter().map(|t| format!("{t}") ).collect_vec()
             )?;
         }
         Commands::Validate {
