@@ -4,3 +4,6 @@
 
 resources/results
 resources/workloads
+
+resources/
+.ipynb_checkpoints
