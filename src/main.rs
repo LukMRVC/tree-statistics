@@ -237,7 +237,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 let lb = lb::label_intersection::label_intersection_k(t1, t2, k);
                                 if lb <= k {
                                     lc.push((i, j));
-                                    candidate_times.push(lb_start.elapsed().as_micros());
+                                    candidate_times.push(lb_start.elapsed().as_nanos());
                                 }
                             }
                             times.push(lb_start.elapsed().as_micros());
@@ -265,7 +265,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 let lb = lb::sed::sed_k(t1, t2, k + 1);
                                 if lb <= k {
                                     lc.push((i, j));
-                                    candidate_times.push(lb_start.elapsed().as_micros());
+                                    candidate_times.push(lb_start.elapsed().as_nanos());
                                 }
                             }
                             times.push(lb_start.elapsed().as_micros());
@@ -330,7 +330,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     let lb = lb::structural_filter::ted_variant(t1, t2, k);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
-                                        candidate_times.push(lb_start.elapsed().as_micros());
+                                        candidate_times.push(lb_start.elapsed().as_nanos());
                                     }
                                 }
                                 times.push(lb_start.elapsed().as_micros());
@@ -355,7 +355,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     let lb = lb::structural_filter::ted(t1, t2, k);
                                     if lb <= k {
                                         lower_bound_candidates.push((i, j));
-                                        candidate_times.push(lb_start.elapsed().as_micros());
+                                        candidate_times.push(lb_start.elapsed().as_nanos());
                                     }
                                 }
                                 times.push(lb_start.elapsed().as_micros());
@@ -388,7 +388,7 @@ fn main() -> Result<(), anyhow::Error> {
                 &times.iter().map(|t| format!("{t}") ).collect_vec()
             )?;
             write_file(
-                output.parent().unwrap().join(format!("{ds_name}-{method:?}-candidate-times-us.txt")),
+                output.parent().unwrap().join(format!("{ds_name}-{method:?}-candidate-times-ns.txt")),
                 &candidate_times.iter().map(|t| format!("{t}") ).collect_vec()
             )?;
         }
