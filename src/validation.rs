@@ -94,12 +94,12 @@ pub fn get_precision(
     candidates: &Candidates,
     results_path: &PathBuf,
     k: usize,
+    trees_total: usize,
 ) -> Result<(usize, usize, f32, f64), anyhow::Error> {
     let rfile = File::open(results_path)?;
     let rreader = BufReader::new(rfile);
     let mut real_result = vec![];
     let mut rreader = csv::Reader::from_reader(rreader);
-    let mut max_tree_id = 0;
     for result in rreader.records() {
         let record = result?;
         let (t1, t2, dist): (usize, usize, usize) =
@@ -107,19 +107,18 @@ pub fn get_precision(
         if dist <= k {
             real_result.push((t1, t2));
         }
-        max_tree_id = std::cmp::max(max_tree_id, std::cmp::max(t1, t2));
     }
     real_result.par_sort();
-    let max_tree_id = real_result.iter().map(|tup| tup.0).max().unwrap();
-    let mut matches = vec![0; max_tree_id + 1];
+    let mut matches = vec![0; trees_total];
     matches.par_iter_mut().enumerate().for_each(|(tree_id, tau_match)| {
-        for (t1, t2) in real_result.iter() {
-            if *t1 == tree_id || *t2 == tree_id {
+        for (t1, _) in candidates.iter() {
+            if *t1 == tree_id {
                 *tau_match += 1;
             }
         }
     });
-    let selectivity: Vec<f64> = matches.par_iter().enumerate().map(|(tree_id, tau_match)| 100f64 *  (*tau_match as f64 / (max_tree_id + 1) as f64)).collect();
+
+    let selectivity: Vec<f64> = matches.par_iter().enumerate().map(|(tree_id, tau_match)| 100f64 * (*tau_match as f64 / (trees_total - tree_id) as f64)).collect();
     let mean_sel = crate::statistics::mean(&selectivity);
     
 

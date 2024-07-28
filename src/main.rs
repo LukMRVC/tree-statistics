@@ -133,7 +133,7 @@ fn main() -> Result<(), anyhow::Error> {
         Commands::Statistics { hists } => {
             let stats: Vec<_> = trees.par_iter().map(statistics::gather).collect();
             let summary = statistics::summarize(&stats);
-            println!("Collection statistics\n{summary}");
+            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,distinct_labels\n{summary},{}", label_dict.keys().len());
             if hists.is_some() {
                 let mut output_path = hists.unwrap();
                 if output_path.exists() && !output_path.is_dir() {
@@ -207,7 +207,7 @@ fn main() -> Result<(), anyhow::Error> {
 
                     if let Some(results_path) = results_path {
                         let (all_correct, all_extra, all_precision, _) =
-                            validation::get_precision(&candidates, &results_path, k).unwrap();
+                            validation::get_precision(&candidates, &results_path, k, trees.len()).unwrap();
                         let output_dir = output.parent().expect("Output dir not found!");
                         write_precision_and_filter_times(
                             output_dir,
@@ -269,10 +269,13 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                             }
                             times.push(lb_start.elapsed().as_micros());
+                            
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
                             selectivities.push(sel);
+                            println!("Candidates for {i} is {}, resulting in SEL: {}", lc.len(), (lc.len() as f64) / indexed_trees.len() as f64);
+                            
                             lc
                         })
                         .collect::<Vec<_>>();
@@ -400,7 +403,7 @@ fn main() -> Result<(), anyhow::Error> {
             let false_positives = validation::validate(&candidates_path, &results_path, threshold)?;
             let candidates = validation::read_candidates(&candidates_path)?;
             let (correct, extra, precision, mean_selectivity) =
-                validation::get_precision(&candidates, &results_path, threshold)?;
+                validation::get_precision(&candidates, &results_path, threshold, trees.len())?;
 
             println!("Correct trees;Extra trees;Precision;Mean Selectivity");
             println!("{correct};{extra};{precision};{mean_selectivity:.7}%");

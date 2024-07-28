@@ -37,7 +37,7 @@ pub struct CollectionStatistics {
 
 impl fmt::Display for CollectionStatistics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(
+        write!(
             f,
             "{},{},{},{}",
             self.min_tree_size, self.max_tree_size, self.avg_tree_size, self.trees
