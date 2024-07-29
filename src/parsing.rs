@@ -151,7 +151,9 @@ pub(crate) fn parse_tree(
     let root_start = *tokens.next().unwrap();
     let root_end = **tokens.peek().unwrap();
 
-    let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
+    let root_label = unsafe {
+        String::from_utf8_unchecked(tree_bytes[(root_start + 1)..root_end].to_vec())
+    };
     let is_first_label_in_map = label_map.is_empty();
     let root_label = label_map
         .entry(root_label)
@@ -177,7 +179,7 @@ pub(crate) fn parse_tree(
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
                 let label =
-                    String::from_utf8(tree_bytes[(*token + 1)..**token_end].to_vec()).unwrap();
+                    unsafe { String::from_utf8_unchecked(tree_bytes[(*token + 1)..**token_end].to_vec()) };
 
                 let node_label = label_map
                     .entry(label)
