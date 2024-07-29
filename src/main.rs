@@ -351,7 +351,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .enumerate()
                             .flat_map(|(i, t1)| {
-                                // println!("{i}");
+                                println!("{i}");
                                 let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {

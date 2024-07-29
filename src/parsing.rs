@@ -89,9 +89,9 @@ pub fn parse_dataset(
         .map(|l| parse_tree(l, label_dict))
         .inspect(|parse_result| {
             line_counter += 1;
-            // if let Err(ref parse_error) = *parse_result {
-            //     println!("Parsing error occurred: {parse_error}");
-            // }
+            if line_counter % 10_000 == 0 {
+                println!("Parsed {line_counter} lines so far...");
+            }
         })
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
