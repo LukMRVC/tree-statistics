@@ -42,3 +42,352 @@ Pri pocitani LB, najit X nejvice spolecnych labelu v obou stromech a pak rozdeli
 Prvni budou mapovaci regiony BEZ nalezenych nejvice spolecny, druha osa mapovaci regiony a POUZE nalezene nejvice spolecne labely.
 
 Vysledek je pak L1(OSA 1) + L1(OSA 2)
+
+
+
+
+
+
+TAU match for 10 is 25, resulting in SEL: 0.5952380952380952
+TAU match for 12 is 23, resulting in SEL: 0.5476190476190477
+TAU match for 0 is 32, resulting in SEL: 0.7619047619047619
+TAU match for 13 is 21, resulting in SEL: 0.5
+TAU match for 2 is 31, resulting in SEL: 0.7380952380952381
+TAU match for 7 is 29, resulting in SEL: 0.6904761904761905
+TAU match for 8 is 28, resulting in SEL: 0.6666666666666666
+TAU match for 1 is 32, resulting in SEL: 0.7619047619047619
+TAU match for 9 is 23, resulting in SEL: 0.5476190476190477
+TAU match for 6 is 30, resulting in SEL: 0.7142857142857143
+TAU match for 36 is 4, resulting in SEL: 0.09523809523809523
+TAU match for 37 is 0, resulting in SEL: 0
+TAU match for 38 is 0, resulting in SEL: 0
+TAU match for 32 is 6, resulting in SEL: 0.14285714285714285
+TAU match for 17 is 15, resulting in SEL: 0.35714285714285715
+TAU match for 18 is 16, resulting in SEL: 0.38095238095238093
+TAU match for 11 is 23, resulting in SEL: 0.5476190476190477
+TAU match for 40 is 2, resulting in SEL: 0.047619047619047616
+TAU match for 41 is 0, resulting in SEL: 0
+TAU match for 24 is 11, resulting in SEL: 0.2619047619047619
+TAU match for 25 is 11, resulting in SEL: 0.2619047619047619
+TAU match for 16 is 21, resulting in SEL: 0.5
+TAU match for 4 is 29, resulting in SEL: 0.6904761904761905
+TAU match for 20 is 16, resulting in SEL: 0.38095238095238093
+TAU match for 23 is 12, resulting in SEL: 0.2857142857142857
+TAU match for 34 is 4, resulting in SEL: 0.09523809523809523
+TAU match for 31 is 4, resulting in SEL: 0.09523809523809523
+TAU match for 35 is 0, resulting in SEL: 0
+TAU match for 3 is 30, resulting in SEL: 0.7142857142857143
+TAU match for 21 is 17, resulting in SEL: 0.40476190476190477
+TAU match for 29 is 8, resulting in SEL: 0.19047619047619047
+TAU match for 19 is 15, resulting in SEL: 0.35714285714285715
+TAU match for 26 is 9, resulting in SEL: 0.21428571428571427
+TAU match for 14 is 25, resulting in SEL: 0.5952380952380952
+TAU match for 5 is 30, resulting in SEL: 0.7142857142857143
+TAU match for 22 is 16, resulting in SEL: 0.38095238095238093
+TAU match for 27 is 8, resulting in SEL: 0.19047619047619047
+TAU match for 33 is 5, resulting in SEL: 0.11904761904761904
+TAU match for 39 is 2, resulting in SEL: 0.047619047619047616
+TAU match for 30 is 4, resulting in SEL: 0.09523809523809523
+TAU match for 28 is 8, resulting in SEL: 0.19047619047619047
+TAU match for 15 is 23, resulting in SEL: 0.5476190476190477
+
+
+Candidates for 0 is 33, resulting in SEL: 0.11036789297658862
+Candidates for 1 is 32, resulting in SEL: 0.10702341137123746
+Candidates for 2 is 31, resulting in SEL: 0.10367892976588629
+Candidates for 3 is 30, resulting in SEL: 0.10033444816053512
+Candidates for 4 is 29, resulting in SEL: 0.09698996655518395
+Candidates for 5 is 30, resulting in SEL: 0.10033444816053512
+Candidates for 6 is 30, resulting in SEL: 0.10033444816053512
+Candidates for 7 is 29, resulting in SEL: 0.09698996655518395
+Candidates for 8 is 28, resulting in SEL: 0.09364548494983277
+Candidates for 9 is 23, resulting in SEL: 0.07692307692307693
+Candidates for 10 is 25, resulting in SEL: 0.08361204013377926
+Candidates for 11 is 23, resulting in SEL: 0.07692307692307693
+Candidates for 12 is 23, resulting in SEL: 0.07692307692307693
+Candidates for 13 is 21, resulting in SEL: 0.07023411371237458
+Candidates for 14 is 25, resulting in SEL: 0.08361204013377926
+Candidates for 15 is 23, resulting in SEL: 0.07692307692307693
+Candidates for 16 is 21, resulting in SEL: 0.07023411371237458
+Candidates for 17 is 15, resulting in SEL: 0.05016722408026756
+Candidates for 18 is 16, resulting in SEL: 0.05351170568561873
+Candidates for 19 is 15, resulting in SEL: 0.05016722408026756
+Candidates for 20 is 16, resulting in SEL: 0.05351170568561873
+Candidates for 21 is 17, resulting in SEL: 0.056856187290969896
+Candidates for 22 is 16, resulting in SEL: 0.05351170568561873
+Candidates for 23 is 12, resulting in SEL: 0.04013377926421405
+Candidates for 24 is 11, resulting in SEL: 0.03678929765886288
+Candidates for 25 is 11, resulting in SEL: 0.03678929765886288
+Candidates for 26 is 9, resulting in SEL: 0.030100334448160536
+Candidates for 27 is 8, resulting in SEL: 0.026755852842809364
+Candidates for 28 is 8, resulting in SEL: 0.026755852842809364
+Candidates for 29 is 8, resulting in SEL: 0.026755852842809364
+Candidates for 30 is 4, resulting in SEL: 0.013377926421404682
+Candidates for 31 is 4, resulting in SEL: 0.013377926421404682
+Candidates for 32 is 6, resulting in SEL: 0.020066889632107024
+Candidates for 33 is 5, resulting in SEL: 0.016722408026755852
+Candidates for 34 is 4, resulting in SEL: 0.013377926421404682
+Candidates for 35 is 0, resulting in SEL: 0
+Candidates for 36 is 4, resulting in SEL: 0.013377926421404682
+Candidates for 37 is 0, resulting in SEL: 0
+Candidates for 38 is 0, resulting in SEL: 0
+Candidates for 39 is 2, resulting in SEL: 0.006688963210702341
+Candidates for 40 is 2, resulting in SEL: 0.006688963210702341
+Candidates for 41 is 0, resulting in SEL: 0
+Candidates for 42 is 0, resulting in SEL: 0
+Candidates for 43 is 0, resulting in SEL: 0
+Candidates for 44 is 0, resulting in SEL: 0
+Candidates for 45 is 0, resulting in SEL: 0
+Candidates for 46 is 0, resulting in SEL: 0
+Candidates for 47 is 0, resulting in SEL: 0
+Candidates for 48 is 0, resulting in SEL: 0
+Candidates for 49 is 0, resulting in SEL: 0
+Candidates for 50 is 0, resulting in SEL: 0
+Candidates for 51 is 0, resulting in SEL: 0
+Candidates for 52 is 1, resulting in SEL: 0.0033444816053511705
+Candidates for 53 is 0, resulting in SEL: 0
+Candidates for 54 is 0, resulting in SEL: 0
+Candidates for 55 is 0, resulting in SEL: 0
+Candidates for 56 is 0, resulting in SEL: 0
+Candidates for 57 is 0, resulting in SEL: 0
+Candidates for 58 is 0, resulting in SEL: 0
+Candidates for 59 is 0, resulting in SEL: 0
+Candidates for 60 is 0, resulting in SEL: 0
+Candidates for 61 is 0, resulting in SEL: 0
+Candidates for 62 is 0, resulting in SEL: 0
+Candidates for 63 is 0, resulting in SEL: 0
+Candidates for 64 is 0, resulting in SEL: 0
+Candidates for 65 is 0, resulting in SEL: 0
+Candidates for 66 is 0, resulting in SEL: 0
+Candidates for 67 is 0, resulting in SEL: 0
+Candidates for 68 is 0, resulting in SEL: 0
+Candidates for 69 is 0, resulting in SEL: 0
+Candidates for 70 is 0, resulting in SEL: 0
+Candidates for 71 is 0, resulting in SEL: 0
+Candidates for 72 is 0, resulting in SEL: 0
+Candidates for 73 is 0, resulting in SEL: 0
+Candidates for 74 is 0, resulting in SEL: 0
+Candidates for 75 is 0, resulting in SEL: 0
+Candidates for 76 is 0, resulting in SEL: 0
+Candidates for 77 is 0, resulting in SEL: 0
+Candidates for 78 is 0, resulting in SEL: 0
+Candidates for 79 is 0, resulting in SEL: 0
+Candidates for 80 is 0, resulting in SEL: 0
+Candidates for 81 is 0, resulting in SEL: 0
+Candidates for 82 is 0, resulting in SEL: 0
+Candidates for 83 is 0, resulting in SEL: 0
+Candidates for 84 is 0, resulting in SEL: 0
+Candidates for 85 is 0, resulting in SEL: 0
+Candidates for 86 is 0, resulting in SEL: 0
+Candidates for 87 is 0, resulting in SEL: 0
+Candidates for 88 is 0, resulting in SEL: 0
+Candidates for 89 is 0, resulting in SEL: 0
+Candidates for 90 is 0, resulting in SEL: 0
+Candidates for 91 is 0, resulting in SEL: 0
+Candidates for 92 is 0, resulting in SEL: 0
+Candidates for 93 is 0, resulting in SEL: 0
+Candidates for 94 is 0, resulting in SEL: 0
+Candidates for 95 is 0, resulting in SEL: 0
+Candidates for 96 is 0, resulting in SEL: 0
+Candidates for 97 is 0, resulting in SEL: 0
+Candidates for 98 is 0, resulting in SEL: 0
+Candidates for 99 is 0, resulting in SEL: 0
+Candidates for 100 is 0, resulting in SEL: 0
+Candidates for 101 is 0, resulting in SEL: 0
+Candidates for 102 is 0, resulting in SEL: 0
+Candidates for 103 is 0, resulting in SEL: 0
+Candidates for 104 is 0, resulting in SEL: 0
+Candidates for 105 is 0, resulting in SEL: 0
+Candidates for 106 is 0, resulting in SEL: 0
+Candidates for 107 is 0, resulting in SEL: 0
+Candidates for 108 is 0, resulting in SEL: 0
+Candidates for 109 is 0, resulting in SEL: 0
+Candidates for 110 is 0, resulting in SEL: 0
+Candidates for 111 is 0, resulting in SEL: 0
+Candidates for 112 is 0, resulting in SEL: 0
+Candidates for 113 is 0, resulting in SEL: 0
+Candidates for 114 is 0, resulting in SEL: 0
+Candidates for 115 is 0, resulting in SEL: 0
+Candidates for 116 is 0, resulting in SEL: 0
+Candidates for 117 is 0, resulting in SEL: 0
+Candidates for 118 is 0, resulting in SEL: 0
+Candidates for 119 is 0, resulting in SEL: 0
+Candidates for 120 is 0, resulting in SEL: 0
+Candidates for 121 is 0, resulting in SEL: 0
+Candidates for 122 is 0, resulting in SEL: 0
+Candidates for 123 is 0, resulting in SEL: 0
+Candidates for 124 is 0, resulting in SEL: 0
+Candidates for 125 is 0, resulting in SEL: 0
+Candidates for 126 is 0, resulting in SEL: 0
+Candidates for 127 is 0, resulting in SEL: 0
+Candidates for 128 is 0, resulting in SEL: 0
+Candidates for 129 is 0, resulting in SEL: 0
+Candidates for 130 is 0, resulting in SEL: 0
+Candidates for 131 is 0, resulting in SEL: 0
+Candidates for 132 is 0, resulting in SEL: 0
+Candidates for 133 is 0, resulting in SEL: 0
+Candidates for 134 is 0, resulting in SEL: 0
+Candidates for 135 is 0, resulting in SEL: 0
+Candidates for 136 is 0, resulting in SEL: 0
+Candidates for 137 is 0, resulting in SEL: 0
+Candidates for 138 is 0, resulting in SEL: 0
+Candidates for 139 is 0, resulting in SEL: 0
+Candidates for 140 is 0, resulting in SEL: 0
+Candidates for 141 is 0, resulting in SEL: 0
+Candidates for 142 is 0, resulting in SEL: 0
+Candidates for 143 is 0, resulting in SEL: 0
+Candidates for 144 is 0, resulting in SEL: 0
+Candidates for 145 is 0, resulting in SEL: 0
+Candidates for 146 is 0, resulting in SEL: 0
+Candidates for 147 is 0, resulting in SEL: 0
+Candidates for 148 is 0, resulting in SEL: 0
+Candidates for 149 is 0, resulting in SEL: 0
+Candidates for 150 is 0, resulting in SEL: 0
+Candidates for 151 is 0, resulting in SEL: 0
+Candidates for 152 is 0, resulting in SEL: 0
+Candidates for 153 is 0, resulting in SEL: 0
+Candidates for 154 is 0, resulting in SEL: 0
+Candidates for 155 is 0, resulting in SEL: 0
+Candidates for 156 is 0, resulting in SEL: 0
+Candidates for 157 is 0, resulting in SEL: 0
+Candidates for 158 is 0, resulting in SEL: 0
+Candidates for 159 is 0, resulting in SEL: 0
+Candidates for 160 is 0, resulting in SEL: 0
+Candidates for 161 is 0, resulting in SEL: 0
+Candidates for 162 is 0, resulting in SEL: 0
+Candidates for 163 is 0, resulting in SEL: 0
+Candidates for 164 is 0, resulting in SEL: 0
+Candidates for 165 is 0, resulting in SEL: 0
+Candidates for 166 is 0, resulting in SEL: 0
+Candidates for 167 is 0, resulting in SEL: 0
+Candidates for 168 is 0, resulting in SEL: 0
+Candidates for 169 is 0, resulting in SEL: 0
+Candidates for 170 is 0, resulting in SEL: 0
+Candidates for 171 is 0, resulting in SEL: 0
+Candidates for 172 is 0, resulting in SEL: 0
+Candidates for 173 is 0, resulting in SEL: 0
+Candidates for 174 is 0, resulting in SEL: 0
+Candidates for 175 is 0, resulting in SEL: 0
+Candidates for 176 is 0, resulting in SEL: 0
+Candidates for 177 is 0, resulting in SEL: 0
+Candidates for 178 is 0, resulting in SEL: 0
+Candidates for 179 is 0, resulting in SEL: 0
+Candidates for 180 is 0, resulting in SEL: 0
+Candidates for 181 is 0, resulting in SEL: 0
+Candidates for 182 is 0, resulting in SEL: 0
+Candidates for 183 is 0, resulting in SEL: 0
+Candidates for 184 is 0, resulting in SEL: 0
+Candidates for 185 is 0, resulting in SEL: 0
+Candidates for 186 is 0, resulting in SEL: 0
+Candidates for 187 is 0, resulting in SEL: 0
+Candidates for 188 is 0, resulting in SEL: 0
+Candidates for 189 is 0, resulting in SEL: 0
+Candidates for 190 is 0, resulting in SEL: 0
+Candidates for 191 is 0, resulting in SEL: 0
+Candidates for 192 is 0, resulting in SEL: 0
+Candidates for 193 is 0, resulting in SEL: 0
+Candidates for 194 is 0, resulting in SEL: 0
+Candidates for 195 is 0, resulting in SEL: 0
+Candidates for 196 is 0, resulting in SEL: 0
+Candidates for 197 is 0, resulting in SEL: 0
+Candidates for 198 is 0, resulting in SEL: 0
+Candidates for 199 is 0, resulting in SEL: 0
+Candidates for 200 is 0, resulting in SEL: 0
+Candidates for 201 is 0, resulting in SEL: 0
+Candidates for 202 is 0, resulting in SEL: 0
+Candidates for 203 is 0, resulting in SEL: 0
+Candidates for 204 is 0, resulting in SEL: 0
+Candidates for 205 is 0, resulting in SEL: 0
+Candidates for 206 is 0, resulting in SEL: 0
+Candidates for 207 is 0, resulting in SEL: 0
+Candidates for 208 is 0, resulting in SEL: 0
+Candidates for 209 is 0, resulting in SEL: 0
+Candidates for 210 is 0, resulting in SEL: 0
+Candidates for 211 is 0, resulting in SEL: 0
+Candidates for 212 is 0, resulting in SEL: 0
+Candidates for 213 is 0, resulting in SEL: 0
+Candidates for 214 is 0, resulting in SEL: 0
+Candidates for 215 is 0, resulting in SEL: 0
+Candidates for 216 is 0, resulting in SEL: 0
+Candidates for 217 is 0, resulting in SEL: 0
+Candidates for 218 is 0, resulting in SEL: 0
+Candidates for 219 is 0, resulting in SEL: 0
+Candidates for 220 is 0, resulting in SEL: 0
+Candidates for 221 is 0, resulting in SEL: 0
+Candidates for 222 is 0, resulting in SEL: 0
+Candidates for 223 is 0, resulting in SEL: 0
+Candidates for 224 is 0, resulting in SEL: 0
+Candidates for 225 is 0, resulting in SEL: 0
+Candidates for 226 is 0, resulting in SEL: 0
+Candidates for 227 is 0, resulting in SEL: 0
+Candidates for 228 is 0, resulting in SEL: 0
+Candidates for 229 is 0, resulting in SEL: 0
+Candidates for 230 is 0, resulting in SEL: 0
+Candidates for 231 is 0, resulting in SEL: 0
+Candidates for 232 is 0, resulting in SEL: 0
+Candidates for 233 is 0, resulting in SEL: 0
+Candidates for 234 is 0, resulting in SEL: 0
+Candidates for 235 is 0, resulting in SEL: 0
+Candidates for 236 is 0, resulting in SEL: 0
+Candidates for 237 is 0, resulting in SEL: 0
+Candidates for 238 is 0, resulting in SEL: 0
+Candidates for 239 is 0, resulting in SEL: 0
+Candidates for 240 is 0, resulting in SEL: 0
+Candidates for 241 is 0, resulting in SEL: 0
+Candidates for 242 is 0, resulting in SEL: 0
+Candidates for 243 is 0, resulting in SEL: 0
+Candidates for 244 is 0, resulting in SEL: 0
+Candidates for 245 is 0, resulting in SEL: 0
+Candidates for 246 is 0, resulting in SEL: 0
+Candidates for 247 is 0, resulting in SEL: 0
+Candidates for 248 is 0, resulting in SEL: 0
+Candidates for 249 is 0, resulting in SEL: 0
+Candidates for 250 is 0, resulting in SEL: 0
+Candidates for 251 is 0, resulting in SEL: 0
+Candidates for 252 is 0, resulting in SEL: 0
+Candidates for 253 is 0, resulting in SEL: 0
+Candidates for 254 is 0, resulting in SEL: 0
+Candidates for 255 is 0, resulting in SEL: 0
+Candidates for 256 is 0, resulting in SEL: 0
+Candidates for 257 is 0, resulting in SEL: 0
+Candidates for 258 is 0, resulting in SEL: 0
+Candidates for 259 is 0, resulting in SEL: 0
+Candidates for 260 is 0, resulting in SEL: 0
+Candidates for 261 is 0, resulting in SEL: 0
+Candidates for 262 is 0, resulting in SEL: 0
+Candidates for 263 is 0, resulting in SEL: 0
+Candidates for 264 is 0, resulting in SEL: 0
+Candidates for 265 is 0, resulting in SEL: 0
+Candidates for 266 is 0, resulting in SEL: 0
+Candidates for 267 is 0, resulting in SEL: 0
+Candidates for 268 is 0, resulting in SEL: 0
+Candidates for 269 is 0, resulting in SEL: 0
+Candidates for 270 is 0, resulting in SEL: 0
+Candidates for 271 is 0, resulting in SEL: 0
+Candidates for 272 is 0, resulting in SEL: 0
+Candidates for 273 is 0, resulting in SEL: 0
+Candidates for 274 is 0, resulting in SEL: 0
+Candidates for 275 is 0, resulting in SEL: 0
+Candidates for 276 is 0, resulting in SEL: 0
+Candidates for 277 is 0, resulting in SEL: 0
+Candidates for 278 is 0, resulting in SEL: 0
+Candidates for 279 is 0, resulting in SEL: 0
+Candidates for 280 is 0, resulting in SEL: 0
+Candidates for 281 is 0, resulting in SEL: 0
+Candidates for 282 is 0, resulting in SEL: 0
+Candidates for 283 is 0, resulting in SEL: 0
+Candidates for 284 is 0, resulting in SEL: 0
+Candidates for 285 is 0, resulting in SEL: 0
+Candidates for 286 is 0, resulting in SEL: 0
+Candidates for 287 is 0, resulting in SEL: 0
+Candidates for 288 is 0, resulting in SEL: 0
+Candidates for 289 is 0, resulting in SEL: 0
+Candidates for 290 is 0, resulting in SEL: 0
+Candidates for 291 is 0, resulting in SEL: 0
+Candidates for 292 is 0, resulting in SEL: 0
+Candidates for 293 is 0, resulting in SEL: 0
+Candidates for 294 is 0, resulting in SEL: 0
+Candidates for 295 is 0, resulting in SEL: 0
+Candidates for 296 is 0, resulting in SEL: 0
+Candidates for 297 is 0, resulting in SEL: 0
+Candidates for 298 is 0, resulting in SEL: 0

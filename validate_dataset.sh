@@ -9,7 +9,7 @@ methods=("structural" "structural-variant" "sed" "lblint")
 for m in ${methods[@]}
 do
     echo "$m";
-    mkdir -p results/$TDS/$TAU
+    mkdir -p resources/results/$TDS/$TAU
     bash run_and_validate.sh $TDS $m $TAU | grep -e ';' -e '%' > resources/results/$TDS/$TAU/$TDS-$m-precision.txt
 done;
 

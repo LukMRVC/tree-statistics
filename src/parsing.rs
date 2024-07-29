@@ -6,7 +6,9 @@ use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::string::String;
+use itertools::Itertools;
 use thiserror::Error;
+use rayon::prelude::*;
 
 #[derive(Error, Debug)]
 pub enum DatasetParseError {
@@ -92,10 +94,14 @@ pub fn parse_dataset(
             // if let Err(ref parse_error) = *parse_result {
             //     println!("Parsing error occurred: {parse_error}");
             // }
+
+            if line_counter % 10_000 == 0 {
+                println!("Parsed {line_counter}");
+            }
         })
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
-    
+
     println!("Consumed {line_counter} lines of trees");
     Ok(trees)
 }
@@ -151,7 +157,9 @@ pub(crate) fn parse_tree(
     let root_start = *tokens.next().unwrap();
     let root_end = **tokens.peek().unwrap();
 
-    let root_label = String::from_utf8(tree_bytes[(root_start + 1)..root_end].to_vec()).unwrap();
+    let root_label = unsafe {
+        String::from_utf8_unchecked(tree_bytes[(root_start + 1)..root_end].to_vec())
+    };
     let is_first_label_in_map = label_map.is_empty();
     let root_label = label_map
         .entry(root_label)
@@ -176,8 +184,9 @@ pub(crate) fn parse_tree(
                         format!("Label has no ending token near col {token} , line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
-                let label =
-                    String::from_utf8(tree_bytes[(*token + 1)..**token_end].to_vec()).unwrap();
+                let label = unsafe {
+                    String::from_utf8_unchecked(tree_bytes[(*token + 1)..**token_end].to_vec())
+                };
 
                 let node_label = label_map
                     .entry(label)

@@ -107,6 +107,7 @@ enum Commands {
 }
 
 fn main() -> Result<(), anyhow::Error> {
+    rayon::ThreadPoolBuilder::new().num_threads(12).build_global().unwrap();
     let cli = Cli::parse();
     let mut cmd = Cli::command();
 
@@ -240,7 +241,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     candidate_times.push(lb_start.elapsed().as_nanos());
                                 }
                             }
-                            times.push(lb_start.elapsed().as_micros());
+                            times.push(lb_start.elapsed().as_nanos());
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
@@ -268,7 +269,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     candidate_times.push(lb_start.elapsed().as_nanos());
                                 }
                             }
-                            times.push(lb_start.elapsed().as_micros());
+                            times.push(lb_start.elapsed().as_nanos());
                             
                             let sel = 100f64
                                 * (lc.len() as f64
@@ -336,7 +337,7 @@ fn main() -> Result<(), anyhow::Error> {
                                         candidate_times.push(lb_start.elapsed().as_nanos());
                                     }
                                 }
-                                times.push(lb_start.elapsed().as_micros());
+                                times.push(lb_start.elapsed().as_nanos());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
@@ -347,11 +348,14 @@ fn main() -> Result<(), anyhow::Error> {
                     } else {
                         let structural_sets = lc.create(&trees);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
-                        candidates = structural_sets
-                            .iter()
+                        let par_results = structural_sets
+                            .par_iter()
                             .enumerate()
-                            .flat_map(|(i, t1)| {
+                            .map(|(i, t1)| {
                                 // println!("{i}");
+                                let mut candidate_times = vec![];
+                                let mut lb_times = vec![];
+
                                 let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
@@ -361,14 +365,17 @@ fn main() -> Result<(), anyhow::Error> {
                                         candidate_times.push(lb_start.elapsed().as_nanos());
                                     }
                                 }
-                                times.push(lb_start.elapsed().as_micros());
+                                lb_times.push(lb_start.elapsed().as_micros());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
-                                selectivities.push(sel);
-                                lower_bound_candidates
+                                // selectivities.push(sel);
+                                (lower_bound_candidates, candidate_times, lb_times)
                             })
                             .collect::<Vec<_>>();
+                        candidates = par_results.iter().flat_map(|(c, _, _)| c.clone()).collect::<Vec<_>>();
+                        candidate_times = par_results.iter().flat_map(|(_, t, _)| t.clone()).collect::<Vec<_>>();
+                        times = par_results.iter().flat_map(|(_, _, t)| t.clone()).collect::<Vec<_>>();
                     }
                 }
             }
