@@ -228,11 +228,12 @@ fn main() -> Result<(), anyhow::Error> {
                         })
                         .collect_vec();
 
-                    candidates = indexed_trees
-                        .iter()
+                    let par_results = indexed_trees
+                        .par_iter()
                         .enumerate()
-                        .flat_map(|(i, t1)| {
+                        .map(|(i, t1)| {
                             let mut lc = vec![];
+                            let mut candidate_times = vec![];
                             let lb_start = Instant::now();
                             for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
                                 let lb = lb::label_intersection::label_intersection_k(t1, t2, k);
@@ -241,14 +242,16 @@ fn main() -> Result<(), anyhow::Error> {
                                     candidate_times.push(lb_start.elapsed().as_nanos());
                                 }
                             }
-                            times.push(lb_start.elapsed().as_nanos());
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
-                            selectivities.push(sel);
-                            lc
+                            (lc, candidate_times, lb_start.elapsed().as_micros(), sel)
                         })
                         .collect::<Vec<_>>();
+                    candidates = par_results.iter().flat_map(|(c, _, _, _)| c.clone()).collect::<Vec<_>>();
+                    candidate_times = par_results.iter().flat_map(|(_, t, _, _)| t.clone()).collect::<Vec<_>>();
+                    times = par_results.iter().map(|(_, _, t, _)| t.clone()).collect::<Vec<_>>();
+                    selectivities = par_results.iter().map(|(_, _, _, s)| s.clone()).collect::<Vec<_>>();
                 }
                 LBM::Sed => {
                     let indexed_trees = trees
@@ -256,11 +259,12 @@ fn main() -> Result<(), anyhow::Error> {
                         .map(|t| SEDIndex::index_tree(t, &label_dict))
                         .collect_vec();
 
-                    candidates = indexed_trees
-                        .iter()
+                    let par_results = indexed_trees
+                        .par_iter()
                         .enumerate()
-                        .flat_map(|(i, t1)| {
+                        .map(|(i, t1)| {
                             let mut lc = vec![];
+                            let mut candidate_times = vec![];
                             let lb_start = Instant::now();
                             for (j, t2) in indexed_trees.iter().enumerate().skip(i + 1) {
                                 let lb = lb::sed::sed_k(t1, t2, k + 1);
@@ -269,17 +273,18 @@ fn main() -> Result<(), anyhow::Error> {
                                     candidate_times.push(lb_start.elapsed().as_nanos());
                                 }
                             }
-                            times.push(lb_start.elapsed().as_nanos());
-                            
+
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
-                            selectivities.push(sel);
-                            println!("Candidates for {i} is {}, resulting in SEL: {}", lc.len(), (lc.len() as f64) / indexed_trees.len() as f64);
-                            
-                            lc
+
+                            (lc, candidate_times, lb_start.elapsed().as_micros(), sel)
                         })
                         .collect::<Vec<_>>();
+                    candidates = par_results.iter().flat_map(|(c, _, _, _)| c.clone()).collect::<Vec<_>>();
+                    candidate_times = par_results.iter().flat_map(|(_, t, _, _)| t.clone()).collect::<Vec<_>>();
+                    times = par_results.iter().map(|(_, _, t, _)| t.clone()).collect::<Vec<_>>();
+                    selectivities = par_results.iter().map(|(_, _, _, s)| s.clone()).collect::<Vec<_>>();
                 }
                 LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
@@ -323,13 +328,14 @@ fn main() -> Result<(), anyhow::Error> {
                             lb::structural_filter::SplitStructuralFilterTuple,
                         > = lc.create_split(&trees, split_labels_into_axes);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
-                        candidates = structural_sets
-                            .iter()
+                        let par_results = structural_sets
+                            .par_iter()
                             .enumerate()
-                            .flat_map(|(i, t1)| {
+                            .map(|(i, t1)| {
                                 // println!("{i}");
-                                let lb_start = Instant::now();
+                                let mut candidate_times = vec![];
                                 let mut lower_bound_candidates = vec![];
+                                let lb_start = Instant::now();
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
                                     let lb = lb::structural_filter::ted_variant(t1, t2, k);
                                     if lb <= k {
@@ -337,14 +343,16 @@ fn main() -> Result<(), anyhow::Error> {
                                         candidate_times.push(lb_start.elapsed().as_nanos());
                                     }
                                 }
-                                times.push(lb_start.elapsed().as_nanos());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
-                                selectivities.push(sel);
-                                lower_bound_candidates
+                                (lower_bound_candidates, candidate_times, lb_start.elapsed().as_micros(), sel)
                             })
                             .collect::<Vec<_>>();
+                        candidates = par_results.iter().flat_map(|(c, _, _, _)| c.clone()).collect::<Vec<_>>();
+                        candidate_times = par_results.iter().flat_map(|(_, t, _, _)| t.clone()).collect::<Vec<_>>();
+                        times = par_results.iter().map(|(_, _, t, _)| t.clone()).collect::<Vec<_>>();
+                        selectivities = par_results.iter().map(|(_, _, _, s)| s.clone()).collect::<Vec<_>>();
                     } else {
                         let structural_sets = lc.create(&trees);
                         println!("Creating sets took {}ms", start.elapsed().as_millis());
@@ -353,11 +361,9 @@ fn main() -> Result<(), anyhow::Error> {
                             .enumerate()
                             .map(|(i, t1)| {
                                 // println!("{i}");
-                                let mut candidate_times = vec![];
-                                let mut lb_times = vec![];
-
-                                let lb_start = Instant::now();
                                 let mut lower_bound_candidates = vec![];
+                                let mut candidate_times = vec![];
+                                let lb_start = Instant::now();
                                 for (j, t2) in structural_sets.iter().enumerate().skip(i + 1) {
                                     let lb = lb::structural_filter::ted(t1, t2, k);
                                     if lb <= k {
@@ -365,17 +371,17 @@ fn main() -> Result<(), anyhow::Error> {
                                         candidate_times.push(lb_start.elapsed().as_nanos());
                                     }
                                 }
-                                lb_times.push(lb_start.elapsed().as_micros());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
                                         / (trees.len() - i) as f64);
-                                // selectivities.push(sel);
-                                (lower_bound_candidates, candidate_times, lb_times)
+                                (lower_bound_candidates, candidate_times, lb_start.elapsed().as_micros(), sel)
                             })
                             .collect::<Vec<_>>();
-                        candidates = par_results.iter().flat_map(|(c, _, _)| c.clone()).collect::<Vec<_>>();
-                        candidate_times = par_results.iter().flat_map(|(_, t, _)| t.clone()).collect::<Vec<_>>();
-                        times = par_results.iter().flat_map(|(_, _, t)| t.clone()).collect::<Vec<_>>();
+
+                        candidates = par_results.iter().flat_map(|(c, _, _, _)| c.clone()).collect::<Vec<_>>();
+                        candidate_times = par_results.iter().flat_map(|(_, t, _, _)| t.clone()).collect::<Vec<_>>();
+                        times = par_results.iter().map(|(_, _, t, _)| t.clone()).collect::<Vec<_>>();
+                        selectivities = par_results.iter().map(|(_, _, _, s)| s.clone()).collect::<Vec<_>>();
                     }
                 }
             }
@@ -388,7 +394,7 @@ fn main() -> Result<(), anyhow::Error> {
                     .collect_vec(),
             )?;
             let mean_selectivity = statistics::mean(&selectivities);
-            println!("Mean selectivity is: {mean_selectivity:.4}%");
+            // println!("Mean selectivity is: {mean_selectivity:.4}%");
             println!("Total LB execution time: {}ms", lb_start.elapsed().as_millis());
             let ds_name: Vec<&str> = cli.dataset_path.file_name().unwrap().to_str().unwrap().split('_').collect();
             let ds_name = ds_name[0];
@@ -428,20 +434,20 @@ fn main() -> Result<(), anyhow::Error> {
                     })
                     .collect_vec(),
             )?;
-            println!("Printing not found in graphviz");
-            write_file(
-                PathBuf::from("./resources/results/false-positives.graphviz"),
-                &false_positives
-                    .iter()
-                    .map(|(c1, c2)| {
-                        format!(
-                            "{}{}\n-------------------------\n",
-                            tree_to_string(&trees[*c1], TreeOutput::Graphviz),
-                            tree_to_string(&trees[*c2], TreeOutput::Graphviz)
-                        )
-                    })
-                    .collect_vec(),
-            )?;
+            // println!("Printing not found in graphviz");
+            // write_file(
+            //     PathBuf::from("./resources/results/false-positives.graphviz"),
+            //     &false_positives
+            //         .iter()
+            //         .map(|(c1, c2)| {
+            //             format!(
+            //                 "{}{}\n-------------------------\n",
+            //                 tree_to_string(&trees[*c1], TreeOutput::Graphviz),
+            //                 tree_to_string(&trees[*c2], TreeOutput::Graphviz)
+            //             )
+            //         })
+            //         .collect_vec(),
+            // )?;
         }
         Commands::TedTime {
             candidates_first: _,
