@@ -6,6 +6,7 @@ use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
 use lb::structural_filter::LabelSetConverter;
+use lb::binary_branch::BinaryBranchConverter;
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
@@ -49,6 +50,8 @@ enum LowerBoundMethods {
     Structural,
     /// Structural variant filter lower bound
     StructuralVariant,
+    /// Binary branch lower bound
+    Bib,
 }
 
 #[derive(Subcommand, Debug)]
@@ -115,7 +118,7 @@ fn main() -> Result<(), anyhow::Error> {
             ErrorKind::InvalidValue,
             "Path does not exists or is not a valid file!",
         )
-        .exit();
+            .exit();
     }
     let mut label_dict = LabelDict::new();
     let trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
@@ -141,7 +144,7 @@ fn main() -> Result<(), anyhow::Error> {
                         ErrorKind::InvalidValue,
                         "Output path must be a directory! Defaulting to current...",
                     )
-                    .print()?;
+                        .print()?;
                     output_path = PathBuf::from("./");
                 }
 
@@ -269,16 +272,37 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                             }
                             times.push(lb_start.elapsed().as_micros());
-                            
+
                             let sel = 100f64
                                 * (lc.len() as f64
                                 / (indexed_trees.len() - i) as f64);
                             selectivities.push(sel);
                             println!("Candidates for {i} is {}, resulting in SEL: {}", lc.len(), (lc.len() as f64) / indexed_trees.len() as f64);
-                            
+
                             lc
                         })
                         .collect::<Vec<_>>();
+                }
+                LBM::Bib => {
+                    let mut converter = BinaryBranchConverter::default();
+                    let start = Instant::now();
+                    let tree_bib_vectors = converter.create(&trees);
+                    println!("Creating BiB vectors took: {}ms", start.elapsed().as_millis());
+                    candidates = tree_bib_vectors.iter()
+                        .enumerate()
+                        .flat_map(|(i, t1)| {
+                            let mut lc = vec![];
+                            let lb_start = Instant::now();
+                            for (j, t2) in tree_bib_vectors.iter().enumerate().skip(i + 1) {
+                                let lb = lb::binary_branch::ted(t1, t2, k);
+                                if lb <= k {
+                                    lc.push((i, j));
+                                    candidate_times.push(lb_start.elapsed().as_nanos());
+                                }
+                            }
+                            times.push(lb_start.elapsed().as_micros());
+                            lc
+                        }).collect::<Vec<_>>();
                 }
                 LBM::Structural | LBM::StructuralVariant => {
                     let start = Instant::now();
@@ -292,12 +316,12 @@ fn main() -> Result<(), anyhow::Error> {
                         })
                     });
 
-                    label_dict.values().for_each(|(lbl, _)| {label_tree_size.entry(lbl).or_insert(0); });
+                    label_dict.values().for_each(|(lbl, _)| { label_tree_size.entry(lbl).or_insert(0); });
 
                     let sorted_labels = label_dict
                         .values()
                         // .sorted_by_key(|(_, c)| c)
-                        .sorted_by(|(lbl, c), (lbl2, c2)| (c2 * label_tree_size.get(lbl2).unwrap()).cmp(&(c * label_tree_size.get(lbl).unwrap())) )
+                        .sorted_by(|(lbl, c), (lbl2, c2)| (c2 * label_tree_size.get(lbl2).unwrap()).cmp(&(c * label_tree_size.get(lbl).unwrap())))
                         .collect_vec();
 
                     // write_file("sorted_labels.txt", &sorted_labels.iter().map(|(lbl, lblcnt)| format!("{lbl},{lblcnt}")).collect_vec())?;
@@ -339,7 +363,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 times.push(lb_start.elapsed().as_micros());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
-                                        / (trees.len() - i) as f64);
+                                    / (trees.len() - i) as f64);
                                 selectivities.push(sel);
                                 lower_bound_candidates
                             })
@@ -364,7 +388,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 times.push(lb_start.elapsed().as_micros());
                                 let sel = 100f64
                                     * (lower_bound_candidates.len() as f64
-                                        / (trees.len() - i) as f64);
+                                    / (trees.len() - i) as f64);
                                 selectivities.push(sel);
                                 lower_bound_candidates
                             })
@@ -388,11 +412,11 @@ fn main() -> Result<(), anyhow::Error> {
             // let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
             write_file(
                 output.parent().unwrap().join(format!("{ds_name}-{method:?}-times-us.txt")),
-                &times.iter().map(|t| format!("{t}") ).collect_vec()
+                &times.iter().map(|t| format!("{t}")).collect_vec(),
             )?;
             write_file(
                 output.parent().unwrap().join(format!("{ds_name}-{method:?}-candidate-times-ns.txt")),
-                &candidate_times.iter().map(|t| format!("{t}") ).collect_vec()
+                &candidate_times.iter().map(|t| format!("{t}")).collect_vec(),
             )?;
         }
         Commands::Validate {
