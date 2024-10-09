@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::string::String;
 use thiserror::Error;
 
@@ -77,17 +77,22 @@ fn tree_to_bracket(tree: &ParsedTree) -> String {
     bracket_notation
 }
 
+macro_rules! buf_open_file {
+    ($file_path:ident) => {
+        BufReader::new(File::open($file_path)?)
+    };
+}
+
 pub fn parse_dataset(
-    dataset_file: &PathBuf,
+    dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let mut line_counter = 0;
-    let f = File::open(dataset_file)?;
-    let reader = BufReader::new(f);
+    let reader = buf_open_file!(dataset_file);
     let trees: Vec<ParsedTree> = reader
         .lines()
         .map(|l| parse_tree(l, label_dict))
-        .inspect(|parse_result| {
+        .inspect(|_| {
             line_counter += 1;
             if line_counter % 10_000 == 0 {
                 println!("Parsed {line_counter} lines so far...");
@@ -95,8 +100,42 @@ pub fn parse_dataset(
         })
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
-    
+
     println!("Consumed {line_counter} lines of trees");
+    Ok(trees)
+}
+
+pub fn parse_queries(
+    query_file: &impl AsRef<Path>,
+    ld: &mut LabelDict,
+) -> Result<Vec<(usize, ParsedTree)>, DatasetParseError> {
+    let reader = buf_open_file!(query_file);
+    let trees: Vec<(usize, ParsedTree)> = reader
+        .lines()
+        .map(|l| {
+            let l = l.expect("line reading failed!");
+            let Some((threshold_str, tree)) = l.split_once(";") else {
+                return (
+                    0,
+                    Err(TreeParseError::IncorrectFormat(
+                        "(Could not parse query line!)".to_owned(),
+                    )),
+                );
+            };
+
+            (
+                threshold_str.parse::<usize>().unwrap(),
+                parse_tree(Ok(tree.to_owned()), ld),
+            )
+        })
+        .filter_map(|(t, tree_result)| {
+            if tree_result.is_err() {
+                return None;
+            }
+            Some((t, tree_result.unwrap()))
+        })
+        .collect::<Vec<_>>();
+
     Ok(trees)
 }
 
@@ -151,9 +190,8 @@ pub(crate) fn parse_tree(
     let root_start = *tokens.next().unwrap();
     let root_end = **tokens.peek().unwrap();
 
-    let root_label = unsafe {
-        String::from_utf8_unchecked(tree_bytes[(root_start + 1)..root_end].to_vec())
-    };
+    let root_label =
+        unsafe { String::from_utf8_unchecked(tree_bytes[(root_start + 1)..root_end].to_vec()) };
     let is_first_label_in_map = label_map.is_empty();
     let root_label = label_map
         .entry(root_label)
@@ -178,8 +216,9 @@ pub(crate) fn parse_tree(
                         format!("Label has no ending token near col {token} , line \"{tree_str}\"");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
-                let label =
-                    unsafe { String::from_utf8_unchecked(tree_bytes[(*token + 1)..**token_end].to_vec()) };
+                let label = unsafe {
+                    String::from_utf8_unchecked(tree_bytes[(*token + 1)..**token_end].to_vec())
+                };
 
                 let node_label = label_map
                     .entry(label)

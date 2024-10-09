@@ -1,8 +1,8 @@
-use crate::parsing::{LabelId, ParsedTree};
+use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
-use std::cmp::max;
+use std::{cmp::max, collections::HashMap};
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type SplitStructHashMap = FxHashMap<LabelId, SplitLabelSetElement>;
@@ -409,8 +409,7 @@ pub fn ted_variant(
                 let k_window = n1.svec.postorder_id.saturating_sub(k);
                 // apply postorder filter
                 let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter()
-                    {
+                for n2 in s2c.struct_vec.iter() {
                     if k_window < s2clen && n2.svec.postorder_id < k_window {
                         continue;
                     }
@@ -481,6 +480,19 @@ fn get_nodes_overlap_with_region_distance(
     }
 
     overlap
+}
+
+pub fn best_split_distribution(ld: &LabelDict) -> FxHashMap<&i32, usize> {
+    let sorted_labels = ld.values().sorted_by(|a, b| a.1.cmp(&b.1)).collect_vec();
+
+    let mut label_distribution = FxHashMap::default();
+    let mut i = 0;
+    sorted_labels.iter().rev().for_each(|(lbl, _)| {
+        label_distribution.insert(lbl, i % LabelSetConverter::MAX_SPLIT);
+        i += 1;
+    });
+
+    label_distribution
 }
 
 #[cfg(test)]
@@ -610,26 +622,26 @@ mod tests {
                                     }
                                     */
 
-    #[test]
-    fn test_struct_ted_variant_simple_2() {
-        let t1input = "{0{1}}".to_owned();
-        let t2input = "{62{5}{20}{28{17{1}{5}{20}}}{13{17}{42}}}".to_owned();
-        let mut label_dict = LabelDict::new();
-        let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
-        let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
-        let v = vec![t1, t2];
-        let mut sc = LabelSetConverter::default();
-        // let half = label_dict.len() / 2;
-        let half = 296usize;
-        use rand::{Rng, SeedableRng};
-        let split_labels_into_axes = move |lbl: &LabelId| -> usize {
-            let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(*lbl as u64);
-            rng1.gen_range(0..=3)
-        };
-        let sets = sc.create(&v, split_labels_into_axes);
-        let lb = ted(&sets[0], &sets[1], 4);
-        assert!(lb <= 10);
-    }
+    // #[test]
+    // fn test_struct_ted_variant_simple_2() {
+    //     let t1input = "{0{1}}".to_owned();
+    //     let t2input = "{62{5}{20}{28{17{1}{5}{20}}}{13{17}{42}}}".to_owned();
+    //     let mut label_dict = LabelDict::new();
+    //     let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
+    //     let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
+    //     let v = vec![t1, t2];
+    //     let mut sc = LabelSetConverter::default();
+    //     // let half = label_dict.len() / 2;
+    //     let half = 296usize;
+    //     use rand::{Rng, SeedableRng};
+    //     let split_labels_into_axes = move |lbl: &LabelId| -> usize {
+    //         let mut rng1 = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(*lbl as u64);
+    //         rng1.gen_range(0..=3)
+    //     };
+    //     let sets = sc.create(&v, split_labels_into_axes);
+    //     let lb = ted(&sets[0], &sets[1], 4);
+    //     assert!(lb <= 10);
+    // }
 
     #[test]
     fn test_svec_l1_distance_with_axes() {

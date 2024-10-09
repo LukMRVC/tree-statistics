@@ -3,7 +3,8 @@
 TDS=$1
 TAU=$2
 
-methods=("structural" "structural-variant" "sed" "lblint")
+methods=("bib" "structural" "structural-variant" "sed" "lblint")
+#methods=("bib")
 
 
 for m in ${methods[@]}
