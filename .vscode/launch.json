@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": ["-d", "resources/workloads/sentiment_sorted.bracket", "lower-bound", "-q", "resources/workloads/sentiment_query_sample.csv", "--output", "resources/results/sentiment/"],
             "cwd": "${workspaceFolder}"
         },
         {

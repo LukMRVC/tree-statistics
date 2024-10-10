@@ -125,9 +125,16 @@ impl LabelSetConverter {
         sets_collection
     }
 
+    fn reset(&mut self) {
+        self.actual_depth[0] = 0;
+        self.actual_pre_order_number[0] = 0;
+        self.tree_size_by_split_id[0] = 0;
+    }
+
     pub fn create(&mut self, trees: &[ParsedTree]) -> Vec<StructuralFilterTuple> {
         // add one because range are end exclusive
         // frequency vector of pair (label weight, labelId)
+        self.reset();
         let mut sets_collection = Vec::with_capacity(trees.len());
         for tree in trees.iter() {
             // contains structural vectors for the current tree
@@ -147,12 +154,26 @@ impl LabelSetConverter {
             self.create_record(&root_id, tree, &mut postorder_id, &mut record_labels);
 
             // reset state variables needed for positional evaluation
-            self.actual_depth[0] = 0;
-            self.actual_pre_order_number[0] = 0;
-            self.tree_size_by_split_id[0] = 0;
+            self.reset();
             sets_collection.push(StructuralFilterTuple(tree.count(), record_labels));
         }
         sets_collection
+    }
+
+    pub fn create_single(&mut self, tree: &ParsedTree) -> StructuralFilterTuple {
+        self.reset();
+        let mut record_labels = StructHashMap::default();
+        let Some(root) = tree.iter().next() else {
+            panic!("tree is empty");
+        };
+        let root_id = tree.get_node_id(root).unwrap();
+        // for recursive postorder traversal
+        let mut postorder_id = 0;
+        self.tree_size_by_split_id[0] = tree.count() as RegionNumType;
+        // array of records stored in sets_collection
+        self.create_record(&root_id, tree, &mut postorder_id, &mut record_labels);
+        self.reset();
+        StructuralFilterTuple(tree.count(), record_labels)
     }
 
     /*

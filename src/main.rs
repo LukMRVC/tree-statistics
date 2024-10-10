@@ -1,21 +1,20 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
-use crate::lb::indexes::histograms::{create_collection_histograms, index_lookup};
+use crate::lb::indexes::histograms::create_collection_histograms;
 use crate::parsing::{tree_to_string, LabelDict, LabelId, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
 use lb::binary_branch::BinaryBranchConverter;
-use lb::structural_filter::{self, LabelSetConverter};
+use lb::label_intersection::label_intersection_k;
+use lb::sed::sed_k;
+use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::process::exit;
-use std::time::Instant;
-
-use rustc_hash::FxHashMap;
+use std::process::{self, exit};
 
 mod indexing;
 mod lb;
@@ -186,11 +185,14 @@ fn main() -> Result<(), anyhow::Error> {
             results_path,
         } => {
             use LowerBoundMethods as LBM;
+            if !output.is_dir() {
+                eprintln!("Output arg must be a directory, is: {output:#?}");
+                process::exit(1);
+            }
+
             // let mut times = vec![];
             // let mut candidate_times = vec![];
             // let mut selectivities = vec![];
-            let mut candidates: Vec<(usize, usize)> = vec![];
-            let lb_start = Instant::now();
             println!("Preparing dataset and running preprocessing for all methods");
             let collection_histograms = create_collection_histograms(&trees);
             let lblint_indexes = trees
@@ -215,64 +217,94 @@ fn main() -> Result<(), anyhow::Error> {
 
             for current_method in lbms.iter() {
                 // TODO: preprocess the queries
-                match *current_method {
+                let (mut candidates, duration) = match *current_method {
                     LBM::Lblint => {
-                        for (t, query) in queries.iter() {
-                            for 
-                        }
-                    },
+                        let lblint_queries = queries
+                            .iter()
+                            .map(|(t, q)| {
+                                (
+                                    *t,
+                                    InvertedListLabelPostorderIndex::index_tree(q, &label_dict),
+                                )
+                            })
+                            .collect_vec();
+
+                        lb::iterate_queries!(lblint_queries, lblint_indexes, label_intersection_k)
+                    }
                     LBM::Sed => {
-                        for (t, query) in queries.iter() {
+                        let sed_queries = queries
+                            .iter()
+                            .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
+                            .collect_vec();
 
-                        }
-                    },
+                        lb::iterate_queries!(sed_queries, sed_indexes, sed_k)
+                    }
                     LBM::Structural => {
-                        for (t, query) in queries.iter() {
+                        let structural_queries = queries
+                            .iter()
+                            .map(|(t, q)| (*t, lc.create_single(q)))
+                            .collect_vec();
 
-                        }
-                    },
+                        lb::iterate_queries!(structural_queries, structural_sets, struct_ted_k)
+                    }
                     _ => todo!(),
-                }
+                };
+
+                println!(
+                    "Execution time for {current_method:?} was: {duration_ms}ms",
+                    duration_ms = duration.as_millis()
+                );
+                let mut output_file = output.clone();
+                output_file.push(format!("{current_method:#?}_candidates.csv"));
+
+                candidates.par_sort();
+                write_file(
+                    output_file,
+                    &candidates
+                        .iter()
+                        .map(|(c1, c2)| format!("{c1},{c2}"))
+                        .collect_vec(),
+                )?;
             }
 
-            candidates.par_sort();
-            write_file(
-                output.clone(),
-                &candidates
-                    .iter()
-                    .map(|(c1, c2)| format!("{c1},{c2}"))
-                    .collect_vec(),
-            )?;
-            let mean_selectivity = statistics::mean(&selectivities);
-            println!("Mean selectivity is: {mean_selectivity:.4}%");
-            println!(
-                "Total LB execution time: {}ms",
-                lb_start.elapsed().as_millis()
-            );
-            let ds_name: Vec<&str> = cli
-                .dataset_path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .split('_')
-                .collect();
-            let ds_name = ds_name[0];
-            // let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
-            write_file(
-                output
-                    .parent()
-                    .unwrap()
-                    .join(format!("{ds_name}-{method:?}-times-us.txt")),
-                &times.iter().map(|t| format!("{t}")).collect_vec(),
-            )?;
-            write_file(
-                output
-                    .parent()
-                    .unwrap()
-                    .join(format!("{ds_name}-{method:?}-candidate-times-ns.txt")),
-                &candidate_times.iter().map(|t| format!("{t}")).collect_vec(),
-            )?;
+            // candidates.par_sort();
+            // write_file(
+            //     output.clone(),
+            //     &candidates
+            //         .iter()
+            //         .map(|(c1, c2)| format!("{c1},{c2}"))
+            //         .collect_vec(),
+            // )?;
+            // let mean_selectivity = statistics::mean(&selectivities);
+            // println!("Mean selectivity is: {mean_selectivity:.4}%");
+            // println!(
+            //     "Total LB execution time: {}ms",
+            //     lb_start.elapsed().as_millis()
+            // );
+            // let ds_name: Vec<&str> = cli
+            //     .dataset_path
+            //     .file_name()
+            //     .unwrap()
+            //     .to_str()
+            //     .unwrap()
+            //     .split('_')
+            //     .collect();
+            // let ds_name = ds_name[0];
+            // // let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
+            // write_file(
+            //     output
+            //         .parent()
+            //         .unwrap()
+            //         .join(format!("{ds_name}-{method:?}-times-us.txt")),
+            //     &times.iter().map(|t| format!("{t}")).collect_vec(),
+            // )?;
+            // write_file(
+            //     output
+            //         .parent()
+            //         .unwrap()
+            //         .join(format!("{ds_name}-{method:?}-candidate-times-ns.txt")),
+            //     &candidate_times.iter().map(|t| format!("{t}")).collect_vec(),
+            // )?;
         }
         Commands::Validate {
             results_path,
