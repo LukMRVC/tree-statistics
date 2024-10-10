@@ -1,4 +1,10 @@
-use crate::indexing::InvertedListLabelPostorderIndex;
+use itertools::Itertools;
+use rustc_hash::FxHashMap;
+
+use crate::{
+    indexing::InvertedListLabelPostorderIndex,
+    parsing::{LabelId, ParsedTree},
+};
 
 pub fn label_intersection(
     t1: &InvertedListLabelPostorderIndex,
@@ -40,6 +46,62 @@ pub fn label_intersection_k(
     }
 
     bigger_tree - intersection_size
+}
+
+pub struct LabelIntersectionIndex {
+    index: FxHashMap<LabelId, Vec<(usize, usize, usize)>>,
+}
+
+impl LabelIntersectionIndex {
+    // asserts trees are in sorted order when creating a new index
+    pub fn new(trees: &[InvertedListLabelPostorderIndex]) -> Self {
+        let mut index: FxHashMap<LabelId, Vec<(usize, usize, usize)>> = FxHashMap::default();
+
+        for (tid, t) in trees.iter().enumerate() {
+            for (label, lbl_count) in t.inverted_list.iter() {
+                index
+                    .entry(*label)
+                    .and_modify(|postings| postings.push((tid, t.c.tree_size, lbl_count.len())))
+                    .or_insert(vec![(tid, t.c.tree_size, lbl_count.len())]);
+            }
+        }
+
+        LabelIntersectionIndex { index }
+    }
+
+    pub fn query_index(
+        &self,
+        query_tree: &InvertedListLabelPostorderIndex,
+        k: usize,
+    ) -> Vec<usize> {
+        // for each TID stores the current intersection size
+        let mut tree_intersections = FxHashMap::default();
+        for (lbl, query_label_cnt) in query_tree.inverted_list.iter() {
+            let query_label_cnt = query_label_cnt.len();
+            if let Some(posting_list) = self.index.get(&lbl) {
+                for (tid, tree_size, label_cnt) in posting_list
+                    .iter()
+                    .skip_while(|(_, size, _)| query_tree.c.tree_size.abs_diff(*size) > k)
+                    .take_while(|(_, size, _)| query_tree.c.tree_size.abs_diff(*size) <= k)
+                {
+                    tree_intersections
+                        .entry(tid)
+                        .and_modify(|(intersection_size, _)| {
+                            *intersection_size += std::cmp::min(query_label_cnt, *label_cnt);
+                        })
+                        .or_insert((std::cmp::min(query_label_cnt, *label_cnt), *tree_size));
+                }
+            }
+        }
+
+        tree_intersections
+            .iter()
+            .filter(|(tid, (intersection_size, tree_size))| {
+                std::cmp::max(query_tree.c.tree_size, *tree_size) - intersection_size <= k
+            })
+            .map(|(tid, _)| **tid)
+            .collect_vec()
+    }
 }
 
 #[cfg(test)]

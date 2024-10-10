@@ -6,15 +6,17 @@ use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
 use lb::binary_branch::BinaryBranchConverter;
-use lb::label_intersection::label_intersection_k;
+use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
+use rand::seq::index;
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, exit};
+use std::time::Instant;
 
 mod indexing;
 mod lb;
@@ -206,6 +208,8 @@ fn main() -> Result<(), anyhow::Error> {
             let mut bib_converter = BinaryBranchConverter::default();
             let tree_bib_vectors = bib_converter.create(&trees);
             let mut lc = LabelSetConverter::default();
+            let lblint_index = label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
+
             let structural_sets = lc.create(&trees);
             let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
             let split_distribution =
@@ -229,6 +233,17 @@ fn main() -> Result<(), anyhow::Error> {
                             })
                             .collect_vec();
 
+                        let start = Instant::now();
+                        let mut index_candidates: Vec<usize> = vec![];
+                        for (qid, (t, query)) in lblint_queries.iter().enumerate() {
+                            index_candidates.append(&mut lblint_index.query_index(query, *t));
+                        }
+                        println!(
+                            "Lblint index found {canlen} candidates in {dur}ms",
+                            canlen = index_candidates.len(),
+                            dur = start.elapsed().as_millis()
+                        );
+
                         lb::iterate_queries!(lblint_queries, lblint_indexes, label_intersection_k)
                     }
                     LBM::Sed => {
@@ -251,8 +266,9 @@ fn main() -> Result<(), anyhow::Error> {
                 };
 
                 println!(
-                    "Execution time for {current_method:?} was: {duration_ms}ms",
-                    duration_ms = duration.as_millis()
+                    "Execution time for {current_method:?} was: {duration_ms}ms and found {canlen} candidates",
+                    duration_ms = duration.as_millis(),
+                    canlen = candidates.len()
                 );
                 let mut output_file = output.clone();
                 output_file.push(format!("{current_method:#?}_candidates.csv"));
