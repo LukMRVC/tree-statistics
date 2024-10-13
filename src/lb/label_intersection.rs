@@ -1,10 +1,7 @@
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
-use crate::{
-    indexing::InvertedListLabelPostorderIndex,
-    parsing::{LabelId, ParsedTree},
-};
+use crate::{indexing::InvertedListLabelPostorderIndex, parsing::LabelId};
 
 pub fn label_intersection(
     t1: &InvertedListLabelPostorderIndex,
@@ -30,6 +27,7 @@ pub fn label_intersection_k(
     let mut intersection_size = 0;
     let bigger_tree = max(t1.c.tree_size, t2.c.tree_size);
 
+    // if all labels matched, but just the size difference was too much, just exit
     if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
         return k + 1;
     }
@@ -50,13 +48,14 @@ pub fn label_intersection_k(
 
 pub struct LabelIntersectionIndex {
     index: FxHashMap<LabelId, Vec<(usize, usize, usize)>>,
+    size_index: Vec<usize>,
 }
 
 impl LabelIntersectionIndex {
-    // asserts trees are in sorted order when creating a new index
+    // asserts trees are in sorted order by tree size when creating a new index
     pub fn new(trees: &[InvertedListLabelPostorderIndex]) -> Self {
         let mut index: FxHashMap<LabelId, Vec<(usize, usize, usize)>> = FxHashMap::default();
-
+        let mut size_index = vec![];
         for (tid, t) in trees.iter().enumerate() {
             for (label, lbl_count) in t.inverted_list.iter() {
                 index
@@ -64,16 +63,19 @@ impl LabelIntersectionIndex {
                     .and_modify(|postings| postings.push((tid, t.c.tree_size, lbl_count.len())))
                     .or_insert(vec![(tid, t.c.tree_size, lbl_count.len())]);
             }
+            size_index.push(t.c.tree_size);
         }
 
-        LabelIntersectionIndex { index }
+        LabelIntersectionIndex { index, size_index }
     }
 
     pub fn query_index(
         &self,
         query_tree: &InvertedListLabelPostorderIndex,
         k: usize,
-    ) -> Vec<usize> {
+        query_id: Option<usize>,
+    ) -> Vec<(usize, usize)> {
+        let query_id = query_id.unwrap_or(0);
         // for each TID stores the current intersection size
         let mut tree_intersections = FxHashMap::default();
         for (lbl, query_label_cnt) in query_tree.inverted_list.iter() {
@@ -85,7 +87,7 @@ impl LabelIntersectionIndex {
                     .take_while(|(_, size, _)| query_tree.c.tree_size.abs_diff(*size) <= k)
                 {
                     tree_intersections
-                        .entry(tid)
+                        .entry(*tid)
                         .and_modify(|(intersection_size, _)| {
                             *intersection_size += std::cmp::min(query_label_cnt, *label_cnt);
                         })
@@ -94,13 +96,29 @@ impl LabelIntersectionIndex {
             }
         }
 
-        tree_intersections
+        let mut candidates = vec![];
+        // find candidates that have no label overlap but can fit by size because of threshold
+        for (cid, tree_size) in self
+            .size_index
             .iter()
-            .filter(|(tid, (intersection_size, tree_size))| {
-                std::cmp::max(query_tree.c.tree_size, *tree_size) - intersection_size <= k
-            })
-            .map(|(tid, _)| **tid)
-            .collect_vec()
+            .enumerate()
+            .take_while(|(_, ts)| !(query_tree.c.tree_size.abs_diff(**ts) > k))
+        {
+            if let None = tree_intersections.get(&cid) {
+                if std::cmp::max(query_tree.c.tree_size, *tree_size) <= k {
+                    candidates.push((query_id, cid));
+                }
+            }
+        }
+        candidates.extend(
+            tree_intersections
+                .iter()
+                .filter(|(_, (intersection_size, tree_size))| {
+                    std::cmp::max(query_tree.c.tree_size, *tree_size) - intersection_size <= k
+                })
+                .map(|(tid, _)| (query_id, *tid)),
+        );
+        candidates
     }
 }
 
@@ -143,5 +161,23 @@ mod tests {
         let lb = label_intersection(&t1i, &t2i);
 
         assert_eq!(lb, 11, "Lower bound is 10");
+    }
+
+    #[test]
+    fn test_correctness_index() {
+        let i = "{0{1 Abysmally}{0 pathetic}}".to_owned();
+        let q = "{3{2{2 Unfolds}{3{2 in}{2{2{2{2 a}{2 series}}{2{2 of}{2{2 achronological}{2 vignettes}}}}{3{2{2{2 whose}{2 cumulative}}{2 effect}}{2{2 is}{3 chilling}}}}}}{2 .}}".to_owned();
+        let mut ld = LabelDict::new();
+        let t1 = parse_tree(Ok(i), &mut ld).unwrap();
+        let t2 = parse_tree(Ok(q), &mut ld).unwrap();
+        let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
+        let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
+
+        let lb = label_intersection_k(&t1i, &t2i, 25);
+        assert!(lb <= 25, "Lower bound is less than 25");
+
+        let lblint_index = LabelIntersectionIndex::new(&vec![t1i]);
+        let candidates = lblint_index.query_index(&t2i, 25, Some(0));
+        assert_eq!(candidates.len(), 1, "No candidates found")
     }
 }

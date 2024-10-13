@@ -1,14 +1,11 @@
-use dashmap::DashMap;
 use indextree::{Arena, NodeEdge};
 use memchr::memchr2_iter;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::string::String;
-use std::sync::RwLock;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -105,108 +102,6 @@ pub fn parse_dataset(
         .collect::<Result<Vec<_>, _>>()?;
 
     println!("Consumed {line_counter} lines of trees");
-    Ok(trees)
-}
-
-pub fn parse_dataset_concurrent(
-    dataset_file: &impl AsRef<Path>,
-    label_dict: &mut LabelDict,
-) -> Result<Vec<ParsedTree>, DatasetParseError> {
-    let mut line_counter = 0;
-    let reader = buf_open_file!(dataset_file);
-    let mut all_lines = Vec::with_capacity(5000);
-    for line in reader.lines() {
-        all_lines.push(line?);
-    }
-
-    let concurrent_map = std::sync::Arc::new(DashMap::with_capacity(all_lines.len() * 2));
-    let mut max_node_id = std::sync::Arc::new(RwLock::new(1));
-    println!("Read {lines} lines of trees", lines = all_lines.len());
-
-    let trees = all_lines
-        .par_iter()
-        .map(|tree_str| {
-            use TreeParseError as TPE;
-            if !tree_str.is_ascii() {
-                return Err(TPE::IsNotAscii);
-            }
-            let mut tree = ParsedTree::with_capacity(tree_str.len() / 2);
-            let tree_bytes = tree_str.as_bytes();
-
-            let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
-                .filter(|char_pos| !is_escaped(tree_bytes, *char_pos))
-                .collect();
-
-            if token_positions.len() < 2 {
-                return Err(TPE::IncorrectFormat(
-                    "Minimal of 2 brackets not found!".to_owned(),
-                ));
-            }
-
-            let mut tokens = token_positions.iter().peekable();
-            let root_start = *tokens.next().unwrap();
-            let root_end = **tokens.peek().unwrap();
-
-            let root_label = unsafe {
-                String::from_utf8_unchecked(tree_bytes[(root_start + 1)..root_end].to_vec())
-            };
-            let is_first_label_in_map = concurrent_map.is_empty();
-            let root_label = concurrent_map
-                .entry(root_label)
-                .and_modify(|(_, counter)| {
-                    *counter += 1;
-                })
-                .or_insert_with(|| (*max_node_id.read().unwrap(), 1));
-            let root = tree.new_node(root_label.0);
-            let mut node_stack = vec![root];
-            while let Some(token) = tokens.next() {
-                match tree_bytes[*token] {
-                    TOKEN_START => {
-                        let Some(token_end) = tokens.peek() else {
-                            let err_msg = format!(
-                                "Label has no ending token near col {token} , line \"{tree_str}\""
-                            );
-                            return Err(TPE::IncorrectFormat(err_msg));
-                        };
-                        let label = unsafe {
-                            String::from_utf8_unchecked(
-                                tree_bytes[(*token + 1)..**token_end].to_vec(),
-                            )
-                        };
-
-                        let node_label = concurrent_map
-                            .entry(label)
-                            .and_modify(|(_, counter)| {
-                                *counter += 1;
-                            })
-                            .or_insert_with(|| {
-                                let mut max_id = max_node_id.write().unwrap();
-                                *max_id += 1;
-                                (*max_id, 1)
-                            });
-
-                        let n = tree.new_node(node_label.0);
-                        let Some(last_node) = node_stack.last() else {
-                            let err_msg =
-                                format!("Reached unexpected end of token on line \"{tree_str}\"");
-                            return Err(TPE::IncorrectFormat(err_msg));
-                        };
-                        last_node.append(n, &mut tree);
-                        node_stack.push(n);
-                    }
-                    TOKEN_END => {
-                        let Some(_) = node_stack.pop() else {
-                            return Err(TPE::IncorrectFormat("Wrong bracket pairing".to_owned()));
-                        };
-                    }
-                    _ => return Err(TPE::TokenizerError),
-                }
-            }
-
-            Ok(tree)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
     Ok(trees)
 }
 

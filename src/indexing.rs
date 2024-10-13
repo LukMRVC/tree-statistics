@@ -146,7 +146,7 @@ mod tests {
         assert!(parse_result.is_ok(), "Tree parsing failed, which shouldn't");
         let tree = parse_result.unwrap();
         let idx = InvertedListLabelPostorderIndex::index_tree(&tree, &label_dict);
-        
+
         let kvs = [
             (0, vec![3, 6]),
             (1, vec![0]),
@@ -154,16 +154,13 @@ mod tests {
             (3, vec![2]),
             (4, vec![5]),
         ];
-        
+
         let mut qh = InvListLblPost::default();
-        
-        for (k , v) in kvs {
-            qh.insert(k , v);
+
+        for (k, v) in kvs {
+            qh.insert(k, v);
         }
-        
-        assert_eq!(
-            idx.inverted_list,
-            qh
-        );
+
+        assert_eq!(idx.inverted_list, qh);
     }
 }

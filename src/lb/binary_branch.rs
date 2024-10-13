@@ -43,7 +43,7 @@ impl BinaryBranchConverter {
         right_sibling_label: Option<LabelId>,
         branch_vector: &mut BinaryBranchVector,
     ) {
-        let mut children = root_id.children(tree).collect_vec();
+        let children = root_id.children(tree).collect_vec();
         let mut left_label = None;
         if let Some(left_child) = children.first() {
             left_label = Some(tree.get(*left_child).unwrap().get().clone())

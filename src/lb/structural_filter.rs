@@ -2,7 +2,7 @@ use crate::parsing::{LabelDict, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
-use std::{cmp::max, collections::HashMap};
+use std::cmp::max;
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type SplitStructHashMap = FxHashMap<LabelId, SplitLabelSetElement>;
@@ -399,6 +399,7 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     bigger - overlap
 }
 
+#[allow(dead_code)]
 pub fn ted_variant(
     s1: &SplitStructuralFilterTuple,
     s2: &SplitStructuralFilterTuple,

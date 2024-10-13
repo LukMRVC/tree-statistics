@@ -9,7 +9,6 @@ use lb::binary_branch::BinaryBranchConverter;
 use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
-use rand::seq::index;
 use rayon::prelude::*;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
@@ -183,8 +182,8 @@ fn main() -> Result<(), anyhow::Error> {
         Commands::LowerBound {
             query_file,
             output,
-            method,
-            results_path,
+            method: _method,
+            results_path: _results,
         } => {
             use LowerBoundMethods as LBM;
             if !output.is_dir() {
@@ -196,7 +195,7 @@ fn main() -> Result<(), anyhow::Error> {
             // let mut candidate_times = vec![];
             // let mut selectivities = vec![];
             println!("Preparing dataset and running preprocessing for all methods");
-            let collection_histograms = create_collection_histograms(&trees);
+            let _collection_histograms = create_collection_histograms(&trees);
             let lblint_indexes = trees
                 .par_iter()
                 .map(|t| InvertedListLabelPostorderIndex::index_tree(t, &label_dict))
@@ -206,7 +205,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .map(|t| SEDIndex::index_tree(t, &label_dict))
                 .collect::<Vec<_>>();
             let mut bib_converter = BinaryBranchConverter::default();
-            let tree_bib_vectors = bib_converter.create(&trees);
+            let _tree_bib_vectors = bib_converter.create(&trees);
             let mut lc = LabelSetConverter::default();
             let lblint_index = label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
 
@@ -214,7 +213,7 @@ fn main() -> Result<(), anyhow::Error> {
             let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
             let split_distribution =
                 move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
-            let structural_split_sets = lc.create_split(&trees, split_distribution);
+            let _structural_split_sets = lc.create_split(&trees, split_distribution);
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
 
             let lbms: [LBM; 3] = [LBM::Lblint, LBM::Sed, LBM::Structural];
@@ -234,15 +233,29 @@ fn main() -> Result<(), anyhow::Error> {
                             .collect_vec();
 
                         let start = Instant::now();
-                        let mut index_candidates: Vec<usize> = vec![];
+                        let mut index_candidates = vec![];
                         for (qid, (t, query)) in lblint_queries.iter().enumerate() {
-                            index_candidates.append(&mut lblint_index.query_index(query, *t));
+                            index_candidates.append(&mut lblint_index.query_index(
+                                query,
+                                *t,
+                                Some(qid),
+                            ));
                         }
                         println!(
                             "Lblint index found {canlen} candidates in {dur}ms",
                             canlen = index_candidates.len(),
                             dur = start.elapsed().as_millis()
                         );
+                        index_candidates.par_sort();
+                        let mut output_file = output.clone();
+                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        write_file(
+                            output_file,
+                            &index_candidates
+                                .iter()
+                                .map(|(c1, c2)| format!("{c1},{c2}"))
+                                .collect_vec(),
+                        )?;
 
                         lb::iterate_queries!(lblint_queries, lblint_indexes, label_intersection_k)
                     }
@@ -282,45 +295,6 @@ fn main() -> Result<(), anyhow::Error> {
                         .collect_vec(),
                 )?;
             }
-
-            // candidates.par_sort();
-            // write_file(
-            //     output.clone(),
-            //     &candidates
-            //         .iter()
-            //         .map(|(c1, c2)| format!("{c1},{c2}"))
-            //         .collect_vec(),
-            // )?;
-            // let mean_selectivity = statistics::mean(&selectivities);
-            // println!("Mean selectivity is: {mean_selectivity:.4}%");
-            // println!(
-            //     "Total LB execution time: {}ms",
-            //     lb_start.elapsed().as_millis()
-            // );
-            // let ds_name: Vec<&str> = cli
-            //     .dataset_path
-            //     .file_name()
-            //     .unwrap()
-            //     .to_str()
-            //     .unwrap()
-            //     .split('_')
-            //     .collect();
-            // let ds_name = ds_name[0];
-            // // let Some((ds_name, _)) = ds_name.split_once('.') else { todo!(); };
-            // write_file(
-            //     output
-            //         .parent()
-            //         .unwrap()
-            //         .join(format!("{ds_name}-{method:?}-times-us.txt")),
-            //     &times.iter().map(|t| format!("{t}")).collect_vec(),
-            // )?;
-            // write_file(
-            //     output
-            //         .parent()
-            //         .unwrap()
-            //         .join(format!("{ds_name}-{method:?}-candidate-times-ns.txt")),
-            //     &candidate_times.iter().map(|t| format!("{t}")).collect_vec(),
-            // )?;
         }
         Commands::Validate {
             results_path,
