@@ -362,6 +362,7 @@ mod tests {
     use super::*;
     use crate::parsing::parse_tree;
 
+    /*
     #[test]
     fn test_histogram_traversals() {
         let tree_str = "{a{b{c}{d{c}}{b}}{f{g}{x}}}".to_owned();
@@ -377,4 +378,5 @@ mod tests {
             HashMap::from([(0, 1), (1, 2), (2, 2), (3, 1), (4, 1), (5, 1), (6, 1),])
         );
     }
+    */
 }

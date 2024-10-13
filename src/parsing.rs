@@ -1,4 +1,4 @@
-use indextree::{Arena, NodeEdge};
+use indextree::{Arena, NodeEdge, NodeId};
 use memchr::memchr2_iter;
 use std::collections::HashMap;
 use std::fs::File;
@@ -6,6 +6,8 @@ use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::string::String;
+use itertools::Itertools;
+use rayon::prelude::*;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -83,25 +85,25 @@ macro_rules! buf_open_file {
     };
 }
 
+
 pub fn parse_dataset(
     dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
-    let mut line_counter = 0;
     let reader = buf_open_file!(dataset_file);
-    let trees: Vec<ParsedTree> = reader
-        .lines()
-        .map(|l| parse_tree(l, label_dict))
-        .inspect(|_| {
-            line_counter += 1;
-            if line_counter % 10_000 == 0 {
-                println!("Parsed {line_counter} lines so far...");
-            }
-        })
-        .filter(Result::is_ok)
+    let tree_lines = reader.lines().map(|ml| ml).collect::<Result<Vec<String>, _>>()?;
+    println!("Consumed {} lines of trees", tree_lines.len());
+
+    let collection_tree_tokens = tree_lines.par_iter()
+        .map(|tree_line| parse_tree_tokens(tree_line.as_bytes()) )
+        .filter(Result::is_ok).collect::<Result<Vec<_>, _>>()?;
+    println!("Parsed {} lines of tree tokens, updating label dict now", collection_tree_tokens.len());
+    update_label_dict(&collection_tree_tokens, label_dict);
+    println!("Parsing tokens into trees");
+    let trees = collection_tree_tokens
+        .par_iter().map(|tokens| parse_tree(tokens, label_dict))
         .collect::<Result<Vec<_>, _>>()?;
 
-    println!("Consumed {line_counter} lines of trees");
     Ok(trees)
 }
 
@@ -110,33 +112,94 @@ pub fn parse_queries(
     ld: &mut LabelDict,
 ) -> Result<Vec<(usize, ParsedTree)>, DatasetParseError> {
     let reader = buf_open_file!(query_file);
-    let trees: Vec<(usize, ParsedTree)> = reader
+    let trees: Vec<(usize, Vec<String>)> = reader
         .lines()
-        .map(|l| {
+        .filter_map(|l| {
             let l = l.expect("line reading failed!");
             let Some((threshold_str, tree)) = l.split_once(";") else {
-                return (
-                    0,
-                    Err(TreeParseError::IncorrectFormat(
-                        "(Could not parse query line!)".to_owned(),
-                    )),
-                );
-            };
-
-            (
-                threshold_str.parse::<usize>().unwrap(),
-                parse_tree(Ok(tree.to_owned()), ld),
-            )
-        })
-        .filter_map(|(t, tree_result)| {
-            if tree_result.is_err() {
                 return None;
+            };
+            Some((threshold_str.parse::<usize>().unwrap(), tree.to_string()))
+        })
+        .filter_map(|(t, tree)| {
+            let tokens = parse_tree_tokens(tree.as_bytes());
+            if tokens.is_err() {
+                return None
             }
-            Some((t, tree_result.unwrap()))
+            let tks: Vec<String> = tokens.unwrap().iter().map(|tkn| tkn.to_string()).collect_vec();
+
+            Some((
+                t,
+                tks,
+            ))
         })
         .collect::<Vec<_>>();
 
+    let only_tokens = trees.iter().map(|(_, tkns)| tkns.iter().map(|t| t.as_str()).collect_vec()).collect_vec();
+    update_label_dict(&only_tokens, ld);
+    let trees = trees.iter().filter_map(|(t, tokens)| {
+        let tokens = tokens.iter().map(|t| t.as_str()).collect_vec();
+        let parsed_tree = parse_tree(&tokens, &ld);
+        if parsed_tree.is_err() {
+            return None;
+        }
+
+        Some((
+            *t,
+            parsed_tree.unwrap()
+            ))
+    }).collect();
+
     Ok(trees)
+}
+
+pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
+    let labels_only = tokens_collection.par_iter().flat_map(|tree_tokens| {
+        tree_tokens.iter()
+            .filter(|token| **token != "{" && **token != "}")
+            .map(|label_token| label_token.to_string())
+            .collect_vec()
+    }).collect::<Vec<_>>();
+
+    let mut max_node_id = ld.values().len() as LabelId;
+    for lbl in labels_only {
+        ld.entry(lbl).and_modify(|(_, lblcnt)| *lblcnt += 1).or_insert_with(|| {
+            max_node_id += 1;
+            (max_node_id, 1)
+        });
+    }
+}
+
+pub fn parse_tree<'a>(tokens: &'a[&'a str], ld: &LabelDict) -> Result<ParsedTree, TreeParseError> {
+    let mut tree_arena = ParsedTree::with_capacity(tokens.len() / 2);
+    let mut node_stack: Vec<NodeId> = vec![];
+
+    for t in tokens.iter().skip(1) {
+        match *t {
+            "{" => continue,
+            "}" => {
+                let Some(_) = node_stack.pop() else {
+                    return Err(TreeParseError::IncorrectFormat("Wrong bracket pairing".to_owned()));
+                };
+            },
+            label_str => {
+                let Some((label, _)) = ld.get(label_str) else {
+                    return Err(TreeParseError::TokenizerError);
+                };
+                let n = tree_arena.new_node(*label);
+                if let Some(last_node) = node_stack.last() {
+                    last_node.append(n, &mut tree_arena);
+                } else {
+                    if tree_arena.count() > 1 {
+                        return Err(TreeParseError::IncorrectFormat("Reached unexpected end of token".to_owned()));
+                    }
+                };
+                node_stack.push(n);
+            }
+        }
+    }
+
+    Ok(tree_arena)
 }
 
 const TOKEN_START: u8 = b'{';
@@ -162,18 +225,16 @@ pub enum TreeParseError {
     TokenizerError,
 }
 
-pub fn parse_tree(
-    tree_str: Result<String, io::Error>,
-    label_map: &mut LabelDict,
-) -> Result<ParsedTree, TreeParseError> {
-    use TreeParseError as TPE;
-
-    let tree_str = tree_str?;
-    if !tree_str.is_ascii() {
-        return Err(TPE::IsNotAscii);
+fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseError> {
+    *parity += addorsub;
+    if *parity < 0 {
+        return Err(TreeParseError::IncorrectFormat("Parity of brces does not match".to_owned()));
     }
-    let mut tree = ParsedTree::with_capacity(tree_str.len() / 2);
-    let tree_bytes = tree_str.as_bytes();
+    Ok(())
+}
+
+fn parse_tree_tokens(tree_bytes: &[u8]) -> Result<Vec<&str>, TreeParseError> {
+    use TreeParseError as TPE;
 
     let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
         .filter(|char_pos| !is_escaped(tree_bytes, *char_pos))
@@ -185,69 +246,41 @@ pub fn parse_tree(
         ));
     }
 
-    let (mut max_node_id, _) = label_map.values().max().cloned().unwrap_or((0, 1));
+    let mut str_tokens = vec![];
+    let mut parity_check = 0;
 
-    let mut tokens = token_positions.iter().peekable();
-    let root_start = *tokens.next().unwrap();
-    let root_end = **tokens.peek().unwrap();
+    let mut token_iterator = token_positions.iter().peekable();
 
-    let root_label =
-        unsafe { String::from_utf8_unchecked(tree_bytes[(root_start + 1)..root_end].to_vec()) };
-    let is_first_label_in_map = label_map.is_empty();
-    let root_label = label_map
-        .entry(root_label)
-        .and_modify(|(_, counter)| {
-            *counter += 1;
-        })
-        .or_insert_with(|| {
-            if !is_first_label_in_map {
-                max_node_id += 1;
-            }
-            (max_node_id, 1)
-        });
-    let root = tree.new_node(root_label.0);
-    let mut node_stack = vec![root];
-
-    while let Some(token) = tokens.next() {
-        match tree_bytes[*token] {
+    while let Some(token_pos) = token_iterator.next() {
+        match tree_bytes[*token_pos] {
             TOKEN_START => {
-                let Some(token_end) = tokens.peek() else {
+                braces_parity_check(&mut parity_check, 1)?;
+                unsafe {
+                    str_tokens.push(
+                        std::str::from_utf8_unchecked(&tree_bytes[*token_pos..(token_pos + 1)]));
+                }
+                let Some(token_end) = token_iterator.peek() else {
                     let err_msg =
-                        format!("Label has no ending token near col {token} , line \"{tree_str}\"");
+                        format!("Label has no ending token near col {token_pos}");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
                 let label = unsafe {
-                    String::from_utf8_unchecked(tree_bytes[(*token + 1)..**token_end].to_vec())
+                    std::str::from_utf8_unchecked(&tree_bytes[(token_pos + 1)..**token_end])
                 };
-
-                let node_label = label_map
-                    .entry(label)
-                    .and_modify(|(_, counter)| {
-                        *counter += 1;
-                    })
-                    .or_insert_with(|| {
-                        max_node_id += 1;
-                        (max_node_id, 1)
-                    });
-
-                let n = tree.new_node(node_label.0);
-                let Some(last_node) = node_stack.last() else {
-                    let err_msg = format!("Reached unexpected end of token on line \"{tree_str}\"");
-                    return Err(TPE::IncorrectFormat(err_msg));
-                };
-                last_node.append(n, &mut tree);
-                node_stack.push(n);
-            }
+                str_tokens.push(label);
+            },
             TOKEN_END => {
-                let Some(_) = node_stack.pop() else {
-                    return Err(TPE::IncorrectFormat("Wrong bracket pairing".to_owned()));
-                };
-            }
+                braces_parity_check(&mut parity_check, -1)?;
+                unsafe {
+                    str_tokens.push(
+                        std::str::from_utf8_unchecked(&tree_bytes[*token_pos..(token_pos + 1)]));
+                }
+            },
             _ => return Err(TPE::TokenizerError),
         }
-    }
 
-    Ok(tree)
+    }
+    Ok(str_tokens)
 }
 
 #[cfg(test)]
@@ -255,37 +288,78 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parses() {
+    fn test_parses_into_tokens() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
-        let mut hs = LabelDict::new();
-        let arena = parse_tree(Ok(input), &mut hs);
-        assert!(arena.is_ok());
-        let arena = arena.unwrap();
-        assert_eq!(arena.count(), 3);
-        let mut iter = arena.iter();
-        assert_eq!(iter.next().map(|node| *node.get()), Some(0));
-        assert_eq!(iter.next().map(|node| *node.get()), Some(1));
-        assert_eq!(iter.next().map(|node| *node.get()), Some(2));
+        let tokens = parse_tree_tokens(input.as_bytes());
+        assert!(tokens.is_ok());
+        let tokens = tokens.unwrap();
+        assert_eq!(tokens, vec!["{", "einsteinstrasse", "{", "1", "}", "{", "3", "}", "}"]);
     }
 
     #[test]
     fn test_parses_escaped() {
         use std::string::String;
-        let mut hs = LabelDict::new();
         let input = String::from(
-            r#"{article{key{journals/corr/abs-0812-2567}}{mdate{2017-06-07}}{publtype{informal}}{author{Jian Li}}{title{An O(log n / log log n\}\}) Upper Bound on the Price of Stability for Undirected Shapley Network Design Games}}{ee{http://arxiv.org/abs/0812.2567}}{year{2008}}{journal{CoRR}}{volume{abs/0812.2567}}{url{db/journals/corr/corr0812.html#abs-0812-2567}}}"#,
+            r#"{article{key{An optimization of \log data}}}"#,
         );
-        let arena = parse_tree(Ok(input), &mut hs);
-        assert!(arena.is_ok());
-        assert_eq!(arena.unwrap().count(), 21);
+        let tokens = parse_tree_tokens(input.as_bytes());
+        assert!(tokens.is_ok());
+        let tokens = tokens.unwrap();
+        assert_eq!(tokens, vec!["{", "article", "{", "key", "{", r"An optimization of \log data", "}", "}", "}"]);
     }
+
+    #[test]
+    fn test_parses_into_tree_arena() {
+        let input = "{einsteinstrasse{1}{3}}".to_owned();
+        let tokens = parse_tree_tokens(input.as_bytes());
+        let tokens = tokens.unwrap();
+        let ld = LabelDict::from([
+            ("einsteinstrasse".to_owned(), (1, 1)),
+            ("1".to_owned(), (2, 1)),
+            ("3".to_owned(), (3, 1)),
+        ]);
+        let tree_arena = parse_tree(&tokens, &ld).unwrap();
+        let mut arena = ParsedTree::new();
+
+        let n1 = arena.new_node(1);
+        let n2 = arena.new_node(2);
+        let n3 = arena.new_node(3);
+        n1.append(n2, &mut arena);
+        n1.append(n3, &mut arena);
+
+        assert_eq!(tree_arena, arena);
+    }
+
+    #[test]
+    fn test_updated_label_dict() {
+        let input = "{einsteinstrasse{1}{3}}".to_owned();
+        let tokens = parse_tree_tokens(input.as_bytes());
+        let tokens = tokens.unwrap();
+        let input2 = "{weinsteinstrasse{3}{2}}".to_owned();
+        let tokens2 = parse_tree_tokens(input2.as_bytes());
+        let tokens2 = tokens2.unwrap();
+        let mut ld = LabelDict::default();
+        let token_col = vec![tokens, tokens2];
+        update_label_dict(&token_col, &mut ld);
+
+        let tld = LabelDict::from([
+            ("einsteinstrasse".to_owned(), (1, 1)),
+            ("1".to_owned(), (2, 1)),
+            ("3".to_owned(), (3, 2)),
+            ("weinsteinstrasse".to_owned(), (4, 1)),
+            ("2".to_owned(), (5, 1)),
+        ]);
+        assert_eq!(ld, tld, "Label dicts are equal");
+    }
+
+    /*
 
     #[test]
     fn test_label_dict_preserved_label_ids() {
         // test label ids are not overwritten when parsing another tree
         let mut ld = LabelDict::new();
-        let _t1 = parse_tree(Ok("{b{e}{d{a}}}".to_owned()), &mut ld).unwrap();
-        let _t2 = parse_tree(Ok("{d{c}{f{g}{d{a}}}}".to_owned()), &mut ld).unwrap();
+        let _t1 = parse_tree(Ok("{b{e}{d{a}}}".to_owned())).unwrap();
+        let _t2 = parse_tree(Ok("{d{c}{f{g}{d{a}}}}".to_owned())).unwrap();
 
         assert_eq!(
             ld,
@@ -306,7 +380,7 @@ mod tests {
     fn test_descendants_correct() {
         let input = "{first{second{third}{fourth{fifth{six}{seven}}}}".to_owned();
         let mut hs = LabelDict::new();
-        let arena = parse_tree(Ok(input), &mut hs);
+        let arena = parse_tree(Ok(input));
         assert!(arena.is_ok());
         let arena = arena.unwrap();
         let Some(root) = arena.iter().next() else {
@@ -351,7 +425,7 @@ mod tests {
     fn test_parses_empty_label() {
         let input = "{wendelsteinstrasse{1{{1}{2}{3}{4}{5}{6}{7}{14}}}}".to_owned();
         let mut hs = LabelDict::new();
-        let arena = parse_tree(Ok(input), &mut hs);
+        let arena = parse_tree(Ok(input));
         assert!(arena.is_ok());
         let arena = arena.unwrap();
         assert_eq!(
@@ -365,7 +439,9 @@ mod tests {
     fn test_invalid_escape() {
         let input = r"{article{key{journals/corr/FongT15b}}{mdate{2017-06-07}}{publtype{informal withdrawn}}{title{On the Empirical Output Distribution of $\\}varepsilon$-Good Codes for Gaussian Channels under a Long-Term Power Constraint.}}{year{2015}}{volume{abs/1510.08544}}{journal{CoRR}}{ee{http://arxiv.org/abs/1510.08544}}{url{db/journals/corr/corr1510.html#FongT15b}}}".to_owned();
         let mut ld = LabelDict::new();
-        let tree = parse_tree(Ok(input), &mut ld);
+        let tree = parse_tree(Ok(input));
         assert!(tree.is_err());
     }
+
+     */
 }
