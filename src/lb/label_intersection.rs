@@ -127,14 +127,17 @@ mod tests {
     use super::*;
     use crate::indexing::{Indexer, InvertedListLabelPostorderIndex};
     use crate::parsing::*;
- /*
+    
+    
+    
+    
     #[test]
     fn test_lblint() {
         let mut ld = LabelDict::new();
 
-        let t2 = parse_tree(Ok("{b{e}{d{a}}}".to_owned())).unwrap();
-        let t3 = parse_tree(Ok("{d{c}{b{a}{d{a}}}}".to_owned())).unwrap();
-        let t5 = parse_tree(Ok("{a{b{a}{c{d}}}{d}}".to_owned())).unwrap();
+        let t2 = parse_single("{b{e}{d{a}}}".to_owned(), &mut ld);
+        let t3 = parse_single("{d{c}{b{a}{d{a}}}}".to_owned(), &mut ld);
+        let t5 = parse_single("{a{b{a}{c{d}}}{d}}".to_owned(), &mut ld);
 
         let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
         let t3i = InvertedListLabelPostorderIndex::index_tree(&t3, &ld);
@@ -146,14 +149,14 @@ mod tests {
         assert_eq!(3, t2t3_lb, "Label diff between t2 and t3 should be 2!");
         assert_eq!(0, t3t5_lb, "Label diff between t3 and t5 should be 0!");
     }
-
+    
     #[test]
     fn test_missing_label_lb() {
         let i1 = "{pietro gobetti str.{8}{10}}".to_owned();
         let i2 = "{wendelsteinstrasse{1{{1}{2}{3}{4}{5}{6}{7}{14}}}}".to_owned();
         let mut ld = LabelDict::new();
-        let t1 = parse_tree(Ok(i1)).unwrap();
-        let t2 = parse_tree(Ok(i2)).unwrap();
+        let t1 = parse_single(i1, &mut ld);
+        let t2 = parse_single(i2, &mut ld);
 
         let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
         let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
@@ -168,8 +171,8 @@ mod tests {
         let i = "{0{1 Abysmally}{0 pathetic}}".to_owned();
         let q = "{3{2{2 Unfolds}{3{2 in}{2{2{2{2 a}{2 series}}{2{2 of}{2{2 achronological}{2 vignettes}}}}{3{2{2{2 whose}{2 cumulative}}{2 effect}}{2{2 is}{3 chilling}}}}}}{2 .}}".to_owned();
         let mut ld = LabelDict::new();
-        let t1 = parse_tree(Ok(i)).unwrap();
-        let t2 = parse_tree(Ok(q)).unwrap();
+        let t1 = parse_single(i, &mut ld);
+        let t2 = parse_single(q, &mut ld);
         let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
         let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
 
@@ -180,5 +183,25 @@ mod tests {
         let candidates = lblint_index.query_index(&t2i, 25, Some(0));
         assert_eq!(candidates.len(), 1, "No candidates found")
     }
-    */
+
+
+    
+    #[test]
+    fn test_correctness_index_dblp() {
+        let i = "{inproceedings{key{conf/miccai/BanoHNCDWHSM12}}{mdate{2017-05-23}}{author{Jordan Bano}}{author{Alexandre Hostettler}}{author{Stephane Nicolau}}{author{Stephane Cotin}}{author{Christophe Doignon}}{author{H. S. Wu}}{author{M. H. Huang}}{author{Luc Soler}}{author{Jacques Marescaux}}{title{Simulation of Pneumoperitoneum for Laparoscopic Surgery Planning.}}{pages{91-98}}{year{2012}}{booktitle{MICCAI (1)}}{ee{https://doi.org/10.1007/978-3-642-33415-3_12}}{crossref{conf/miccai/2012-1}}{url{db/conf/miccai/miccai2012-1.html#BanoHNCDWHSM12}}}".to_owned();
+        let q = "{inproceedings{key{conf/miccai/BanoHNCDWHSM12}}{mdate{2017-05-23}}{author{Jordan Bano}}{author{Alexandre Hostettler}}{author{Stephane Nicolau}}{author{Stephane Cotin}}{author{Christophe Doignon}}{author{H. S. Wu}}{author{M. H. Huang}}{author{Luc Soler}}{author{Jacques Marescaux}}{title{Simulation of Pneumoperitoneum for Laparoscopic Surgery Planning.}}{pages{91-98}}{year{2012}}{booktitle{MICCAI (1)}}{ee{https://doi.org/10.1007/978-3-642-33415-3_12}}{crossref{conf/miccai/2012-1}}{url{db/conf/miccai/miccai2012-1.html#BanoHNCDWHSM12}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let t1 = parse_single(i, &mut ld);
+        let t2 = parse_single(q, &mut ld);
+        let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
+        let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
+
+        let lb = label_intersection_k(&t1i, &t2i, 8);
+        assert!(lb <= 8, "Lower bound is less than 8");
+
+        let lblint_index = LabelIntersectionIndex::new(&vec![t1i]);
+        let candidates = lblint_index.query_index(&t2i, 8, Some(0));
+        assert_eq!(candidates.len(), 1, "No candidates found")
+    }
+    
 }

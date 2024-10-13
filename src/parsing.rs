@@ -153,6 +153,13 @@ pub fn parse_queries(
     Ok(trees)
 }
 
+pub fn parse_single(tree_str: String, label_dict: &mut LabelDict) -> ParsedTree {
+    let tokens = parse_tree_tokens(tree_str.as_bytes()).expect("Failed to parse single tree");
+    let token_col = vec![tokens.clone()];
+    update_label_dict(&token_col, label_dict);
+    parse_tree(&tokens, label_dict).unwrap()
+}
+
 pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
     let labels_only = tokens_collection.par_iter().flat_map(|tree_tokens| {
         tree_tokens.iter()
