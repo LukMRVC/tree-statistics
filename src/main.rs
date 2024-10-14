@@ -120,13 +120,15 @@ fn main() -> Result<(), anyhow::Error> {
         .exit();
     }
     let mut label_dict = LabelDict::new();
-    let trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
+    let mut trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
             exit(1);
         }
     };
+    trees.par_sort_by(|a, b| a.count().cmp(&b.count()));
+
     if !cli.quiet {
         println!("Parsed {} trees", trees.len());
     }
@@ -195,7 +197,7 @@ fn main() -> Result<(), anyhow::Error> {
             // let mut candidate_times = vec![];
             // let mut selectivities = vec![];
             println!("Preparing dataset and running preprocessing for all methods");
-            let _collection_histograms = create_collection_histograms(&trees);
+            // let _collection_histograms = create_collection_histograms(&trees);
             let lblint_indexes = trees
                 .par_iter()
                 .map(|t| InvertedListLabelPostorderIndex::index_tree(t, &label_dict))
@@ -204,16 +206,16 @@ fn main() -> Result<(), anyhow::Error> {
                 .par_iter()
                 .map(|t| SEDIndex::index_tree(t, &label_dict))
                 .collect::<Vec<_>>();
-            let mut bib_converter = BinaryBranchConverter::default();
-            let _tree_bib_vectors = bib_converter.create(&trees);
+            // let mut bib_converter = BinaryBranchConverter::default();
+            // let _tree_bib_vectors = bib_converter.create(&trees);
             let mut lc = LabelSetConverter::default();
             let lblint_index = label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
 
             let structural_sets = lc.create(&trees);
-            let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
-            let split_distribution =
-                move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
-            let _structural_split_sets = lc.create_split(&trees, split_distribution);
+            // let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
+            // let split_distribution =
+            // move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
+            // let _structural_split_sets = lc.create_split(&trees, split_distribution);
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
 
             let lbms: [LBM; 3] = [LBM::Lblint, LBM::Sed, LBM::Structural];

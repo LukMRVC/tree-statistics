@@ -9,7 +9,7 @@ pub trait Indexer {
         Self: Sized;
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ConstantsIndex {
     pub tree_size: usize,
 }
@@ -57,7 +57,7 @@ pub type InvListLblPost = FxHashMap<LabelId, Vec<i32>>;
 
 /// Inverted list of nodes, key is index which is the label id in label dict
 /// and postings list contains postorder traversal number
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct InvertedListLabelPostorderIndex {
     pub inverted_list: InvListLblPost,
     pub c: ConstantsIndex,

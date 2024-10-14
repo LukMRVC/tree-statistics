@@ -11,3 +11,5 @@ resources/
 *.xz
 *.gz
 *.tar*
+
+.vscode
