@@ -1,13 +1,13 @@
 use indextree::{Arena, NodeEdge, NodeId};
+use itertools::Itertools;
 use memchr::memchr2_iter;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::string::String;
-use itertools::Itertools;
-use rayon::prelude::*;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -85,23 +85,36 @@ macro_rules! buf_open_file {
     };
 }
 
-
 pub fn parse_dataset(
     dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let reader = buf_open_file!(dataset_file);
-    let tree_lines = reader.lines().map(|ml| ml).collect::<Result<Vec<String>, _>>()?;
+    let tree_lines = reader
+        .lines()
+        .map(|ml| ml)
+        .collect::<Result<Vec<String>, _>>()?;
     println!("Consumed {} lines of trees", tree_lines.len());
 
-    let collection_tree_tokens = tree_lines.par_iter()
-        .map(|tree_line| parse_tree_tokens(tree_line.as_bytes()) )
-        .filter(Result::is_ok).collect::<Result<Vec<_>, _>>()?;
-    println!("Parsed {} lines of tree tokens, updating label dict now", collection_tree_tokens.len());
+    let collection_tree_tokens = tree_lines
+        .par_iter()
+        .map(|tree_line| {
+            if !tree_line.is_ascii() {
+                return Err(TreeParseError::IsNotAscii);
+            }
+            parse_tree_tokens(tree_line.as_bytes())
+        })
+        .filter(Result::is_ok)
+        .collect::<Result<Vec<_>, _>>()?;
+    println!(
+        "Parsed {} lines of tree tokens, updating label dict now",
+        collection_tree_tokens.len()
+    );
     update_label_dict(&collection_tree_tokens, label_dict);
     println!("Parsing tokens into trees");
     let trees = collection_tree_tokens
-        .par_iter().map(|tokens| parse_tree(tokens, label_dict))
+        .par_iter()
+        .map(|tokens| parse_tree(tokens, label_dict))
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(trees)
@@ -124,36 +137,44 @@ pub fn parse_queries(
         .filter_map(|(t, tree)| {
             let tokens = parse_tree_tokens(tree.as_bytes());
             if tokens.is_err() {
-                return None
+                return None;
             }
-            let tks: Vec<String> = tokens.unwrap().iter().map(|tkn| tkn.to_string()).collect_vec();
+            let tks: Vec<String> = tokens
+                .unwrap()
+                .iter()
+                .map(|tkn| tkn.to_string())
+                .collect_vec();
 
-            Some((
-                t,
-                tks,
-            ))
+            Some((t, tks))
         })
         .collect::<Vec<_>>();
 
-    let only_tokens = trees.iter().map(|(_, tkns)| tkns.iter().map(|t| t.as_str()).collect_vec()).collect_vec();
+    let only_tokens = trees
+        .iter()
+        .map(|(_, tkns)| tkns.iter().map(|t| t.as_str()).collect_vec())
+        .collect_vec();
     update_label_dict(&only_tokens, ld);
-    let trees = trees.iter().filter_map(|(t, tokens)| {
-        let tokens = tokens.iter().map(|t| t.as_str()).collect_vec();
-        let parsed_tree = parse_tree(&tokens, &ld);
-        if parsed_tree.is_err() {
-            return None;
-        }
+    let trees = trees
+        .iter()
+        .filter_map(|(t, tokens)| {
+            let tokens = tokens.iter().map(|t| t.as_str()).collect_vec();
+            let parsed_tree = parse_tree(&tokens, &ld);
+            if parsed_tree.is_err() {
+                return None;
+            }
 
-        Some((
-            *t,
-            parsed_tree.unwrap()
-            ))
-    }).collect();
+            Some((*t, parsed_tree.unwrap()))
+        })
+        .collect();
 
     Ok(trees)
 }
 
 pub fn parse_single(tree_str: String, label_dict: &mut LabelDict) -> ParsedTree {
+    if !tree_str.is_ascii() {
+        panic!("Passed tree string is not ASCII");
+    }
+
     let tokens = parse_tree_tokens(tree_str.as_bytes()).expect("Failed to parse single tree");
     let token_col = vec![tokens.clone()];
     update_label_dict(&token_col, label_dict);
@@ -161,23 +182,29 @@ pub fn parse_single(tree_str: String, label_dict: &mut LabelDict) -> ParsedTree 
 }
 
 pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
-    let labels_only = tokens_collection.par_iter().flat_map(|tree_tokens| {
-        tree_tokens.iter()
-            .filter(|token| **token != "{" && **token != "}")
-            .map(|label_token| label_token.to_string())
-            .collect_vec()
-    }).collect::<Vec<_>>();
+    let labels_only = tokens_collection
+        .par_iter()
+        .flat_map(|tree_tokens| {
+            tree_tokens
+                .iter()
+                .filter(|token| **token != "{" && **token != "}")
+                .map(|label_token| label_token.to_string())
+                .collect_vec()
+        })
+        .collect::<Vec<_>>();
 
     let mut max_node_id = ld.values().len() as LabelId;
     for lbl in labels_only {
-        ld.entry(lbl).and_modify(|(_, lblcnt)| *lblcnt += 1).or_insert_with(|| {
-            max_node_id += 1;
-            (max_node_id, 1)
-        });
+        ld.entry(lbl)
+            .and_modify(|(_, lblcnt)| *lblcnt += 1)
+            .or_insert_with(|| {
+                max_node_id += 1;
+                (max_node_id, 1)
+            });
     }
 }
 
-pub fn parse_tree<'a>(tokens: &'a[&'a str], ld: &LabelDict) -> Result<ParsedTree, TreeParseError> {
+pub fn parse_tree<'a>(tokens: &'a [&'a str], ld: &LabelDict) -> Result<ParsedTree, TreeParseError> {
     let mut tree_arena = ParsedTree::with_capacity(tokens.len() / 2);
     let mut node_stack: Vec<NodeId> = vec![];
 
@@ -186,9 +213,11 @@ pub fn parse_tree<'a>(tokens: &'a[&'a str], ld: &LabelDict) -> Result<ParsedTree
             "{" => continue,
             "}" => {
                 let Some(_) = node_stack.pop() else {
-                    return Err(TreeParseError::IncorrectFormat("Wrong bracket pairing".to_owned()));
+                    return Err(TreeParseError::IncorrectFormat(
+                        "Wrong bracket pairing".to_owned(),
+                    ));
                 };
-            },
+            }
             label_str => {
                 let Some((label, _)) = ld.get(label_str) else {
                     return Err(TreeParseError::TokenizerError);
@@ -198,7 +227,9 @@ pub fn parse_tree<'a>(tokens: &'a[&'a str], ld: &LabelDict) -> Result<ParsedTree
                     last_node.append(n, &mut tree_arena);
                 } else {
                     if tree_arena.count() > 1 {
-                        return Err(TreeParseError::IncorrectFormat("Reached unexpected end of token".to_owned()));
+                        return Err(TreeParseError::IncorrectFormat(
+                            "Reached unexpected end of token".to_owned(),
+                        ));
                     }
                 };
                 node_stack.push(n);
@@ -235,7 +266,9 @@ pub enum TreeParseError {
 fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseError> {
     *parity += addorsub;
     if *parity < 0 {
-        return Err(TreeParseError::IncorrectFormat("Parity of brces does not match".to_owned()));
+        return Err(TreeParseError::IncorrectFormat(
+            "Parity of brces does not match".to_owned(),
+        ));
     }
     Ok(())
 }
@@ -263,29 +296,29 @@ fn parse_tree_tokens(tree_bytes: &[u8]) -> Result<Vec<&str>, TreeParseError> {
             TOKEN_START => {
                 braces_parity_check(&mut parity_check, 1)?;
                 unsafe {
-                    str_tokens.push(
-                        std::str::from_utf8_unchecked(&tree_bytes[*token_pos..(token_pos + 1)]));
+                    str_tokens.push(std::str::from_utf8_unchecked(
+                        &tree_bytes[*token_pos..(token_pos + 1)],
+                    ));
                 }
                 let Some(token_end) = token_iterator.peek() else {
-                    let err_msg =
-                        format!("Label has no ending token near col {token_pos}");
+                    let err_msg = format!("Label has no ending token near col {token_pos}");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
                 let label = unsafe {
                     std::str::from_utf8_unchecked(&tree_bytes[(token_pos + 1)..**token_end])
                 };
                 str_tokens.push(label);
-            },
+            }
             TOKEN_END => {
                 braces_parity_check(&mut parity_check, -1)?;
                 unsafe {
-                    str_tokens.push(
-                        std::str::from_utf8_unchecked(&tree_bytes[*token_pos..(token_pos + 1)]));
+                    str_tokens.push(std::str::from_utf8_unchecked(
+                        &tree_bytes[*token_pos..(token_pos + 1)],
+                    ));
                 }
-            },
+            }
             _ => return Err(TPE::TokenizerError),
         }
-
     }
     Ok(str_tokens)
 }
@@ -300,19 +333,33 @@ mod tests {
         let tokens = parse_tree_tokens(input.as_bytes());
         assert!(tokens.is_ok());
         let tokens = tokens.unwrap();
-        assert_eq!(tokens, vec!["{", "einsteinstrasse", "{", "1", "}", "{", "3", "}", "}"]);
+        assert_eq!(
+            tokens,
+            vec!["{", "einsteinstrasse", "{", "1", "}", "{", "3", "}", "}"]
+        );
     }
 
     #[test]
     fn test_parses_escaped() {
         use std::string::String;
-        let input = String::from(
-            r#"{article{key{An optimization of \log data}}}"#,
-        );
+        let input = String::from(r#"{article{key{An optimization of \log data}}}"#);
         let tokens = parse_tree_tokens(input.as_bytes());
         assert!(tokens.is_ok());
         let tokens = tokens.unwrap();
-        assert_eq!(tokens, vec!["{", "article", "{", "key", "{", r"An optimization of \log data", "}", "}", "}"]);
+        assert_eq!(
+            tokens,
+            vec![
+                "{",
+                "article",
+                "{",
+                "key",
+                "{",
+                r"An optimization of \log data",
+                "}",
+                "}",
+                "}"
+            ]
+        );
     }
 
     #[test]
