@@ -47,7 +47,7 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-
+    let k = k + 1;
     let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
 
     if pre_dist > k {
