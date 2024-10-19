@@ -47,6 +47,7 @@ pub fn label_intersection_k(
 }
 
 pub struct LabelIntersectionIndex {
+    // the tuple is treeId, tree_size and label count
     index: FxHashMap<LabelId, Vec<(usize, usize, usize)>>,
     // first is the tree size, second is starting point
     // skip_list: FxHashMap<LabelId, Vec<(usize, usize)>>,

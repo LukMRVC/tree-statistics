@@ -517,6 +517,28 @@ pub fn best_split_distribution(ld: &LabelDict) -> FxHashMap<&i32, usize> {
     label_distribution
 }
 
+pub struct StructuralFilterIndex {
+    // the tuple is treeId, tree_size and label count
+    index: FxHashMap<LabelId, Vec<(usize, usize, Vec<StructuralVec>)>>,
+    // first is the tree size, second is starting point
+    // skip_list: FxHashMap<LabelId, Vec<(usize, usize)>>,
+    size_index: Vec<usize>,
+}
+
+impl StructuralFilterIndex {
+    pub fn new(trees: &[StructuralFilterTuple]) -> Self {
+        let mut index: FxHashMap<LabelId, Vec<(usize, usize, Vec<StructuralVec>)>> =
+            FxHashMap::default();
+        let mut size_index = vec![];
+
+        for (tid, tt) in trees.iter().enumerate() {
+            for (label, vectors) in tt.1.iter() {
+                todo!("Implement adding to vector")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
