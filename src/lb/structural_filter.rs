@@ -382,7 +382,14 @@ fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
     n1.mapping_regions
         .iter()
         .zip_eq(n2.mapping_regions.iter())
-        .fold(0, |acc, (a, b)| acc + a.abs_diff(*b))
+        .fold(0i32, |acc, (a, b)| acc + (a - b).abs()) as u32
+}
+
+#[inline(always)]
+fn svec_l1_strict(n1: [RegionNumType; 4], n2: [RegionNumType; 4]) -> usize {
+    n1.iter()
+        .zip_eq(n2.iter())
+        .fold(0, |acc, (a, b)| acc + (a - b).abs()) as usize
 }
 
 /// Given two sets
@@ -428,14 +435,14 @@ pub fn ted_variant(
             };
 
             for n1 in s1c.struct_vec.iter() {
-                let k_window = n1.svec.postorder_id.saturating_sub(k);
+                let mut k_window = n1.svec.postorder_id.saturating_sub(k);
                 // apply postorder filter
-                let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter() {
-                    if k_window < s2clen && n2.svec.postorder_id < k_window {
-                        continue;
-                    }
-
+                let mut iterator: Box<dyn Iterator<Item = &SplitStructuralVec>> =
+                    Box::new(s2c.struct_vec.iter());
+                if k_window < s2c.struct_vec.len() {
+                    iterator = Box::new(iterator.skip_while(|n2| n2.svec.postorder_id < k_window));
+                }
+                for n2 in iterator {
                     if n2.svec.postorder_id > k + n1.svec.postorder_id {
                         break;
                     }
@@ -460,7 +467,6 @@ fn get_nodes_overlap_with_region_distance(
     region_distance_closure: impl Fn(&StructuralVec, &StructuralVec) -> u32,
 ) -> usize {
     let mut overlap = 0;
-
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
             if set1.base.weight == 1 && set2.base.weight == 1 {
@@ -479,17 +485,17 @@ fn get_nodes_overlap_with_region_distance(
             };
 
             for n1 in s1c.struct_vec.iter() {
-                let k_window = n1.postorder_id.saturating_sub(k);
+                let k_window = n1.postorder_id as i32 - k as i32;
+                let k_window = std::cmp::max(k_window, 0) as usize;
+
                 // apply postorder filter
                 let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter() {
-                    if k_window < s2clen && n2.postorder_id < k_window {
-                        continue;
-                    }
-
-                    if n2.postorder_id > k + n1.postorder_id {
-                        break;
-                    }
+                for n2 in s2c
+                    .struct_vec
+                    .iter()
+                    .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
+                    .take_while(|n2| !(n2.postorder_id > k + n1.postorder_id))
+                {
                     let l1_region_distance = region_distance_closure(n1, n2);
 
                     if l1_region_distance as usize <= k {
@@ -533,9 +539,84 @@ impl StructuralFilterIndex {
 
         for (tid, tt) in trees.iter().enumerate() {
             for (label, vectors) in tt.1.iter() {
-                todo!("Implement adding to vector")
+                index
+                    .entry(*label)
+                    .and_modify(|postings| postings.push((tid, tt.0, vectors.struct_vec.clone())))
+                    .or_insert(vec![(tid, tt.0, vectors.struct_vec.clone())]);
+            }
+            size_index.push(tt.0);
+        }
+
+        Self { size_index, index }
+    }
+
+    pub fn query_index(
+        &self,
+        query_tree: &StructuralFilterTuple,
+        k: usize,
+        query_id: Option<usize>,
+    ) -> Vec<(usize, usize)> {
+        let query_id = query_id.unwrap_or(0);
+
+        let mut tree_intersections = FxHashMap::default();
+        for (lbl, query_label_nodes) in query_tree.1.iter() {
+            if let Some(posting_list) = self.index.get(lbl) {
+                for (tid, tree_size, posting_nodes) in posting_list
+                    .iter()
+                    // .skip(start)
+                    .skip_while(|(_, size, _)| query_tree.0 - size > k)
+                    .take_while(|(_, size, _)| *size <= k + query_tree.0)
+                {
+                    let mut overlapping_nodes = 0;
+                    for query_node_structural_vector in query_label_nodes.struct_vec.iter() {
+                        let k_window = query_node_structural_vector.postorder_id as i32 - k as i32;
+                        let k_window = std::cmp::max(k_window, 0) as usize;
+                        for posting_node_structural_vector in posting_nodes.iter() {
+                            if svec_l1_strict(
+                                query_node_structural_vector.mapping_regions,
+                                posting_node_structural_vector.mapping_regions,
+                            ) <= k
+                            {
+                                overlapping_nodes += 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    tree_intersections
+                        .entry(*tid)
+                        .and_modify(|(intersection_size, _)| {
+                            *intersection_size += overlapping_nodes;
+                        })
+                        .or_insert((overlapping_nodes, *tree_size));
+                }
             }
         }
+
+        let mut candidates = vec![];
+        // find candidates that have no label overlap but can fit by size because of threshold
+        for (cid, tree_size) in self
+            .size_index
+            .iter()
+            .enumerate()
+            .take_while(|(_, ts)| !(query_tree.0.abs_diff(**ts) > k))
+        {
+            if let None = tree_intersections.get(&cid) {
+                if std::cmp::max(query_tree.0, *tree_size) <= k {
+                    candidates.push((query_id, cid));
+                }
+            }
+        }
+
+        candidates.extend(
+            tree_intersections
+                .iter()
+                .filter(|(_, (intersection_size, tree_size))| {
+                    std::cmp::max(query_tree.0, *tree_size) - intersection_size <= k
+                })
+                .map(|(tid, _)| (query_id, *tid)),
+        );
+        candidates
     }
 }
 
