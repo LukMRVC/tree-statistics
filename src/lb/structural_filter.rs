@@ -568,10 +568,15 @@ impl StructuralFilterIndex {
                     .take_while(|(_, size, _)| *size <= k + query_tree.0)
                 {
                     let mut overlapping_nodes = 0;
-                    for query_node_structural_vector in query_label_nodes.struct_vec.iter() {
-                        let k_window = query_node_structural_vector.postorder_id as i32 - k as i32;
-                        let k_window = std::cmp::max(k_window, 0) as usize;
-                        for posting_node_structural_vector in posting_nodes.iter() {
+                    let (smaller_node_set, bigger_node_set) =
+                        if query_label_nodes.struct_vec.len() < posting_nodes.len() {
+                            (&query_label_nodes.struct_vec, posting_nodes)
+                        } else {
+                            (posting_nodes, &query_label_nodes.struct_vec)
+                        };
+
+                    for query_node_structural_vector in smaller_node_set.iter() {
+                        for posting_node_structural_vector in bigger_node_set.iter() {
                             if svec_l1_strict(
                                 query_node_structural_vector.mapping_regions,
                                 posting_node_structural_vector.mapping_regions,
