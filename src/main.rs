@@ -280,30 +280,30 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, lc.create_single(q)))
                             .collect_vec();
 
-                        let mut index_candidates = vec![];
-                        let start = Instant::now();
-                        for (qid, (t, query)) in structural_queries.iter().enumerate() {
-                            index_candidates.append(&mut struct_index.query_index(
-                                query,
-                                *t,
-                                Some(qid),
-                            ));
-                        }
-                        println!(
-                            "Structural index found {canlen} candidates in {dur}ms",
-                            canlen = index_candidates.len(),
-                            dur = start.elapsed().as_millis()
-                        );
-                        index_candidates.par_sort();
-                        let mut output_file = output.clone();
-                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        write_file(
-                            output_file,
-                            &index_candidates
-                                .iter()
-                                .map(|(c1, c2)| format!("{c1},{c2}"))
-                                .collect_vec(),
-                        )?;
+                        // let mut index_candidates = vec![];
+                        // let start = Instant::now();
+                        // for (qid, (t, query)) in structural_queries.iter().enumerate() {
+                        //     index_candidates.append(&mut struct_index.query_index(
+                        //         query,
+                        //         *t,
+                        //         Some(qid),
+                        //     ));
+                        // }
+                        // println!(
+                        //     "Structural index found {canlen} candidates in {dur}ms",
+                        //     canlen = index_candidates.len(),
+                        //     dur = start.elapsed().as_millis()
+                        // );
+                        // index_candidates.par_sort();
+                        // let mut output_file = output.clone();
+                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        // write_file(
+                        //     output_file,
+                        //     &index_candidates
+                        //         .iter()
+                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
+                        //         .collect_vec(),
+                        // )?;
 
                         lb::iterate_queries!(structural_queries, structural_sets, struct_ted_k)
                     }

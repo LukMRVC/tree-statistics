@@ -382,14 +382,15 @@ fn svec_l1(n1: &StructuralVec, n2: &StructuralVec) -> u32 {
     n1.mapping_regions
         .iter()
         .zip_eq(n2.mapping_regions.iter())
-        .fold(0i32, |acc, (a, b)| acc + (a - b).abs()) as u32
+        .map(|(a, b)| (a - b).abs())
+        .sum::<i32>() as u32
 }
 
 #[inline(always)]
-fn svec_l1_strict(n1: [RegionNumType; 4], n2: [RegionNumType; 4]) -> usize {
+fn svec_l1_strict(n1: &[RegionNumType; 4], n2: &[RegionNumType; 4]) -> i32 {
     n1.iter()
         .zip_eq(n2.iter())
-        .fold(0, |acc, (a, b)| acc + (a - b).abs()) as usize
+        .fold(0, |acc, (a, b)| acc + (a - b).abs())
 }
 
 /// Given two sets
@@ -400,8 +401,50 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
     if s1.0.abs_diff(s2.0) > k {
         return k + 1;
     }
+    let k = k as i32;
 
-    let overlap = get_nodes_overlap_with_region_distance(s1, s2, k, svec_l1);
+    let mut overlap = 0;
+    for (lblid, set1) in s1.1.iter() {
+        if let Some(set2) = s2.1.get(lblid) {
+            if set1.base.weight == 1 && set2.base.weight == 1 {
+                let l1_region_distance = svec_l1_strict(
+                    &set1.struct_vec[0].mapping_regions,
+                    &set2.struct_vec[0].mapping_regions,
+                );
+
+                if l1_region_distance <= k {
+                    overlap += 1;
+                }
+                continue;
+            }
+
+            let (s1c, s2c) = if set2.base.weight < set1.base.weight {
+                (set2, set1)
+            } else {
+                (set1, set2)
+            };
+
+            for n1 in s1c.struct_vec.iter() {
+                // let k_window = n1.postorder_id as i32 - k as i32;
+                // let k_window = std::cmp::max(k_window, 0) as usize;
+
+                // apply postorder filter
+                // let s2clen = s2c.struct_vec.len();
+                for n2 in s2c.struct_vec.iter()
+                // .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
+                // .take_while(|n2| !(n2.postorder_id > k as usize + n1.postorder_id))
+                {
+                    let l1_region_distance =
+                        svec_l1_strict(&n1.mapping_regions, &n2.mapping_regions);
+
+                    if l1_region_distance <= k {
+                        overlap += 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     bigger - overlap
 }
@@ -578,9 +621,10 @@ impl StructuralFilterIndex {
                     for query_node_structural_vector in smaller_node_set.iter() {
                         for posting_node_structural_vector in bigger_node_set.iter() {
                             if svec_l1_strict(
-                                query_node_structural_vector.mapping_regions,
-                                posting_node_structural_vector.mapping_regions,
-                            ) <= k
+                                &query_node_structural_vector.mapping_regions,
+                                &posting_node_structural_vector.mapping_regions,
+                            ) as usize
+                                <= k
                             {
                                 overlapping_nodes += 1;
                                 break;
