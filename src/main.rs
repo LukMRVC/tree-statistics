@@ -118,7 +118,7 @@ fn main() -> Result<(), anyhow::Error> {
             ErrorKind::InvalidValue,
             "Path does not exists or is not a valid file!",
         )
-        .exit();
+            .exit();
     }
     let mut label_dict = LabelDict::new();
     let mut trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
@@ -146,7 +146,7 @@ fn main() -> Result<(), anyhow::Error> {
                         ErrorKind::InvalidValue,
                         "Output path must be a directory! Defaulting to current...",
                     )
-                    .print()?;
+                        .print()?;
                     output_path = PathBuf::from("./");
                 }
 
@@ -232,7 +232,7 @@ fn main() -> Result<(), anyhow::Error> {
             // let _structural_split_sets = lc.create_split(&trees, split_distribution);
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
             let lbms: [LBM; 3] = [LBM::Lblint, LBM::Sed, LBM::Structural];
-            let label_dict = dbg!(label_dict);
+            // let label_dict = dbg!(label_dict);
 
             for current_method in lbms.iter().filter(|method| {
                 if let Some(single_method) = filter_method {
@@ -305,22 +305,59 @@ fn main() -> Result<(), anyhow::Error> {
                             .collect_vec();
 
                         let mut q_cnt = 0;
+                        let mut index_candidates = Vec::with_capacity(15_000);
+                        let start = Instant::now();
+                        let sed_indexes_len = sed_indexes.len();
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
-                            if let Ok(c1) = c1 {
-                                let c2 = post_index
-                                    .query(sed_query.postorder.clone(), *threshold)
-                                    .unwrap();
-                                let c2 = FxHashSet::from_iter(&c2);
-                                let c1 = FxHashSet::from_iter(&c1);
-                                let all_candidates = c1.union(&c2).cloned().collect::<Vec<_>>();
+                            if let Ok(mut c1) = c1 {
+                                c1.sort();
+                                // let c2 = post_index
+                                //     .query(sed_query.postorder.clone(), *threshold)
+                                //     .unwrap();
+                                // let c2 = FxHashSet::from_iter(&c2);
+                                // let c1 = FxHashSet::from_iter(&c1);
+                                // let all_candidates = c1.union(&c2);
+                                // println!("Candidates size: {}", c1.len());
+                                for cid in c1.iter() {
+                                    if sed_k(sed_query, &sed_indexes[*cid], *threshold) <= *threshold {
+                                        index_candidates.push((qid, *cid));
+                                    }
+                                }
+                            } else {
+                                let start_idx = size_map
+                                    .get(&sed_query.c.tree_size.saturating_sub(*threshold))
+                                    .unwrap_or(&0);
+                                let end_idx = size_map
+                                    .get(&(sed_query.c.tree_size + threshold + 1))
+                                    .unwrap_or(&sed_indexes_len);
+                                let idx_diff = end_idx - start_idx;
+                                // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
 
-                                if all_candidates.len() == 0 {
-                                    dbg!(qid);
-                                    dbg!(all_candidates.len());
+                                for (tid, tree) in sed_indexes
+                                    .iter()
+                                    .enumerate()
+                                    .skip(*start_idx)
+                                    .take(idx_diff)
+                                {
+                                    if sed_k(sed_query, tree, *threshold) <= *threshold {
+                                        index_candidates.push((qid, tid));
+                                    }
                                 }
                             }
                         }
+                        println!("Querying indexes took: {}ms and found {} candidates", start.elapsed().as_millis(), index_candidates.len());
+
+                        index_candidates.par_sort();
+                        let mut output_file = output.clone();
+                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        write_file(
+                            output_file,
+                            &index_candidates
+                                .iter()
+                                .map(|(c1, c2)| format!("{c1},{c2}"))
+                                .collect_vec(),
+                        )?;
 
                         lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map)
                     }

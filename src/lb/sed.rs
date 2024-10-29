@@ -59,7 +59,7 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     std::cmp::max(pre_dist, post_dist)
 }
 
-fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
+pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     use std::cmp::{max, min};
     // assumes size of s2 is smaller or equal than s1
     let mut s1len = s1.len();

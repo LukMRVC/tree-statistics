@@ -50,9 +50,7 @@ impl IndexGram {
 
         for str_grams in q_grams.iter_mut() {
             str_grams.sort_by(|ag, bg| {
-                let ord = frequency_map
-                    .get(&ag.sig)
-                    .cmp(&frequency_map.get(&bg.sig));
+                let ord = frequency_map.get(&ag.sig).cmp(&frequency_map.get(&bg.sig));
                 if ord == Ordering::Equal {
                     ag.pos.cmp(&bg.pos)
                 } else {
@@ -82,23 +80,26 @@ impl IndexGram {
 
     pub fn query(&self, mut query: Vec<i32>, k: usize) -> Result<Vec<usize>, String> {
         let sig_size = query.len().div_ceil(self.q);
+        if k > sig_size {
+            // eprintln!(
+            //     "{k} > {}, output may have false negatives! lb={lb}",
+            //     chunks.len(),
+            //     lb = sig_size - k
+            // );
+            return Err("Query is too small for that threshold!".to_owned());
+        }
         query.append(&mut vec![
             Self::EMPTY_VALUE;
             sig_size * self.q - query.len()
         ]);
-        let mut chunks: Vec<QSig> = query.chunks(self.q).enumerate().map(|(pos, c)| QSig {
-            sig: c.to_vec(),
-            pos: pos * self.q
-        }).collect();
-
-        if k > sig_size {
-            eprintln!(
-                "{k} > {}, output may have false negatives! lb={lb}",
-                chunks.len(),
-                lb = sig_size - k
-            );
-            return Err("Query is too small for that threshold!".to_owned());
-        }
+        let mut chunks: Vec<QSig> = query
+            .chunks(self.q)
+            .enumerate()
+            .map(|(pos, c)| QSig {
+                sig: c.to_vec(),
+                pos: pos * self.q,
+            })
+            .collect();
 
         chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
         let mut cs = FxHashSet::default();
@@ -121,10 +122,12 @@ impl IndexGram {
                 let mut candidate_gram_matches = vec![];
                 let lb = sig_size - k;
                 let candidate_grams = &self.q_grams[**cid];
-                dbg!(candidate_grams);
-                dbg!(chunks.iter().enumerate().map(|(mi, chk)| (mi * self.q, chk) ).collect::<Vec<_>>());
+                // dbg!(candidate_grams);
+                // dbg!(chunks.iter().enumerate().map(|(mi, chk)| (mi * self.q, chk) ).collect::<Vec<_>>());
                 for chunk in chunks.iter() {
-                    let chunk_match = candidate_grams.iter().position(|gram| gram.sig == chunk.sig);
+                    let chunk_match = candidate_grams
+                        .iter()
+                        .position(|gram| gram.sig == chunk.sig);
                     if let Some(mut match_idx) = chunk_match {
                         while match_idx < candidate_grams.len()
                             && candidate_grams[match_idx].sig == chunk.sig
