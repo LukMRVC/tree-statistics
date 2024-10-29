@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
@@ -28,9 +30,9 @@ pub fn label_intersection_k(
     let bigger_tree = max(t1.c.tree_size, t2.c.tree_size);
 
     // if all labels matched, but just the size difference was too much, just exit
-    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
-        return k + 1;
-    }
+    // if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+    //     return k + 1;
+    // }
 
     for (label, postings) in t1.inverted_list.iter() {
         let Some(t2postings) = t2.inverted_list.get(label) else {
@@ -50,7 +52,6 @@ pub struct LabelIntersectionIndex {
     // the tuple is treeId, tree_size and label count
     index: FxHashMap<LabelId, Vec<(usize, usize, usize)>>,
     // first is the tree size, second is starting point
-    // skip_list: FxHashMap<LabelId, Vec<(usize, usize)>>,
     size_index: Vec<usize>,
 }
 
@@ -74,30 +75,6 @@ impl LabelIntersectionIndex {
             }
             size_index.push(t.c.tree_size);
         }
-
-        /*
-        let mut skip_list = FxHashMap::default();
-        for (key, postings) in index.iter() {
-            let mut first_tree_size = postings.first().unwrap().1;
-            let mut skips = vec![];
-            for i in 0..=first_tree_size {
-                skips.push((i, 0));
-            }
-
-            for (idx, (_, tree_size, _)) in postings.iter().enumerate() {
-                if *tree_size != first_tree_size {
-                    for i in (first_tree_size + 1)..=*tree_size {
-                        skips.push((i, idx));
-                    }
-                    first_tree_size = *tree_size;
-                }
-            }
-
-            for i in (first_tree_size + 1)..=max_tree_size {
-                skips.push((i, postings.len() - 1));
-            }
-            skip_list.insert(*key, skips);
-        }*/
 
         LabelIntersectionIndex {
             index,
@@ -148,8 +125,6 @@ impl LabelIntersectionIndex {
             }
         }
 
-        // let mut tree_intersections = dbg!(tree_intersections);
-
         let mut candidates = vec![];
         // find candidates that have no label overlap but can fit by size because of threshold
         for (cid, tree_size) in self
@@ -164,6 +139,7 @@ impl LabelIntersectionIndex {
                 }
             }
         }
+
         candidates.extend(
             tree_intersections
                 .iter()

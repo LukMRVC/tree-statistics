@@ -1,15 +1,14 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
-use crate::lb::indexes::histograms::create_collection_histograms;
-use crate::parsing::{tree_to_string, LabelDict, LabelId, TreeOutput};
+use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
-use lb::binary_branch::BinaryBranchConverter;
 use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use rayon::prelude::*;
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
@@ -197,6 +196,20 @@ fn main() -> Result<(), anyhow::Error> {
             // let mut candidate_times = vec![];
             // let mut selectivities = vec![];
             println!("Preparing dataset and running preprocessing for all methods");
+            let mut size_map = BTreeMap::new();
+            let first = trees.first().unwrap();
+            let mut size = first.count();
+            size_map.insert(first.count(), 0);
+            for (idx, t) in trees.iter().enumerate().skip(1) {
+                if size != t.count() {
+                    for i in size..t.count() {
+                        size_map.insert(i, idx);
+                    }
+                    size = t.count();
+                    size_map.insert(size, idx);
+                }
+            }
+
             // let _collection_histograms = create_collection_histograms(&trees);
             let lblint_indexes = trees
                 .par_iter()
@@ -206,8 +219,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .par_iter()
                 .map(|t| SEDIndex::index_tree(t, &label_dict))
                 .collect::<Vec<_>>();
-            // let mut bib_converter = BinaryBranchConverter::default();
-            // let _tree_bib_vectors = bib_converter.create(&trees);
+
             let mut lc = LabelSetConverter::default();
             let lblint_index = label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
 
@@ -264,7 +276,12 @@ fn main() -> Result<(), anyhow::Error> {
                                 .collect_vec(),
                         )?;
 
-                        lb::iterate_queries!(lblint_queries, lblint_indexes, label_intersection_k)
+                        lb::iterate_queries!(
+                            lblint_queries,
+                            lblint_indexes,
+                            label_intersection_k,
+                            size_map
+                        )
                     }
                     LBM::Sed => {
                         let sed_queries = queries
@@ -272,7 +289,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
 
-                        lb::iterate_queries!(sed_queries, sed_indexes, sed_k)
+                        lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map)
                     }
                     LBM::Structural => {
                         let structural_queries = queries
