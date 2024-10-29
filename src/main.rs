@@ -4,10 +4,12 @@ use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
+use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use rayon::prelude::*;
+use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
@@ -222,7 +224,6 @@ fn main() -> Result<(), anyhow::Error> {
 
             let mut lc = LabelSetConverter::default();
             let lblint_index = label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
-
             let structural_sets = lc.create(&trees);
             let struct_index = structural_filter::StructuralFilterIndex::new(&structural_sets);
             // let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
@@ -230,8 +231,8 @@ fn main() -> Result<(), anyhow::Error> {
             // move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
             // let _structural_split_sets = lc.create_split(&trees, split_distribution);
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
-
             let lbms: [LBM; 3] = [LBM::Lblint, LBM::Sed, LBM::Structural];
+            let label_dict = dbg!(label_dict);
 
             for current_method in lbms.iter().filter(|method| {
                 if let Some(single_method) = filter_method {
@@ -284,10 +285,42 @@ fn main() -> Result<(), anyhow::Error> {
                         )
                     }
                     LBM::Sed => {
+                        let pre_only = sed_indexes
+                            .iter()
+                            .map(|si| si.preorder.clone())
+                            .collect::<Vec<Vec<i32>>>();
+
+                        let post_only = sed_indexes
+                            .iter()
+                            .map(|si| si.postorder.clone())
+                            .collect::<Vec<Vec<i32>>>();
+                        let start = Instant::now();
+                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, 2);
+                        let post_index = indexes::index_gram::IndexGram::new(&post_only, 2);
+                        println!("Building indexes took: {}ms", start.elapsed().as_millis());
+
                         let sed_queries = queries
                             .iter()
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
+
+                        let mut q_cnt = 0;
+                        for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
+                            let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
+                            if let Ok(c1) = c1 {
+                                let c2 = post_index
+                                    .query(sed_query.postorder.clone(), *threshold)
+                                    .unwrap();
+                                let c2 = FxHashSet::from_iter(&c2);
+                                let c1 = FxHashSet::from_iter(&c1);
+                                let all_candidates = c1.union(&c2).cloned().collect::<Vec<_>>();
+
+                                if all_candidates.len() == 0 {
+                                    dbg!(qid);
+                                    dbg!(all_candidates.len());
+                                }
+                            }
+                        }
 
                         lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map)
                     }
