@@ -126,15 +126,6 @@ impl IndexGram {
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
 
-        // for (cid, qgrams) in self.q_grams.iter().enumerate() {
-        //     let size = self.strlen_from_qgrams(&qgrams);
-        //     let needed_qgrams = size - ((size.saturating_sub(k).div_ceil(self.q)) - k) + 1;
-
-        //     if needed_qgrams >= qgrams.len() {
-        //         cs.insert(cid);
-        //     }
-        // }
-
         // count filter
         // TODO: This count filter is taking an absurdly long time to complete...
         let candidates = cs
@@ -152,34 +143,34 @@ impl IndexGram {
                     if candidate_gram_matches >= lb {
                         return true;
                     }
-                    // let chunk_match = candidate_grams
-                    //     .iter()
-                    //     .position(|gram| gram.sig == chunk.sig);
-
-                    match candidate_grams.binary_search_by_key(&chunk.sig.as_ref(), |sig| &sig.sig)
-                    {
-                        Err(_) => {
-                            mismatch += 1;
-                            if mismatch > chunks.len() - lb {
-                                return false;
-                            }
+                    match candidate_grams.binary_search_by(|probe| {
+                        match probe.sig.cmp(&chunk.sig) {
+                            std::cmp::Ordering::Equal => probe
+                                .pos
+                                .cmp(&chunk.pos.saturating_sub(k))
+                                .then(std::cmp::Ordering::Greater),
+                            other => other,
                         }
-                        Ok(mut match_idx) => {
-                            while match_idx > 0 && candidate_grams[match_idx].sig == chunk.sig {
-                                match_idx -= 1;
-                            }
-                            match_idx += 1;
-                            while match_idx < candidate_grams.len()
-                                && candidate_grams[match_idx].sig == chunk.sig
+                    }) {
+                        Err(mut match_idx) => {
+                            if match_idx >= candidate_grams.len()
+                                || candidate_grams[match_idx].sig != chunk.sig
                             {
-                                if chunk.pos.abs_diff(candidate_grams[match_idx].pos) <= k {
-                                    candidate_gram_matches += 1;
-                                } else if candidate_grams[match_idx].pos > chunk.pos {
-                                    break;
+                                mismatch += 1;
+                                if mismatch > chunks.len() - lb {
+                                    return false;
                                 }
-                                match_idx += 1;
+                            } else {
+                                while match_idx < candidate_grams.len()
+                                    && candidate_grams[match_idx].sig == chunk.sig
+                                    && chunk.pos.abs_diff(candidate_grams[match_idx].pos) <= k
+                                {
+                                    candidate_gram_matches += 1;
+                                    match_idx += 1;
+                                }
                             }
                         }
+                        Ok(_) => {}
                     }
                 }
                 candidate_gram_matches >= lb
