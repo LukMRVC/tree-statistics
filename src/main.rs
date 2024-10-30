@@ -16,7 +16,7 @@ use std::fs::{create_dir_all, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, exit};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 mod indexing;
 mod lb;
@@ -118,7 +118,7 @@ fn main() -> Result<(), anyhow::Error> {
             ErrorKind::InvalidValue,
             "Path does not exists or is not a valid file!",
         )
-            .exit();
+        .exit();
     }
     let mut label_dict = LabelDict::new();
     let mut trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
@@ -146,7 +146,7 @@ fn main() -> Result<(), anyhow::Error> {
                         ErrorKind::InvalidValue,
                         "Output path must be a directory! Defaulting to current...",
                     )
-                        .print()?;
+                    .print()?;
                     output_path = PathBuf::from("./");
                 }
 
@@ -308,9 +308,13 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut index_candidates = Vec::with_capacity(15_000);
                         let start = Instant::now();
                         let sed_indexes_len = sed_indexes.len();
+                        let mut total_lookup_duration = Duration::new(0, 0);
+                        let mut total_filter_duration = Duration::new(0, 0);
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
-                            if let Ok(mut c1) = c1 {
+                            if let Ok((mut c1, lookup_duration, filter_duration)) = c1 {
+                                total_lookup_duration += lookup_duration;
+                                total_filter_duration += filter_duration;
                                 c1.sort();
                                 // let c2 = post_index
                                 //     .query(sed_query.postorder.clone(), *threshold)
@@ -320,7 +324,9 @@ fn main() -> Result<(), anyhow::Error> {
                                 // let all_candidates = c1.union(&c2);
                                 // println!("Candidates size: {}", c1.len());
                                 for cid in c1.iter() {
-                                    if sed_k(sed_query, &sed_indexes[*cid], *threshold) <= *threshold {
+                                    if sed_k(sed_query, &sed_indexes[*cid], *threshold)
+                                        <= *threshold
+                                    {
                                         index_candidates.push((qid, *cid));
                                     }
                                 }
@@ -346,7 +352,21 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                             }
                         }
-                        println!("Querying indexes took: {}ms and found {} candidates", start.elapsed().as_millis(), index_candidates.len());
+
+                        println!(
+                            "Querying indexes took: {}ms and found {} candidates",
+                            start.elapsed().as_millis(),
+                            index_candidates.len()
+                        );
+
+                        println!(
+                            "Total lookup duration was: {}ms",
+                            total_lookup_duration.as_millis(),
+                        );
+                        println!(
+                            "Total count filter duration was: {}ms",
+                            total_filter_duration.as_millis(),
+                        );
 
                         index_candidates.par_sort();
                         let mut output_file = output.clone();

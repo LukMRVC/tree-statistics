@@ -1,4 +1,7 @@
-use std::cmp::Ordering;
+use std::{
+    cmp::Ordering,
+    time::{Duration, Instant},
+};
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -78,7 +81,11 @@ impl IndexGram {
         }
     }
 
-    pub fn query(&self, mut query: Vec<i32>, k: usize) -> Result<Vec<usize>, String> {
+    pub fn query(
+        &self,
+        mut query: Vec<i32>,
+        k: usize,
+    ) -> Result<(Vec<usize>, Duration, Duration), String> {
         let sig_size = query.len().div_ceil(self.q);
         if k > sig_size {
             // eprintln!(
@@ -102,29 +109,36 @@ impl IndexGram {
             .collect();
 
         chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
+        let index_lookup = Instant::now();
         let mut cs = FxHashSet::default();
-        for (chunk_pos, chunk) in chunks.iter().enumerate() {
-            let chunk_pos = chunk_pos * self.q;
+        for chunk in chunks.iter().take(k + 1) {
             if let Some(postings) = self.inv_index.get(&chunk.sig) {
                 for (cid, slen, gram_pos) in postings.iter() {
-                    if slen.abs_diff(query.len()) <= k && chunk_pos.abs_diff(*gram_pos) <= k {
+                    if slen.abs_diff(query.len()) <= k && chunk.pos.abs_diff(*gram_pos) <= k {
                         cs.insert(*cid);
                     }
                 }
             }
         }
-
+        let index_lookup_dur = index_lookup.elapsed();
+        let filter_time = Instant::now();
         // count filter
-        Ok(cs
+        // TODO: This count filter is taking an absurdly long time to complete...
+        let candidates = cs
             .iter()
             .filter(|cid| {
                 let mut mismatch = 0;
-                let mut candidate_gram_matches = vec![];
+                // let mut candidate_gram_matches = vec![];
+                let mut candidate_gram_matches = 0;
+
                 let lb = sig_size - k;
                 let candidate_grams = &self.q_grams[**cid];
                 // dbg!(candidate_grams);
                 // dbg!(chunks.iter().enumerate().map(|(mi, chk)| (mi * self.q, chk) ).collect::<Vec<_>>());
                 for chunk in chunks.iter() {
+                    if candidate_gram_matches >= lb {
+                        return true;
+                    }
                     let chunk_match = candidate_grams
                         .iter()
                         .position(|gram| gram.sig == chunk.sig);
@@ -133,7 +147,7 @@ impl IndexGram {
                             && candidate_grams[match_idx].sig == chunk.sig
                             && chunk.pos.abs_diff(candidate_grams[match_idx].pos) <= k
                         {
-                            candidate_gram_matches.push((chunk, match_idx));
+                            candidate_gram_matches += 1;
                             match_idx += 1;
                         }
                     } else {
@@ -143,9 +157,11 @@ impl IndexGram {
                         }
                     }
                 }
-                candidate_gram_matches.len() >= lb
+                candidate_gram_matches >= lb
             })
             .cloned()
-            .collect::<Vec<usize>>())
+            .collect::<Vec<usize>>();
+        let filter_duration = filter_time.elapsed();
+        Ok((candidates, index_lookup_dur, filter_duration))
     }
 }
