@@ -3,9 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 struct QSig {
     sig: Vec<i32>,
     pos: usize,
@@ -13,8 +14,8 @@ struct QSig {
 
 pub struct IndexGram {
     q: usize,
-    q_grams: Vec<Vec<QSig>>,
-    inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize, usize)>>,
+    q_grams: Vec<(usize, Vec<QSig>)>,
+    inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize)>>,
     ordering: FxHashMap<Vec<i32>, i32>,
 }
 
@@ -27,7 +28,7 @@ impl IndexGram {
             let sig_size = sdata.len().div_ceil(q);
             sdata.append(&mut vec![Self::EMPTY_VALUE; sig_size * q - sdata.len()]);
 
-            let sqgrams: Vec<QSig> = sdata
+            let mut sqgrams: Vec<QSig> = sdata
                 .windows(q)
                 .enumerate()
                 .map(|(i, w)| QSig {
@@ -35,41 +36,40 @@ impl IndexGram {
                     pos: i,
                 })
                 .collect();
-            q_grams.push(sqgrams);
+            sqgrams.sort();
+            q_grams.push((sdata.len(), sqgrams));
         }
 
         let mut frequency_map = FxHashMap::default();
 
-        for qgrams in q_grams.iter() {
-            for qgram in qgrams.iter().cloned() {
-                frequency_map
-                    .entry(qgram.sig)
-                    .and_modify(|cnt| *cnt += 1)
-                    .or_insert(1);
-            }
-        }
+        // for qgrams in q_grams.iter() {
+        //     for qgram in qgrams.iter().cloned() {
+        //         frequency_map
+        //             .entry(qgram.sig)
+        //             .and_modify(|cnt| *cnt += 1)
+        //             .or_insert(1);
+        //     }
+        // }
 
         let mut inv_index = FxHashMap::default();
 
-        for str_grams in q_grams.iter_mut() {
-            str_grams.sort_by(|ag, bg| {
-                let ord = frequency_map.get(&ag.sig).cmp(&frequency_map.get(&bg.sig));
-                if ord == Ordering::Equal {
-                    ag.pos.cmp(&bg.pos)
-                } else {
-                    ord
-                }
-            });
-        }
+        // for str_grams in q_grams.iter_mut() {
+        //     str_grams.sort_by(|ag, bg| {
+        //         let ord = frequency_map.get(&ag.sig).cmp(&frequency_map.get(&bg.sig));
+        //         if ord == Ordering::Equal {
+        //             ag.pos.cmp(&bg.pos)
+        //         } else {
+        //             ord
+        //         }
+        //     });
+        // }
 
         for (sid, str_grams) in q_grams.iter().enumerate() {
-            for (gram_pos, gram) in str_grams.iter().cloned().enumerate() {
+            for (gram_pos, gram) in str_grams.1.iter().cloned().enumerate() {
                 inv_index
                     .entry(gram.sig)
-                    .and_modify(|postings: &mut Vec<(usize, usize, usize)>| {
-                        postings.push((sid, data[sid].len(), gram_pos))
-                    })
-                    .or_insert(vec![(sid, data[sid].len(), gram_pos)]);
+                    .and_modify(|postings: &mut Vec<(usize, usize)>| postings.push((sid, gram_pos)))
+                    .or_insert(vec![(sid, gram_pos)]);
             }
         }
 
@@ -87,7 +87,7 @@ impl IndexGram {
         k: usize,
     ) -> Result<(Vec<usize>, Duration, Duration), String> {
         let sig_size = query.len().div_ceil(self.q);
-        if k > sig_size {
+        if k >= sig_size {
             // eprintln!(
             //     "{k} > {}, output may have false negatives! lb={lb}",
             //     chunks.len(),
@@ -108,20 +108,33 @@ impl IndexGram {
             })
             .collect();
 
-        chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
+        chunks.sort();
+        // chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
         let index_lookup = Instant::now();
         let mut cs = FxHashSet::default();
-        for chunk in chunks.iter().take(k + 1) {
+        for chunk in chunks.iter() {
             if let Some(postings) = self.inv_index.get(&chunk.sig) {
-                for (cid, slen, gram_pos) in postings.iter() {
+                for (cid, gram_pos) in postings.iter() {
+                    let slen = self.q_grams[*cid].0;
                     if slen.abs_diff(query.len()) <= k && chunk.pos.abs_diff(*gram_pos) <= k {
                         cs.insert(*cid);
                     }
                 }
             }
         }
+
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
+
+        // for (cid, qgrams) in self.q_grams.iter().enumerate() {
+        //     let size = self.strlen_from_qgrams(&qgrams);
+        //     let needed_qgrams = size - ((size.saturating_sub(k).div_ceil(self.q)) - k) + 1;
+
+        //     if needed_qgrams >= qgrams.len() {
+        //         cs.insert(cid);
+        //     }
+        // }
+
         // count filter
         // TODO: This count filter is taking an absurdly long time to complete...
         let candidates = cs
@@ -132,28 +145,40 @@ impl IndexGram {
                 let mut candidate_gram_matches = 0;
 
                 let lb = sig_size - k;
-                let candidate_grams = &self.q_grams[**cid];
+                let candidate_grams = &self.q_grams[**cid].1;
                 // dbg!(candidate_grams);
                 // dbg!(chunks.iter().enumerate().map(|(mi, chk)| (mi * self.q, chk) ).collect::<Vec<_>>());
                 for chunk in chunks.iter() {
                     if candidate_gram_matches >= lb {
                         return true;
                     }
-                    let chunk_match = candidate_grams
-                        .iter()
-                        .position(|gram| gram.sig == chunk.sig);
-                    if let Some(mut match_idx) = chunk_match {
-                        while match_idx < candidate_grams.len()
-                            && candidate_grams[match_idx].sig == chunk.sig
-                            && chunk.pos.abs_diff(candidate_grams[match_idx].pos) <= k
-                        {
-                            candidate_gram_matches += 1;
-                            match_idx += 1;
+                    // let chunk_match = candidate_grams
+                    //     .iter()
+                    //     .position(|gram| gram.sig == chunk.sig);
+
+                    match candidate_grams.binary_search_by_key(&chunk.sig.as_ref(), |sig| &sig.sig)
+                    {
+                        Err(_) => {
+                            mismatch += 1;
+                            if mismatch > chunks.len() - lb {
+                                return false;
+                            }
                         }
-                    } else {
-                        mismatch += 1;
-                        if mismatch > chunks.len() - lb {
-                            return false;
+                        Ok(mut match_idx) => {
+                            while match_idx > 0 && candidate_grams[match_idx].sig == chunk.sig {
+                                match_idx -= 1;
+                            }
+                            match_idx += 1;
+                            while match_idx < candidate_grams.len()
+                                && candidate_grams[match_idx].sig == chunk.sig
+                            {
+                                if chunk.pos.abs_diff(candidate_grams[match_idx].pos) <= k {
+                                    candidate_gram_matches += 1;
+                                } else if candidate_grams[match_idx].pos > chunk.pos {
+                                    break;
+                                }
+                                match_idx += 1;
+                            }
                         }
                     }
                 }
@@ -162,6 +187,16 @@ impl IndexGram {
             .cloned()
             .collect::<Vec<usize>>();
         let filter_duration = filter_time.elapsed();
+
+        // let candidates = cs.iter().cloned().collect_vec();
+
         Ok((candidates, index_lookup_dur, filter_duration))
+    }
+
+    fn strlen_from_qgrams(&self, grams: &[QSig]) -> usize {
+        if grams.last().unwrap().sig.last().unwrap() == &Self::EMPTY_VALUE {
+            return grams.len();
+        }
+        grams.len() + (self.q - 1)
     }
 }

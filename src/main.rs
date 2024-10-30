@@ -289,14 +289,10 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .map(|si| si.preorder.clone())
                             .collect::<Vec<Vec<i32>>>();
-
-                        let post_only = sed_indexes
-                            .iter()
-                            .map(|si| si.postorder.clone())
-                            .collect::<Vec<Vec<i32>>>();
                         let start = Instant::now();
-                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, 2);
-                        let post_index = indexes::index_gram::IndexGram::new(&post_only, 2);
+                        let q = 3usize;
+                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
+                        // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         println!("Building indexes took: {}ms", start.elapsed().as_millis());
 
                         let sed_queries = queries
@@ -304,18 +300,20 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
 
-                        let mut q_cnt = 0;
+                        let mut index_used_cnt = 0;
                         let mut index_candidates = Vec::with_capacity(15_000);
                         let start = Instant::now();
                         let sed_indexes_len = sed_indexes.len();
                         let mut total_lookup_duration = Duration::new(0, 0);
                         let mut total_filter_duration = Duration::new(0, 0);
+                        let mut avg_precision = 0.0;
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
                             if let Ok((mut c1, lookup_duration, filter_duration)) = c1 {
+                                index_used_cnt += 1;
                                 total_lookup_duration += lookup_duration;
                                 total_filter_duration += filter_duration;
-                                c1.sort();
+                                // c1.sort();
                                 // let c2 = post_index
                                 //     .query(sed_query.postorder.clone(), *threshold)
                                 //     .unwrap();
@@ -323,13 +321,18 @@ fn main() -> Result<(), anyhow::Error> {
                                 // let c1 = FxHashSet::from_iter(&c1);
                                 // let all_candidates = c1.union(&c2);
                                 // println!("Candidates size: {}", c1.len());
+                                let mut correct_results = 0;
                                 for cid in c1.iter() {
                                     if sed_k(sed_query, &sed_indexes[*cid], *threshold)
                                         <= *threshold
                                     {
+                                        correct_results += 1;
                                         index_candidates.push((qid, *cid));
                                     }
                                 }
+                                let precision = correct_results as f64 / c1.len() as f64;
+                                avg_precision = avg_precision
+                                    + (precision - avg_precision) / (index_used_cnt as f64);
                             } else {
                                 let start_idx = size_map
                                     .get(&sed_query.c.tree_size.saturating_sub(*threshold))
@@ -354,9 +357,12 @@ fn main() -> Result<(), anyhow::Error> {
                         }
 
                         println!(
-                            "Querying indexes took: {}ms and found {} candidates",
+                            "Querying indexes took: {}ms and found {} candidates... index was used {}/{}  the avg precision was: {:.4}",
                             start.elapsed().as_millis(),
-                            index_candidates.len()
+                            index_candidates.len(),
+                            index_used_cnt,
+                            sed_queries.len(),
+                            avg_precision,
                         );
 
                         println!(
