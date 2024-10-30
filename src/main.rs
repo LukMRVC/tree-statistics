@@ -290,7 +290,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|si| si.preorder.clone())
                             .collect::<Vec<Vec<i32>>>();
                         let start = Instant::now();
-                        let q = 3usize;
+                        let q = 24usize;
                         let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         println!("Building indexes took: {}ms", start.elapsed().as_millis());
