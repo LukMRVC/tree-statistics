@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, Instant},
 };
 
@@ -15,7 +16,7 @@ struct QSig {
 pub struct IndexGram {
     q: usize,
     q_grams: Vec<(usize, Vec<QSig>)>,
-    inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize)>>,
+    inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize, usize)>>,
     ordering: FxHashMap<Vec<i32>, i32>,
 }
 
@@ -68,8 +69,10 @@ impl IndexGram {
             for (gram_pos, gram) in str_grams.1.iter().cloned().enumerate() {
                 inv_index
                     .entry(gram.sig)
-                    .and_modify(|postings: &mut Vec<(usize, usize)>| postings.push((sid, gram_pos)))
-                    .or_insert(vec![(sid, gram_pos)]);
+                    .and_modify(|postings: &mut Vec<(usize, usize, usize)>| {
+                        postings.push((sid, str_grams.0, gram_pos))
+                    })
+                    .or_insert(vec![(sid, str_grams.0, gram_pos)]);
             }
         }
 
@@ -87,7 +90,7 @@ impl IndexGram {
         k: usize,
     ) -> Result<(Vec<usize>, Duration, Duration), String> {
         let sig_size = query.len().div_ceil(self.q);
-        if k >= sig_size {
+        if k > sig_size {
             // eprintln!(
             //     "{k} > {}, output may have false negatives! lb={lb}",
             //     chunks.len(),
@@ -95,10 +98,14 @@ impl IndexGram {
             // );
             return Err("Query is too small for that threshold!".to_owned());
         }
+        let min_match_size = query.len().saturating_sub(k);
+        let max_match_size = query.len() + k + 1;
         query.append(&mut vec![
             Self::EMPTY_VALUE;
             sig_size * self.q - query.len()
         ]);
+        let index_lookup = Instant::now();
+
         let mut chunks: Vec<QSig> = query
             .chunks(self.q)
             .enumerate()
@@ -108,15 +115,32 @@ impl IndexGram {
             })
             .collect();
 
-        chunks.sort_by_key(|c| c.pos);
+        chunks.sort();
         // chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
-        let index_lookup = Instant::now();
-        let mut cs = FxHashSet::default();
-        for chunk in chunks.iter() {
+        let mut cs = BTreeSet::default();
+
+        for chunk in chunks.iter().take(k + 1) {
             if let Some(postings) = self.inv_index.get(&chunk.sig) {
-                for (cid, gram_pos) in postings.iter() {
-                    let slen = self.q_grams[*cid].0;
-                    if slen.abs_diff(query.len()) <= k && chunk.pos.abs_diff(*gram_pos) <= k {
+                let Err(start) = postings.binary_search_by(|probe| {
+                    probe
+                        .1
+                        .cmp(&min_match_size)
+                        .then(std::cmp::Ordering::Greater)
+                }) else {
+                    panic!("Binary search cannot result in Ok!");
+                };
+                let Err(end) = postings.binary_search_by(|probe| {
+                    probe
+                        .1
+                        .cmp(&max_match_size)
+                        .then(std::cmp::Ordering::Greater)
+                }) else {
+                    panic!("Binary search cannot result in Ok!");
+                };
+                let to_take = end - start;
+
+                for (cid, _, gram_pos) in postings.iter().skip(start).take(to_take) {
+                    if chunk.pos.abs_diff(*gram_pos) <= k {
                         cs.insert(*cid);
                     }
                 }
@@ -126,11 +150,10 @@ impl IndexGram {
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
 
-        // count filter
-        // TODO: This count filter is taking an absurdly long time to complete...
+        // count and true matches filter
         let candidates = cs
             .iter()
-            .filter(|cid| self.count_filter(**cid, sig_size, k, &chunks))
+            .filter(|cid| self.count_filter(**cid, sig_size, k, &mut chunks))
             .cloned()
             .collect::<Vec<usize>>();
         let filter_duration = filter_time.elapsed();
@@ -140,7 +163,7 @@ impl IndexGram {
         Ok((candidates, index_lookup_dur, filter_duration))
     }
 
-    fn count_filter(&self, cid: usize, sig_size: usize, k: usize, chunks: &[QSig]) -> bool {
+    fn count_filter(&self, cid: usize, sig_size: usize, k: usize, chunks: &mut [QSig]) -> bool {
         let mut mismatch = 0;
         let mut candidate_gram_matches = vec![];
         // let mut candidate_gram_matches = 0;
@@ -149,7 +172,40 @@ impl IndexGram {
         let candidate_grams = &self.q_grams[cid].1;
         // dbg!(candidate_grams);
         // dbg!(chunks.iter().enumerate().map(|(mi, chk)| (mi * self.q, chk) ).collect::<Vec<_>>());
-        for chunk in chunks.iter() {
+
+        let (mut i, mut j) = (0, 0);
+
+        // Since this code will always perform bound checking, even if we check in manually in while condition
+        // it's faster to use UNSAFE get_unchecked.
+        while i < chunks.len() && j < candidate_grams.len() {
+            // if mismatch > chunks.len() - lb {
+            //     return false;
+            // }
+            unsafe {
+                if chunks.get_unchecked(i).sig < candidate_grams.get_unchecked(j).sig {
+                    i += 1;
+                } else if chunks.get_unchecked(i).sig > candidate_grams.get_unchecked(j).sig {
+                    j += 1;
+                } else {
+                    if chunks
+                        .get_unchecked(i)
+                        .pos
+                        .abs_diff(candidate_grams.get_unchecked(j).pos)
+                        <= k
+                    {
+                        candidate_gram_matches.push((
+                            chunks.get_unchecked(i).clone(),
+                            candidate_grams.get_unchecked(j),
+                        ));
+                    }
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+
+        // Find valid intersection by searching
+        /*for chunk in chunks.iter() {
             match candidate_grams.binary_search_by(|probe| match probe.sig.cmp(&chunk.sig) {
                 std::cmp::Ordering::Equal => probe
                     .pos
@@ -166,38 +222,47 @@ impl IndexGram {
                             return false;
                         }
                     } else {
-                        while match_idx < candidate_grams.len()
-                            && candidate_grams[match_idx].sig == chunk.sig
-                            && chunk.pos.abs_diff(candidate_grams[match_idx].pos) <= k
-                        {
-                            candidate_gram_matches.push((chunk, &candidate_grams[match_idx]));
-                            match_idx += 1;
+                        unsafe {
+                            while match_idx < candidate_grams.len()
+                                && candidate_grams.get_unchecked(match_idx).sig == chunk.sig
+                                && chunk
+                                    .pos
+                                    .abs_diff(candidate_grams.get_unchecked(match_idx).pos)
+                                    <= k
+                            {
+                                candidate_gram_matches.push((
+                                    chunk.clone(),
+                                    candidate_grams.get_unchecked(match_idx),
+                                ));
+                                match_idx += 1;
+                            }
                         }
                     }
                 }
                 Ok(_) => {}
             }
-        }
+        }*/
 
         // return candidate_gram_matches.len() >= lb;
 
         if candidate_gram_matches.len() < lb {
             return false;
         }
+        // chunks.sort_by_key(|c| c.pos);
 
-        // candidate_gram_matches.sort_by(|a, b| a.0.pos.cmp(&b.0.pos));
+        candidate_gram_matches.sort_by_key(|(chunk, _)| chunk.pos);
 
         // true match filter
         let omni_match = QSig {
             sig: vec![-1, -1],
             pos: usize::MAX,
         };
-        candidate_gram_matches.insert(0, (&omni_match, &omni_match));
+        candidate_gram_matches.insert(0, (omni_match.clone(), &omni_match));
         let mut opt = vec![0; candidate_gram_matches.len()];
 
         // the first in tuple is the q-chunk of query, second is q-gram of data string
         #[inline(always)]
-        fn compatible(m1: (&QSig, &QSig), m2: (&QSig, &QSig), n: usize) -> bool {
+        fn compatible(m1: &(QSig, &QSig), m2: &(QSig, &QSig), n: usize) -> bool {
             if m2.0.sig[0] == -1 {
                 return true;
             }
@@ -209,8 +274,8 @@ impl IndexGram {
             let mn = std::cmp::min(k, candidate_gram_matches.len() - lb + 1);
             for i in 1..=mn {
                 if compatible(
-                    candidate_gram_matches[k],
-                    candidate_gram_matches[k - i],
+                    &candidate_gram_matches[k],
+                    &candidate_gram_matches[k - i],
                     self.q,
                 ) && opt[k - i] > mx
                 {

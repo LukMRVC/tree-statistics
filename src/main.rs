@@ -316,6 +316,10 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut total_filter_duration = Duration::new(0, 0);
                         let mut avg_precision = 0.0;
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
+                            // println!("{qid}");
+                            // if qid == 218 {
+                            //     println!("This is it!");
+                            // }
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
                             if let Ok((c1, lookup_duration, filter_duration)) = c1 {
                                 index_used_cnt += 1;
