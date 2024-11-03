@@ -82,6 +82,9 @@ enum Commands {
         /// Optional real results path - will output precision and filter_times
         #[arg(long)]
         results_path: Option<PathBuf>,
+        /// Q size for QGrams for SED indexing
+        #[arg(long = "qgram-size")]
+        q: Option<usize>,
     },
     /// Validates candidate results against real results
     Validate {
@@ -187,12 +190,14 @@ fn main() -> Result<(), anyhow::Error> {
             output,
             method: filter_method,
             results_path: _results,
+            q,
         } => {
             use LowerBoundMethods as LBM;
             if !output.is_dir() {
                 eprintln!("Output arg must be a directory, is: {output:#?}");
                 process::exit(1);
             }
+            let q = q.unwrap_or(2);
 
             // let mut times = vec![];
             // let mut candidate_times = vec![];
@@ -290,7 +295,8 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|si| si.preorder.clone())
                             .collect::<Vec<Vec<i32>>>();
                         let start = Instant::now();
-                        let q = 24usize;
+                        // TODO: Heuristic: Calculate the best Q for each dataset
+                        // TODO: DBLP with Q = 2 is missing 4 results, find out why!
                         let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         println!("Building indexes took: {}ms", start.elapsed().as_millis());
@@ -299,6 +305,8 @@ fn main() -> Result<(), anyhow::Error> {
                             .iter()
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
+
+                        // dbg!(&pre_only[])
 
                         let mut index_used_cnt = 0;
                         let mut index_candidates = Vec::with_capacity(15_000);
@@ -309,7 +317,7 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut avg_precision = 0.0;
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
-                            if let Ok((mut c1, lookup_duration, filter_duration)) = c1 {
+                            if let Ok((c1, lookup_duration, filter_duration)) = c1 {
                                 index_used_cnt += 1;
                                 total_lookup_duration += lookup_duration;
                                 total_filter_duration += filter_duration;
@@ -340,7 +348,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 let end_idx = size_map
                                     .get(&(sed_query.c.tree_size + threshold + 1))
                                     .unwrap_or(&sed_indexes_len);
-                                let idx_diff = end_idx - start_idx;
+                                let idx_diff = end_idx - start_idx + 1;
                                 // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
 
                                 for (tid, tree) in sed_indexes
