@@ -154,7 +154,7 @@ impl IndexGram {
         // count and true matches filter
         let candidates = cs
             .iter()
-            .filter(|cid| self.count_filter(**cid, sig_size, k, &mut chunks))
+            .filter(|cid| self.count_filter(**cid, sig_size, k, &chunks))
             .cloned()
             .collect::<Vec<usize>>();
         let filter_duration = filter_time.elapsed();
@@ -164,7 +164,7 @@ impl IndexGram {
         Ok((candidates, index_lookup_dur, filter_duration))
     }
 
-    fn count_filter(&self, cid: usize, sig_size: usize, k: usize, chunks: &mut [QSig]) -> bool {
+    fn count_filter(&self, cid: usize, sig_size: usize, k: usize, chunks: &[QSig]) -> bool {
         let mut candidate_gram_matches = vec![];
         // let mut candidate_gram_matches = 0;
 
@@ -175,7 +175,7 @@ impl IndexGram {
 
         // Since this code will always perform bound checking, even if we check in manually in while condition
         // it's faster to use UNSAFE get_unchecked.
-        /*while i < chunks.len() && j < candidate_grams.len() {
+        while i < chunks.len() && j < candidate_grams.len() {
             // if mismatch > chunks.len() - lb {
             //     return false;
             // }
@@ -192,7 +192,7 @@ impl IndexGram {
                         <= k
                     {
                         candidate_gram_matches.push((
-                            chunks.get_unchecked(i).clone(),
+                            chunks.get_unchecked(i),
                             candidate_grams.get_unchecked(j),
                         ));
                     }
@@ -200,10 +200,10 @@ impl IndexGram {
                     j += 1;
                 }
             }
-        }*/
+        }
 
         // Find valid intersection by searching
-
+        /*
         let mut mismatch = 0;
         for chunk in chunks.iter() {
             match candidate_grams.binary_search_by(|probe| match probe.sig.cmp(&chunk.sig) {
@@ -231,7 +231,7 @@ impl IndexGram {
                                     <= k
                             {
                                 candidate_gram_matches.push((
-                                    chunk.clone(),
+                                    chunk,
                                     candidate_grams.get_unchecked(match_idx),
                                 ));
                                 match_idx += 1;
@@ -241,7 +241,7 @@ impl IndexGram {
                 }
                 Ok(_) => {}
             }
-        }
+        }*/
 
         // return candidate_gram_matches.len() >= lb;
 
@@ -257,12 +257,12 @@ impl IndexGram {
             sig: vec![-1, -1],
             pos: usize::MAX,
         };
-        candidate_gram_matches.insert(0, (omni_match.clone(), &omni_match));
+        candidate_gram_matches.insert(0, (&omni_match, &omni_match));
         let mut opt = vec![0; candidate_gram_matches.len()];
 
         // the first in tuple is the q-chunk of query, second is q-gram of data string
         #[inline(always)]
-        fn compatible(m1: &(QSig, &QSig), m2: &(QSig, &QSig), n: usize) -> bool {
+        fn compatible(m1: &(&QSig, &QSig), m2: &(&QSig, &QSig), n: usize) -> bool {
             if m2.0.sig[0] == -1 {
                 return true;
             }
