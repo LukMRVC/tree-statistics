@@ -218,19 +218,7 @@ fn main() -> Result<(), anyhow::Error> {
             }
 
             // let _collection_histograms = create_collection_histograms(&trees);
-            let lblint_indexes = trees
-                .par_iter()
-                .map(|t| InvertedListLabelPostorderIndex::index_tree(t, &label_dict))
-                .collect::<Vec<_>>();
-            let sed_indexes = trees
-                .par_iter()
-                .map(|t| SEDIndex::index_tree(t, &label_dict))
-                .collect::<Vec<_>>();
 
-            let mut lc = LabelSetConverter::default();
-            let lblint_index = label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
-            let structural_sets = lc.create(&trees);
-            let struct_index = structural_filter::StructuralFilterIndex::new(&structural_sets);
             // let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
             // let split_distribution =
             // move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
@@ -247,6 +235,13 @@ fn main() -> Result<(), anyhow::Error> {
             }) {
                 let (mut candidates, duration) = match *current_method {
                     LBM::Lblint => {
+                        let lblint_indexes = trees
+                            .par_iter()
+                            .map(|t| InvertedListLabelPostorderIndex::index_tree(t, &label_dict))
+                            .collect::<Vec<_>>();
+                        let lblint_index =
+                            label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
+
                         let lblint_queries = queries
                             .iter()
                             .map(|(t, q)| {
@@ -290,6 +285,10 @@ fn main() -> Result<(), anyhow::Error> {
                         )
                     }
                     LBM::Sed => {
+                        let sed_indexes = trees
+                            .par_iter()
+                            .map(|t| SEDIndex::index_tree(t, &label_dict))
+                            .collect::<Vec<_>>();
                         let pre_only = sed_indexes
                             .iter()
                             .map(|si| si.preorder.clone())
@@ -316,10 +315,6 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut total_filter_duration = Duration::new(0, 0);
                         let mut avg_precision = 0.0;
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
-                            // println!("{qid}");
-                            // if qid == 218 {
-                            //     println!("This is it!");
-                            // }
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
                             if let Ok((c1, lookup_duration, filter_duration)) = c1 {
                                 index_used_cnt += 1;
@@ -342,7 +337,8 @@ fn main() -> Result<(), anyhow::Error> {
                                         index_candidates.push((qid, *cid));
                                     }
                                 }
-                                let precision = correct_results as f64 / c1.len() as f64;
+                                let precision =
+                                    correct_results as f64 / std::cmp::max(c1.len(), 1) as f64;
                                 avg_precision = avg_precision
                                     + (precision - avg_precision) / (index_used_cnt as f64);
                             } else {
@@ -400,6 +396,10 @@ fn main() -> Result<(), anyhow::Error> {
                         lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map)
                     }
                     LBM::Structural => {
+                        let mut lc = LabelSetConverter::default();
+                        let structural_sets = lc.create(&trees);
+                        let struct_index =
+                            structural_filter::StructuralFilterIndex::new(&structural_sets);
                         let structural_queries = queries
                             .iter()
                             .map(|(t, q)| (*t, lc.create_single(q)))

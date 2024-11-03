@@ -38,8 +38,11 @@ impl IndexGram {
                 })
                 .collect();
             sqgrams.sort();
+
             q_grams.push((sdata.len(), sqgrams));
         }
+
+        // dbg!(&q_grams[21083]);
 
         let mut frequency_map = FxHashMap::default();
 
@@ -66,13 +69,13 @@ impl IndexGram {
         // }
 
         for (sid, str_grams) in q_grams.iter().enumerate() {
-            for (gram_pos, gram) in str_grams.1.iter().cloned().enumerate() {
+            for gram in str_grams.1.iter().cloned() {
                 inv_index
                     .entry(gram.sig)
                     .and_modify(|postings: &mut Vec<(usize, usize, usize)>| {
-                        postings.push((sid, str_grams.0, gram_pos))
+                        postings.push((sid, str_grams.0, gram.pos))
                     })
-                    .or_insert(vec![(sid, str_grams.0, gram_pos)]);
+                    .or_insert(vec![(sid, str_grams.0, gram.pos)]);
             }
         }
 
@@ -90,7 +93,7 @@ impl IndexGram {
         k: usize,
     ) -> Result<(Vec<usize>, Duration, Duration), String> {
         let sig_size = query.len().div_ceil(self.q);
-        if k > sig_size {
+        if k >= sig_size {
             // eprintln!(
             //     "{k} > {}, output may have false negatives! lb={lb}",
             //     chunks.len(),
@@ -114,12 +117,12 @@ impl IndexGram {
                 pos: pos * self.q,
             })
             .collect();
-
         chunks.sort();
         // chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
         let mut cs = BTreeSet::default();
 
         for chunk in chunks.iter().take(k + 1) {
+            // dbg!(chunk);
             if let Some(postings) = self.inv_index.get(&chunk.sig) {
                 let Err(start) = postings.binary_search_by(|probe| {
                     probe
@@ -138,7 +141,6 @@ impl IndexGram {
                     panic!("Binary search cannot result in Ok!");
                 };
                 let to_take = end - start;
-
                 for (cid, _, gram_pos) in postings.iter().skip(start).take(to_take) {
                     if chunk.pos.abs_diff(*gram_pos) <= k {
                         cs.insert(*cid);
@@ -149,7 +151,6 @@ impl IndexGram {
 
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
-
         // count and true matches filter
         let candidates = cs
             .iter()
@@ -164,20 +165,17 @@ impl IndexGram {
     }
 
     fn count_filter(&self, cid: usize, sig_size: usize, k: usize, chunks: &mut [QSig]) -> bool {
-        let mut mismatch = 0;
         let mut candidate_gram_matches = vec![];
         // let mut candidate_gram_matches = 0;
 
         let lb = sig_size - k;
         let candidate_grams = &self.q_grams[cid].1;
-        // dbg!(candidate_grams);
-        // dbg!(chunks.iter().enumerate().map(|(mi, chk)| (mi * self.q, chk) ).collect::<Vec<_>>());
 
         let (mut i, mut j) = (0, 0);
 
         // Since this code will always perform bound checking, even if we check in manually in while condition
         // it's faster to use UNSAFE get_unchecked.
-        while i < chunks.len() && j < candidate_grams.len() {
+        /*while i < chunks.len() && j < candidate_grams.len() {
             // if mismatch > chunks.len() - lb {
             //     return false;
             // }
@@ -202,10 +200,12 @@ impl IndexGram {
                     j += 1;
                 }
             }
-        }
+        }*/
 
         // Find valid intersection by searching
-        /*for chunk in chunks.iter() {
+
+        let mut mismatch = 0;
+        for chunk in chunks.iter() {
             match candidate_grams.binary_search_by(|probe| match probe.sig.cmp(&chunk.sig) {
                 std::cmp::Ordering::Equal => probe
                     .pos
@@ -241,7 +241,7 @@ impl IndexGram {
                 }
                 Ok(_) => {}
             }
-        }*/
+        }
 
         // return candidate_gram_matches.len() >= lb;
 
@@ -284,8 +284,11 @@ impl IndexGram {
             }
             opt[k] = mx;
         }
+        // dbg!(&opt);
+        let opt_mx = *opt.iter().skip(lb).max().unwrap();
+        // dbg!(opt_mx);
 
-        opt.iter().skip(lb).max().unwrap() >= &(lb as i32)
+        opt_mx >= lb as i32
     }
 
     fn strlen_from_qgrams(&self, grams: &[QSig]) -> usize {

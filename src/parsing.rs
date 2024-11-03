@@ -106,6 +106,7 @@ pub fn parse_dataset(
         })
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
+
     println!(
         "Parsed {} lines of tree tokens, updating label dict now",
         collection_tree_tokens.len()
@@ -115,7 +116,9 @@ pub fn parse_dataset(
     let trees = collection_tree_tokens
         .par_iter()
         .map(|tokens| parse_tree(tokens, label_dict))
+        .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
+    println!("Final number of trees: {}", trees.len());
 
     Ok(trees)
 }
