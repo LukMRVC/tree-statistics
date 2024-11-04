@@ -191,59 +191,14 @@ impl IndexGram {
                         .abs_diff(candidate_grams.get_unchecked(j).pos)
                         <= k
                     {
-                        candidate_gram_matches.push((
-                            chunks.get_unchecked(i),
-                            candidate_grams.get_unchecked(j),
-                        ));
+                        candidate_gram_matches
+                            .push((chunks.get_unchecked(i), candidate_grams.get_unchecked(j)));
+                        i += 1;
                     }
-                    i += 1;
                     j += 1;
                 }
             }
         }
-
-        // Find valid intersection by searching
-        /*
-        let mut mismatch = 0;
-        for chunk in chunks.iter() {
-            match candidate_grams.binary_search_by(|probe| match probe.sig.cmp(&chunk.sig) {
-                std::cmp::Ordering::Equal => probe
-                    .pos
-                    .cmp(&chunk.pos.saturating_sub(k))
-                    .then(std::cmp::Ordering::Greater),
-                other => other,
-            }) {
-                Err(mut match_idx) => {
-                    if match_idx >= candidate_grams.len()
-                        || candidate_grams[match_idx].sig != chunk.sig
-                    {
-                        mismatch += 1;
-                        if mismatch > chunks.len() - lb {
-                            return false;
-                        }
-                    } else {
-                        unsafe {
-                            while match_idx < candidate_grams.len()
-                                && candidate_grams.get_unchecked(match_idx).sig == chunk.sig
-                                && chunk
-                                    .pos
-                                    .abs_diff(candidate_grams.get_unchecked(match_idx).pos)
-                                    <= k
-                            {
-                                candidate_gram_matches.push((
-                                    chunk,
-                                    candidate_grams.get_unchecked(match_idx),
-                                ));
-                                match_idx += 1;
-                            }
-                        }
-                    }
-                }
-                Ok(_) => {}
-            }
-        }*/
-
-        // return candidate_gram_matches.len() >= lb;
 
         if candidate_gram_matches.len() < lb {
             return false;
@@ -269,26 +224,25 @@ impl IndexGram {
             m1.0 != m2.0 && m1.1.pos >= m2.1.pos + n // return value of compatible
         }
 
-        for k in 1..candidate_gram_matches.len() {
-            let mut mx = i32::MIN;
-            let mn = std::cmp::min(k, candidate_gram_matches.len() - lb + 1);
-            for i in 1..=mn {
-                if compatible(
-                    &candidate_gram_matches[k],
-                    &candidate_gram_matches[k - i],
-                    self.q,
-                ) && opt[k - i] > mx
-                {
-                    mx = opt[k - i] + 1;
+        unsafe {
+            for k in 1..candidate_gram_matches.len() {
+                let mut mx = i32::MIN;
+                let mn = std::cmp::min(k, candidate_gram_matches.len() - lb + 1);
+                for i in 1..=mn {
+                    if compatible(
+                        candidate_gram_matches.get_unchecked(k),
+                        candidate_gram_matches.get_unchecked(k - i),
+                        self.q,
+                    ) && *opt.get_unchecked(k - i) > mx
+                    {
+                        mx = opt.get_unchecked(k - i) + 1;
+                    }
                 }
+                *opt.get_unchecked_mut(k) = mx;
             }
-            opt[k] = mx;
         }
-        // dbg!(&opt);
-        let opt_mx = *opt.iter().skip(lb).max().unwrap();
-        // dbg!(opt_mx);
 
-        opt_mx >= lb as i32
+        opt.iter().skip(lb).max().unwrap() >= &(lb as i32)
     }
 
     fn strlen_from_qgrams(&self, grams: &[QSig]) -> usize {

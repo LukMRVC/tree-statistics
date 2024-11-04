@@ -9,7 +9,6 @@ use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use rayon::prelude::*;
-use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::fs::{create_dir_all, File};
