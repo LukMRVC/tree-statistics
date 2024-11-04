@@ -46,11 +46,11 @@ impl BinaryBranchConverter {
         let children = root_id.children(tree).collect_vec();
         let mut left_label = None;
         if let Some(left_child) = children.first() {
-            left_label = Some(tree.get(*left_child).unwrap().get().clone())
+            left_label = Some(*tree.get(*left_child).unwrap().get())
         }
 
         let bb_tuple: BBTuple = (
-            tree.get(*root_id).unwrap().get().clone(),
+            *tree.get(*root_id).unwrap().get(),
             left_label,
             right_sibling_label,
         );

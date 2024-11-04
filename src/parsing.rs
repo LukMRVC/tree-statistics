@@ -92,7 +92,6 @@ pub fn parse_dataset(
     let reader = buf_open_file!(dataset_file);
     let tree_lines = reader
         .lines()
-        .map(|ml| ml)
         .collect::<Result<Vec<String>, _>>()?;
     println!("Consumed {} lines of trees", tree_lines.len());
 
@@ -161,7 +160,7 @@ pub fn parse_queries(
         .iter()
         .filter_map(|(t, tokens)| {
             let tokens = tokens.iter().map(|t| t.as_str()).collect_vec();
-            let parsed_tree = parse_tree(&tokens, &ld);
+            let parsed_tree = parse_tree(&tokens, ld);
             if parsed_tree.is_err() {
                 return None;
             }
@@ -228,12 +227,10 @@ pub fn parse_tree<'a>(tokens: &'a [&'a str], ld: &LabelDict) -> Result<ParsedTre
                 let n = tree_arena.new_node(*label);
                 if let Some(last_node) = node_stack.last() {
                     last_node.append(n, &mut tree_arena);
-                } else {
-                    if tree_arena.count() > 1 {
-                        return Err(TreeParseError::IncorrectFormat(
-                            "Reached unexpected end of token".to_owned(),
-                        ));
-                    }
+                } else if tree_arena.count() > 1 {
+                    return Err(TreeParseError::IncorrectFormat(
+                        "Reached unexpected end of token".to_owned(),
+                    ));
                 };
                 node_stack.push(n);
             }

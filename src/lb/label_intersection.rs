@@ -1,6 +1,4 @@
-use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
 use crate::{indexing::InvertedListLabelPostorderIndex, parsing::LabelId};
@@ -131,12 +129,10 @@ impl LabelIntersectionIndex {
             .size_index
             .iter()
             .enumerate()
-            .take_while(|(_, ts)| !(query_tree.c.tree_size.abs_diff(**ts) > k))
+            .take_while(|(_, ts)| query_tree.c.tree_size.abs_diff(**ts) <= k)
         {
-            if let None = tree_intersections.get(&cid) {
-                if std::cmp::max(query_tree.c.tree_size, *tree_size) <= k {
-                    candidates.push((query_id, cid));
-                }
+            if tree_intersections.get(&cid).is_none() && std::cmp::max(query_tree.c.tree_size, *tree_size) <= k {
+                candidates.push((query_id, cid));
             }
         }
 
@@ -206,7 +202,7 @@ mod tests {
         let lb = label_intersection_k(&t1i, &t2i, 25);
         assert!(lb <= 25, "Lower bound is less than 25");
 
-        let lblint_index = LabelIntersectionIndex::new(&vec![t1i]);
+        let lblint_index = LabelIntersectionIndex::new(&[t1i]);
         let candidates = lblint_index.query_index(&t2i, 25, Some(0));
         assert_eq!(candidates.len(), 1, "No candidates found")
     }
@@ -226,7 +222,7 @@ mod tests {
         // let lb = label_intersection_k(&qi, &t2i, 2);
         // assert_eq!(lb, 3, "T2 and Q would not pass the filter");
 
-        let lblint_index = LabelIntersectionIndex::new(&vec![t1i]);
+        let lblint_index = LabelIntersectionIndex::new(&[t1i]);
         let candidates = lblint_index.query_index(&qi, 8, Some(0));
         assert_eq!(
             candidates.len(),

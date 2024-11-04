@@ -478,7 +478,7 @@ pub fn ted_variant(
             };
 
             for n1 in s1c.struct_vec.iter() {
-                let mut k_window = n1.svec.postorder_id.saturating_sub(k);
+                let k_window = n1.svec.postorder_id.saturating_sub(k);
                 // apply postorder filter
                 let mut iterator: Box<dyn Iterator<Item = &SplitStructuralVec>> =
                     Box::new(s2c.struct_vec.iter());
@@ -537,7 +537,7 @@ fn get_nodes_overlap_with_region_distance(
                     .struct_vec
                     .iter()
                     .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
-                    .take_while(|n2| !(n2.postorder_id > k + n1.postorder_id))
+                    .take_while(|n2| n2.postorder_id <= k + n1.postorder_id)
                 {
                     let l1_region_distance = region_distance_closure(n1, n2);
 
@@ -648,12 +648,10 @@ impl StructuralFilterIndex {
             .size_index
             .iter()
             .enumerate()
-            .take_while(|(_, ts)| !(query_tree.0.abs_diff(**ts) > k))
+            .take_while(|(_, ts)| query_tree.0.abs_diff(**ts) <= k)
         {
-            if let None = tree_intersections.get(&cid) {
-                if std::cmp::max(query_tree.0, *tree_size) <= k {
-                    candidates.push((query_id, cid));
-                }
+            if tree_intersections.get(&cid).is_none() && std::cmp::max(query_tree.0, *tree_size) <= k {
+                candidates.push((query_id, cid));
             }
         }
 
@@ -672,7 +670,7 @@ impl StructuralFilterIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parsing::parse_tree; /*
+     /*
                                     #[test]
                                     fn test_axes_set_converting() {
                                         let t1input = "{1{1}{2{2}{1}{3}}}".to_owned();
