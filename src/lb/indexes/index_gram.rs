@@ -1,10 +1,11 @@
 use std::{
-    collections::BTreeSet,
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, Instant},
 };
 
 use itertools::Itertools;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 struct QSig {
@@ -43,7 +44,7 @@ impl IndexGram {
 
         // dbg!(&q_grams[21083]);
 
-        let frequency_map = FxHashMap::default();
+        let mut frequency_map = FxHashMap::default();
 
         // for qgrams in q_grams.iter() {
         //     for qgram in qgrams.iter().cloned() {

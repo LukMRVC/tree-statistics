@@ -90,9 +90,7 @@ pub fn parse_dataset(
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
     let reader = buf_open_file!(dataset_file);
-    let tree_lines = reader
-        .lines()
-        .collect::<Result<Vec<String>, _>>()?;
+    let tree_lines = reader.lines().collect::<Result<Vec<String>, _>>()?;
     println!("Consumed {} lines of trees", tree_lines.len());
 
     let collection_tree_tokens = tree_lines
@@ -131,9 +129,7 @@ pub fn parse_queries(
         .lines()
         .filter_map(|l| {
             let l = l.expect("line reading failed!");
-            let Some((threshold_str, tree)) = l.split_once(";") else {
-                return None;
-            };
+            let (threshold_str, tree) = l.split_once(";")?;
             Some((threshold_str.parse::<usize>().unwrap(), tree.to_string()))
         })
         .filter_map(|(t, tree)| {

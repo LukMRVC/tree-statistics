@@ -1,4 +1,3 @@
-
 use rustc_hash::FxHashMap;
 
 use crate::{indexing::InvertedListLabelPostorderIndex, parsing::LabelId};
@@ -131,7 +130,9 @@ impl LabelIntersectionIndex {
             .enumerate()
             .take_while(|(_, ts)| query_tree.c.tree_size.abs_diff(**ts) <= k)
         {
-            if tree_intersections.get(&cid).is_none() && std::cmp::max(query_tree.c.tree_size, *tree_size) <= k {
+            if !tree_intersections.contains_key(&cid)
+                && std::cmp::max(query_tree.c.tree_size, *tree_size) <= k
+            {
                 candidates.push((query_id, cid));
             }
         }
