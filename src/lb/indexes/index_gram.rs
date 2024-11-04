@@ -1,11 +1,10 @@
 use std::{
-    cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     time::{Duration, Instant},
 };
 
 use itertools::Itertools;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 struct QSig {
@@ -153,9 +152,8 @@ impl IndexGram {
         let filter_time = Instant::now();
         // count and true matches filter
         let candidates = cs
-            .iter()
-            .filter(|cid| self.count_filter(**cid, sig_size, k, &chunks))
-            .cloned()
+            .into_iter()
+            .filter(|cid| self.count_filter(*cid, sig_size, k, &chunks))
             .collect::<Vec<usize>>();
         let filter_duration = filter_time.elapsed();
 
