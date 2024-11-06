@@ -26,6 +26,7 @@ impl IndexGram {
 
         for mut sdata in data.iter().cloned() {
             let sig_size = sdata.len().div_ceil(q);
+            let orig_len = sdata.len();
             sdata.append(&mut vec![Self::EMPTY_VALUE; sig_size * q - sdata.len()]);
 
             let mut sqgrams: Vec<QSig> = sdata
@@ -38,7 +39,7 @@ impl IndexGram {
                 .collect();
             sqgrams.sort();
 
-            q_grams.push((sdata.len(), sqgrams));
+            q_grams.push((orig_len, sqgrams));
         }
 
         // dbg!(&q_grams[21083]);
@@ -147,6 +148,7 @@ impl IndexGram {
                 }
             }
         }
+        // 0 - 291 is missing
 
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
