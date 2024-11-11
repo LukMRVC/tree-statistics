@@ -20,7 +20,7 @@ pub struct IndexGram {
 }
 
 impl IndexGram {
-    pub const EMPTY_VALUE: i32 = -1;
+    pub const EMPTY_VALUE: i32 = i32::MAX;
     pub fn new(data: &[Vec<i32>], q: usize) -> Self {
         let mut q_grams = vec![];
 
