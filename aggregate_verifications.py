@@ -32,7 +32,7 @@ try:
     with open("./resources/results/treefam/final_queries.csv") as f:
         for line in f:
             t, q = line.strip().split("\t")
-            fqm[q] = t
+            fqm[q] = int(t)
 except FileNotFoundError:
     pass
 
