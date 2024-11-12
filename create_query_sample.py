@@ -10,8 +10,8 @@ min_k = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 max_k = int(sys.argv[3]) if len(sys.argv) > 3 else 24
 Q = 1
 MAX_QUERIES = 200
-MIN_RESULTS = 5
-MAX_RESULTS = 200
+MIN_RESULTS = 100
+MAX_RESULTS = 500
 
 distances_path = join("resources/workloads", f"distances-{dataset}.csv")
 
@@ -44,8 +44,7 @@ for k in range(min_k, max_k + 1):
     only_tids = [tid for tid, _ in queries]
 
     g = df.filter(df["K"] <= k).group_by("T1").agg(cnt=pl.len())
-    g = g.filter((g["cnt"] >= MIN_RESULTS) & (g["cnt"] < MAX_RESULTS))
-    print(g.tail())
+    g = g.filter( (g["cnt"] >= MIN_RESULTS) & (g["cnt"] < MAX_RESULTS) )
     print(g.head())
 
     for tid in g["T1"].shuffle():
@@ -55,7 +54,7 @@ for k in range(min_k, max_k + 1):
             break
 
     g = df.filter(df["K"] <= k).group_by("T2").agg(cnt=pl.len())
-    g = g.filter((g["cnt"] > MIN_RESULTS) & (g["cnt"] < MAX_RESULTS))
+    g = g.filter( (g["cnt"] >= MIN_RESULTS) & (g["cnt"] < MAX_RESULTS) )
     only_tids = [tid for tid, _ in queries]
     for tid in g["T2"].shuffle():
         if k < sig_sizes[tid] and tid not in only_tids:
