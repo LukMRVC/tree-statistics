@@ -295,7 +295,7 @@ fn main() -> Result<(), anyhow::Error> {
                         let start = Instant::now();
                         // TODO: Heuristic: Calculate the best Q for each dataset
                         // TODO: DBLP with Q = 2 is missing 4 results, find out why!
-                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
+                        let mut pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         println!("Building indexes took: {}ms", start.elapsed().as_millis());
 
@@ -313,6 +313,7 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut total_lookup_duration = Duration::new(0, 0);
                         let mut total_filter_duration = Duration::new(0, 0);
                         let mut avg_precision = 0.0;
+
                         for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
                             let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
                             if let Ok((c1, lookup_duration, filter_duration)) = c1 {
@@ -377,8 +378,10 @@ fn main() -> Result<(), anyhow::Error> {
                             total_lookup_duration.as_millis(),
                         );
                         println!(
-                            "Total count filter duration was: {}ms",
+                            "Total count filter duration was: {}ms --- CNT:{}ms/TM:{}ms",
                             total_filter_duration.as_millis(),
+                            pre_index.cnt.as_millis(),
+                            pre_index.true_matches.as_millis(),
                         );
 
                         index_candidates.par_sort();

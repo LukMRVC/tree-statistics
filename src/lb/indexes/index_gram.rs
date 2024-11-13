@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeSet,
+    i32,
     time::{Duration, Instant},
 };
 
@@ -16,7 +17,8 @@ pub struct IndexGram {
     q: usize,
     q_grams: Vec<(usize, Vec<QSig>)>,
     inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize, usize)>>,
-    ordering: FxHashMap<Vec<i32>, i32>,
+    pub true_matches: Duration,
+    pub cnt: Duration,
 }
 
 impl IndexGram {
@@ -42,31 +44,7 @@ impl IndexGram {
             q_grams.push((orig_len, sqgrams));
         }
 
-        // dbg!(&q_grams[21083]);
-
-        let mut frequency_map = FxHashMap::default();
-
-        // for qgrams in q_grams.iter() {
-        //     for qgram in qgrams.iter().cloned() {
-        //         frequency_map
-        //             .entry(qgram.sig)
-        //             .and_modify(|cnt| *cnt += 1)
-        //             .or_insert(1);
-        //     }
-        // }
-
         let mut inv_index = FxHashMap::default();
-
-        // for str_grams in q_grams.iter_mut() {
-        //     str_grams.sort_by(|ag, bg| {
-        //         let ord = frequency_map.get(&ag.sig).cmp(&frequency_map.get(&bg.sig));
-        //         if ord == Ordering::Equal {
-        //             ag.pos.cmp(&bg.pos)
-        //         } else {
-        //             ord
-        //         }
-        //     });
-        // }
 
         for (sid, str_grams) in q_grams.iter().enumerate() {
             for gram in str_grams.1.iter().cloned() {
@@ -82,18 +60,22 @@ impl IndexGram {
         IndexGram {
             q,
             q_grams,
-            ordering: frequency_map,
             inv_index,
+            cnt: Duration::from_micros(0),
+            true_matches: Duration::from_micros(0),
         }
     }
 
     pub fn query(
-        &self,
+        &mut self,
         mut query: Vec<i32>,
         k: usize,
     ) -> Result<(Vec<usize>, Duration, Duration), String> {
+        let index_lookup = Instant::now();
+
         let sig_size = query.len().div_ceil(self.q);
-        if k >= sig_size {
+        let min_allowed_sig_size = query.len() / self.q;
+        if k >= min_allowed_sig_size {
             // eprintln!(
             //     "{k} > {}, output may have false negatives! lb={lb}",
             //     chunks.len(),
@@ -107,7 +89,6 @@ impl IndexGram {
             Self::EMPTY_VALUE;
             sig_size * self.q - query.len()
         ]);
-        let index_lookup = Instant::now();
 
         let mut chunks: Vec<QSig> = query
             .chunks(self.q)
@@ -118,7 +99,6 @@ impl IndexGram {
             })
             .collect();
         chunks.sort();
-        // chunks.sort_by_cached_key(|chunk| self.ordering.get(&chunk.sig).unwrap_or(&i32::MAX));
         let mut cs = BTreeSet::default();
 
         for chunk in chunks.iter().take(k + 1) {
@@ -148,7 +128,6 @@ impl IndexGram {
                 }
             }
         }
-        // 0 - 291 is missing
 
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
@@ -156,25 +135,25 @@ impl IndexGram {
         let candidates = cs
             .into_iter()
             .filter(|cid| self.count_filter(*cid, sig_size, k, &chunks))
-            .collect::<Vec<usize>>();
+            .collect_vec();
         let filter_duration = filter_time.elapsed();
-
         // let candidates = cs.iter().cloned().collect_vec();
 
         Ok((candidates, index_lookup_dur, filter_duration))
     }
 
-    fn count_filter(&self, cid: usize, sig_size: usize, k: usize, chunks: &[QSig]) -> bool {
-        let mut candidate_gram_matches = vec![];
+    fn count_filter(&mut self, cid: usize, sig_size: usize, k: usize, chunks: &[QSig]) -> bool {
+        let start = Instant::now();
+        let candidate_grams = &self.q_grams[cid].1;
+        let mut candidate_gram_matches = Vec::with_capacity(candidate_grams.len());
         // let mut candidate_gram_matches = 0;
 
         let lb = sig_size - k;
-        let candidate_grams = &self.q_grams[cid].1;
 
         let (mut i, mut j) = (0, 0);
-
-        // Since this code will always perform bound checking, even if we check in manually in while condition
+        // Since this code will always perform bound checking, even if we check it manually in while condition
         // it's faster to use UNSAFE get_unchecked.
+        let mut mismatches = 0;
         while i < chunks.len() && j < candidate_grams.len() {
             // if mismatch > chunks.len() - lb {
             //     return false;
@@ -182,6 +161,11 @@ impl IndexGram {
             unsafe {
                 if chunks.get_unchecked(i).sig < candidate_grams.get_unchecked(j).sig {
                     i += 1;
+                    mismatches += 1;
+                    if mismatches > chunks.len() - lb {
+                        self.cnt += start.elapsed();
+                        return false;
+                    }
                 } else if chunks.get_unchecked(i).sig > candidate_grams.get_unchecked(j).sig {
                     j += 1;
                 } else {
@@ -199,11 +183,12 @@ impl IndexGram {
                 }
             }
         }
-
+        self.cnt += start.elapsed();
         if candidate_gram_matches.len() < lb {
             return false;
         }
         // chunks.sort_by_key(|c| c.pos);
+        let start = Instant::now();
 
         candidate_gram_matches.sort_by_key(|(chunk, _)| chunk.pos);
 
@@ -221,10 +206,12 @@ impl IndexGram {
             if m2.0.sig[0] == -1 {
                 return true;
             }
-            m1.0 != m2.0 && m1.1.pos >= m2.1.pos + n // return value of compatible
+            // return value of compatible
+            (m1.0.pos != m2.0.pos && m1.0.sig != m2.0.sig) && m1.1.pos >= m2.1.pos + n
         }
 
         unsafe {
+            let mut total_max = i32::MIN;
             for k in 1..candidate_gram_matches.len() {
                 let mut mx = i32::MIN;
                 let mn = std::cmp::min(k, candidate_gram_matches.len() - lb + 1);
@@ -239,9 +226,14 @@ impl IndexGram {
                     }
                 }
                 *opt.get_unchecked_mut(k) = mx;
+                total_max = std::cmp::max(total_max, mx);
+                if k >= lb && total_max >= lb as i32 {
+                    self.true_matches += start.elapsed();
+                    return true;
+                }
             }
         }
-
+        self.true_matches += start.elapsed();
         opt.iter().skip(lb).max().unwrap() >= &(lb as i32)
     }
 

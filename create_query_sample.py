@@ -8,15 +8,18 @@ from concurrent.futures import ProcessPoolExecutor
 dataset = sys.argv[1]
 min_k = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 max_k = int(sys.argv[3]) if len(sys.argv) > 3 else 24
-Q = 6
+Q = 2
 MAX_QUERIES = 200
+MIN_RESULTS = 500
+MAX_RESULTS = 3000
 
 distances_path = join("resources/workloads", f"distances-{dataset}.csv")
 
 with open(join("resources/workloads", f"{dataset}_sorted.bracket")) as f:
     lines = [l.strip() for l in f]
 
-sig_sizes = [ceil(t.count("{") / Q) for t in lines]
+
+sig_sizes = [t.count("{") // Q for t in lines]
 
 df = pl.read_csv(
     distances_path,
@@ -41,6 +44,8 @@ for k in range(min_k, max_k + 1):
     only_tids = [tid for tid, _ in queries]
 
     g = df.filter(df["K"] <= k).group_by("T1").agg(cnt=pl.len())
+    g = g.filter((g["cnt"] >= MIN_RESULTS) & (g["cnt"] < MAX_RESULTS))
+    print(g.tail())
     print(g.head())
 
     for tid in g["T1"].shuffle():
@@ -50,6 +55,7 @@ for k in range(min_k, max_k + 1):
             break
 
     g = df.filter(df["K"] <= k).group_by("T2").agg(cnt=pl.len())
+    g = g.filter((g["cnt"] > MIN_RESULTS) & (g["cnt"] < MAX_RESULTS))
     only_tids = [tid for tid, _ in queries]
     for tid in g["T2"].shuffle():
         if k < sig_sizes[tid] and tid not in only_tids:
@@ -62,6 +68,6 @@ for k in range(min_k, max_k + 1):
 
 print(len(queries))
 
-with open(join("resources/workloads", f"queries-{dataset}.csv"), "w") as f:
+with open(join("resources/workloads", f"{dataset}_query_sample.csv"), "w") as f:
     for t, k in queries:
         f.write(f"{k};{lines[t]}\n")
