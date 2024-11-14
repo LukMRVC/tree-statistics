@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    i32,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use itertools::Itertools;
 use rustc_hash::FxHashMap;
@@ -15,7 +11,7 @@ struct QSig {
 
 pub struct IndexGram {
     q: usize,
-    q_grams: Vec<(usize, Vec<QSig>)>,
+    // q_grams: Vec<(usize, Vec<QSig>)>,
     inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize, usize)>>,
     pub true_matches: Duration,
     pub cnt: Duration,
@@ -24,42 +20,26 @@ pub struct IndexGram {
 impl IndexGram {
     pub const EMPTY_VALUE: i32 = i32::MAX;
     pub fn new(data: &[Vec<i32>], q: usize) -> Self {
-        let mut q_grams = vec![];
+        let mut inv_index = FxHashMap::default();
 
-        for mut sdata in data.iter().cloned() {
+        for (sid, mut sdata) in data.iter().cloned().enumerate() {
             let sig_size = sdata.len().div_ceil(q);
             let orig_len = sdata.len();
             sdata.append(&mut vec![Self::EMPTY_VALUE; sig_size * q - sdata.len()]);
 
-            let mut sqgrams: Vec<QSig> = sdata
-                .windows(q)
-                .enumerate()
-                .map(|(i, w)| QSig {
-                    sig: w.to_vec(),
-                    pos: i,
-                })
-                .collect();
-            sqgrams.sort();
-
-            q_grams.push((orig_len, sqgrams));
-        }
-
-        let mut inv_index = FxHashMap::default();
-
-        for (sid, str_grams) in q_grams.iter().enumerate() {
-            for gram in str_grams.1.iter().cloned() {
+            sdata.windows(q).enumerate().for_each(|(i, w)| {
                 inv_index
-                    .entry(gram.sig)
+                    .entry(w.to_vec())
                     .and_modify(|postings: &mut Vec<(usize, usize, usize)>| {
-                        postings.push((sid, str_grams.0, gram.pos))
+                        postings.push((sid, orig_len, i))
                     })
-                    .or_insert(vec![(sid, str_grams.0, gram.pos)]);
-            }
+                    .or_insert(vec![(sid, orig_len, i)]);
+            });
         }
 
         IndexGram {
             q,
-            q_grams,
+            // q_grams,
             inv_index,
             cnt: Duration::from_micros(0),
             true_matches: Duration::from_micros(0),
@@ -98,7 +78,6 @@ impl IndexGram {
                 pos: pos * self.q,
             })
             .collect();
-        chunks.sort();
         let mut cs = FxHashMap::default();
 
         // for chunk in chunks.iter().take(k + 1)
@@ -205,7 +184,7 @@ impl IndexGram {
         Ok((candidates, index_lookup_dur, filter_duration))
     }
 
-    fn count_filter(&mut self, cid: usize, sig_size: usize, k: usize, chunks: &[QSig]) -> bool {
+    /*fn count_filter(&mut self, cid: usize, sig_size: usize, k: usize, chunks: &[QSig]) -> bool {
         let start = Instant::now();
         let candidate_grams = &self.q_grams[cid].1;
         let mut candidate_gram_matches = Vec::with_capacity(candidate_grams.len());
@@ -305,5 +284,5 @@ impl IndexGram {
             return grams.len();
         }
         grams.len() + (self.q - 1)
-    }
+    }*/
 }
