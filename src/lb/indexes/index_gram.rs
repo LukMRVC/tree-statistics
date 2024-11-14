@@ -99,9 +99,10 @@ impl IndexGram {
             })
             .collect();
         chunks.sort();
-        let mut cs = BTreeSet::default();
+        let mut cs = FxHashMap::default();
 
-        for chunk in chunks.iter().take(k + 1) {
+        // for chunk in chunks.iter().take(k + 1)
+        for chunk in chunks.iter() {
             // dbg!(chunk);
             if let Some(postings) = self.inv_index.get(&chunk.sig) {
                 let Err(start) = postings.binary_search_by(|probe| {
@@ -123,7 +124,12 @@ impl IndexGram {
                 let to_take = end - start;
                 for (cid, _, gram_pos) in postings.iter().skip(start).take(to_take) {
                     if chunk.pos.abs_diff(*gram_pos) <= k {
-                        cs.insert(*cid);
+                        cs.entry(*cid)
+                            .and_modify(|candidate_grams: &mut Vec<(&QSig, usize)>| {
+                                candidate_grams.push((chunk, *gram_pos))
+                            })
+                            .or_insert(vec![(chunk, *gram_pos)]);
+                        // cs.insert(*cid);
                     }
                 }
             }
@@ -131,10 +137,67 @@ impl IndexGram {
 
         let index_lookup_dur = index_lookup.elapsed();
         let filter_time = Instant::now();
+        let lb: usize = sig_size - k;
+        let mut opt = vec![0; 128];
         // count and true matches filter
         let candidates = cs
             .into_iter()
-            .filter(|cid| self.count_filter(*cid, sig_size, k, &chunks))
+            .filter_map(|(cid, mut candidate_gram_matches)| {
+                if candidate_gram_matches.len() < lb {
+                    return None;
+                }
+                candidate_gram_matches.sort_by_key(|(chunk, _)| chunk.pos);
+
+                // true match filter
+                let omni_match = QSig {
+                    sig: vec![-1],
+                    pos: usize::MAX,
+                };
+                candidate_gram_matches.insert(0, (&omni_match, omni_match.pos));
+                // let mut opt = vec![0; candidate_gram_matches.len()];
+                opt.fill(0);
+
+                if opt.len() < candidate_gram_matches.len() {
+                    opt.resize(candidate_gram_matches.len(), 0);
+                }
+
+                #[inline(always)]
+                fn compatible(m1: &(&QSig, usize), m2: &(&QSig, usize), n: usize) -> bool {
+                    *unsafe { m2.0.sig.get_unchecked(0) } == -1
+                        || ((m1.0.pos != m2.0.pos && m1.0.sig != m2.0.sig) && m1.1 >= m2.1 + n)
+                }
+
+                unsafe {
+                    // the first in tuple is the q-chunk of query, second is q-gram of data string
+
+                    let mut total_max = i32::MIN;
+                    for kc in 1..candidate_gram_matches.len() {
+                        let mut mx = i32::MIN;
+                        let mn = std::cmp::min(kc, candidate_gram_matches.len() - lb + 1);
+                        for i in 1..=mn {
+                            if *opt.get_unchecked(kc - i) > mx
+                                && compatible(
+                                    candidate_gram_matches.get_unchecked(kc),
+                                    candidate_gram_matches.get_unchecked(kc - i),
+                                    self.q,
+                                )
+                            {
+                                mx = opt.get_unchecked(kc - i) + 1;
+                            }
+                        }
+                        *opt.get_unchecked_mut(kc) = mx;
+                        total_max = std::cmp::max(total_max, mx);
+                        if kc >= lb && total_max >= lb as i32 {
+                            return Some(cid);
+                        }
+                    }
+                }
+                if opt.iter().skip(lb).max().unwrap() >= &(lb as i32) {
+                    return Some(cid);
+                }
+                None
+            })
+            // .filter(|cid| self.count_filter(*cid, sig_size, k, &chunks))
             .collect_vec();
         let filter_duration = filter_time.elapsed();
         // let candidates = cs.iter().cloned().collect_vec();
@@ -175,8 +238,10 @@ impl IndexGram {
                         .abs_diff(candidate_grams.get_unchecked(j).pos)
                         <= k
                     {
-                        candidate_gram_matches
-                            .push((chunks.get_unchecked(i), candidate_grams.get_unchecked(j)));
+                        candidate_gram_matches.push((
+                            chunks.get_unchecked(i),
+                            candidate_grams.get_unchecked(j).pos,
+                        ));
                         i += 1;
                     }
                     j += 1;
@@ -197,17 +262,15 @@ impl IndexGram {
             sig: vec![-1, -1],
             pos: usize::MAX,
         };
-        candidate_gram_matches.insert(0, (&omni_match, &omni_match));
+        candidate_gram_matches.insert(0, (&omni_match, omni_match.pos));
         let mut opt = vec![0; candidate_gram_matches.len()];
 
         // the first in tuple is the q-chunk of query, second is q-gram of data string
         #[inline(always)]
-        fn compatible(m1: &(&QSig, &QSig), m2: &(&QSig, &QSig), n: usize) -> bool {
-            if m2.0.sig[0] == -1 {
-                return true;
-            }
+        fn compatible(m1: &(&QSig, usize), m2: &(&QSig, usize), n: usize) -> bool {
             // return value of compatible
-            (m1.0.pos != m2.0.pos && m1.0.sig != m2.0.sig) && m1.1.pos >= m2.1.pos + n
+            m2.0.sig[0] == -1
+                || ((m1.0.pos != m2.0.pos && m1.0.sig != m2.0.sig) && m1.1 >= m2.1 + n)
         }
 
         unsafe {
