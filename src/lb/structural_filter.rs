@@ -1,8 +1,8 @@
-use crate::parsing::{LabelDict, LabelId, ParsedTree};
+use crate::parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
-use rustc_hash::FxHashMap;
-use std::cmp::max;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::cmp::{max, Ordering};
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type SplitStructHashMap = FxHashMap<LabelId, SplitLabelSetElement>;
@@ -59,6 +59,35 @@ pub struct SplitLabelSetElement {
 /// Base struct tuple for structural filter
 #[derive(Clone, Debug)]
 pub struct StructuralFilterTuple(usize, StructHashMap);
+
+impl StructuralFilterTuple {
+    pub fn get_prefix(&self, ordering: &LabelFreqOrdering, k: usize) -> Vec<&LabelSetElement> {
+        self.1
+            .iter()
+            .sorted_by_key(|(label, _)| {
+                if **label as usize >= ordering.len() {
+                    return usize::MAX;
+                }
+                ordering[**label as usize - 1]
+            })
+            .map(|(_, set_element)| set_element)
+            .take(k + 1)
+            .collect_vec()
+    }
+
+    pub fn get_sorted_nodes(&self, ordering: &LabelFreqOrdering) -> Vec<&LabelSetElement> {
+        self.1
+            .iter()
+            .sorted_by_key(|(label, _)| {
+                if **label as usize >= ordering.len() {
+                    return usize::MAX;
+                }
+                ordering[**label as usize - 1]
+            })
+            .map(|(_, set_element)| set_element)
+            .collect_vec()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SplitStructuralFilterTuple(usize, SplitStructHashMap);
@@ -507,49 +536,55 @@ fn get_nodes_overlap_with_region_distance(
     s1: &StructuralFilterTuple,
     s2: &StructuralFilterTuple,
     k: usize,
-    region_distance_closure: impl Fn(&StructuralVec, &StructuralVec) -> u32,
 ) -> usize {
     let mut overlap = 0;
     for (lblid, set1) in s1.1.iter() {
         if let Some(set2) = s2.1.get(lblid) {
-            if set1.base.weight == 1 && set2.base.weight == 1 {
-                let l1_region_distance =
-                    region_distance_closure(&set1.struct_vec[0], &set2.struct_vec[0]);
-                if l1_region_distance as usize <= k {
-                    overlap += 1;
-                }
-                continue;
-            }
-
-            let (s1c, s2c) = if set2.base.weight < set1.base.weight {
-                (set2, set1)
-            } else {
-                (set1, set2)
-            };
-
-            for n1 in s1c.struct_vec.iter() {
-                let k_window = n1.postorder_id as i32 - k as i32;
-                let k_window = std::cmp::max(k_window, 0) as usize;
-
-                // apply postorder filter
-                let s2clen = s2c.struct_vec.len();
-                for n2 in s2c
-                    .struct_vec
-                    .iter()
-                    .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
-                    .take_while(|n2| n2.postorder_id <= k + n1.postorder_id)
-                {
-                    let l1_region_distance = region_distance_closure(n1, n2);
-
-                    if l1_region_distance as usize <= k {
-                        overlap += 1;
-                        break;
-                    }
-                }
-            }
+            overlap += get_nodes_overlap(set1, set2, k);
         }
     }
 
+    overlap
+}
+
+fn get_nodes_overlap(set1: &LabelSetElement, set2: &LabelSetElement, k: usize) -> usize {
+    let mut overlap = 0;
+    if set1.base.weight == 1 && set2.base.weight == 1 {
+        return usize::from(
+            svec_l1_strict(
+                &set1.struct_vec[0].mapping_regions,
+                &set2.struct_vec[0].mapping_regions,
+            ) as usize
+                <= k,
+        );
+    }
+
+    let (s1c, s2c) = if set2.base.weight < set1.base.weight {
+        (set2, set1)
+    } else {
+        (set1, set2)
+    };
+
+    for n1 in s1c.struct_vec.iter() {
+        let k_window = n1.postorder_id as i32 - k as i32;
+        let k_window = std::cmp::max(k_window, 0) as usize;
+
+        // apply postorder filter
+        let s2clen = s2c.struct_vec.len();
+        for n2 in s2c
+            .struct_vec
+            .iter()
+            .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
+            .take_while(|n2| n2.postorder_id <= k + n1.postorder_id)
+        {
+            let l1_region_distance = svec_l1_strict(&n1.mapping_regions, &n2.mapping_regions);
+
+            if l1_region_distance as usize <= k {
+                overlap += 1;
+                break;
+            }
+        }
+    }
     overlap
 }
 
@@ -568,7 +603,7 @@ pub fn best_split_distribution(ld: &LabelDict) -> FxHashMap<&i32, usize> {
 
 pub struct StructuralFilterIndex {
     // the tuple is treeId, tree_size and label count
-    index: FxHashMap<LabelId, Vec<(usize, usize, Vec<StructuralVec>)>>,
+    index: FxHashMap<LabelId, Vec<(usize, usize, LabelSetElement)>>,
     // first is the tree size, second is starting point
     // skip_list: FxHashMap<LabelId, Vec<(usize, usize)>>,
     size_index: Vec<usize>,
@@ -576,7 +611,7 @@ pub struct StructuralFilterIndex {
 
 impl StructuralFilterIndex {
     pub fn new(trees: &[StructuralFilterTuple]) -> Self {
-        let mut index: FxHashMap<LabelId, Vec<(usize, usize, Vec<StructuralVec>)>> =
+        let mut index: FxHashMap<LabelId, Vec<(usize, usize, LabelSetElement)>> =
             FxHashMap::default();
         let mut size_index = vec![];
 
@@ -584,13 +619,76 @@ impl StructuralFilterIndex {
             for (label, vectors) in tt.1.iter() {
                 index
                     .entry(*label)
-                    .and_modify(|postings| postings.push((tid, tt.0, vectors.struct_vec.clone())))
-                    .or_insert(vec![(tid, tt.0, vectors.struct_vec.clone())]);
+                    .and_modify(|postings| postings.push((tid, tt.0, vectors.clone())))
+                    .or_insert(vec![(tid, tt.0, vectors.clone())]);
             }
             size_index.push(tt.0);
         }
 
         Self { size_index, index }
+    }
+
+    pub fn query_index_prefix(
+        &self,
+        query_tree: &StructuralFilterTuple,
+        ordering: &LabelFreqOrdering,
+        k: usize,
+        trees: &[StructuralFilterTuple],
+        query_id: Option<usize>,
+    ) -> Vec<(usize, usize)> {
+        let mut candidates = FxHashSet::default();
+        let prefix = query_tree.get_sorted_nodes(ordering);
+        let mut overlaps = FxHashMap::default();
+
+        if query_tree.0 <= k {
+            // find candidates that have no label overlap but can fit by size because of threshold
+            for (cid, tree_size) in self
+                .size_index
+                .iter()
+                .enumerate()
+                .take_while(|(_, ts)| **ts < query_tree.0 || query_tree.0.abs_diff(**ts) <= k)
+            {
+                candidates.insert(cid);
+                overlaps.insert(cid, (*tree_size, 1));
+            }
+        }
+
+        for l in prefix.iter().take(k + 1) {
+            if let Some(postings) = self.index.get(&l.base.id) {
+                postings
+                    .iter()
+                    .filter(|(_, ts, _)| {
+                        *ts >= query_tree.0.saturating_sub(k) && ts.abs_diff(query_tree.0) <= k
+                    })
+                    .for_each(|(cid, ts, nodes)| {
+                        let overlap = get_nodes_overlap(&l, nodes, k);
+                        // dbg!(nodes);
+                        overlaps
+                            .entry(*cid)
+                            .and_modify(|(_, ov)| *ov += overlap)
+                            .or_insert((*ts, overlap));
+                    });
+            }
+        }
+
+        for (cid, (size, overlap)) in overlaps.iter_mut() {
+            if *overlap > 0 {
+                for label_set in prefix.iter().skip(k + 1) {
+                    if let Some(nodes) = trees[*cid].1.get(&label_set.base.id) {
+                        *overlap += get_nodes_overlap(&label_set, nodes, k);
+                    }
+                }
+
+                if std::cmp::max(query_tree.0, *size).saturating_sub(*overlap) <= k {
+                    candidates.insert(*cid);
+                }
+            }
+        }
+
+        candidates
+            .into_iter()
+            .map(|cid| (query_id.unwrap_or(0), cid))
+            .collect::<Vec<(usize, usize)>>()
     }
 
     pub fn query_index(
@@ -610,27 +708,7 @@ impl StructuralFilterIndex {
                     .skip_while(|(_, size, _)| query_tree.0 - size > k)
                     .take_while(|(_, size, _)| *size <= k + query_tree.0)
                 {
-                    let mut overlapping_nodes = 0;
-                    let (smaller_node_set, bigger_node_set) =
-                        if query_label_nodes.struct_vec.len() < posting_nodes.len() {
-                            (&query_label_nodes.struct_vec, posting_nodes)
-                        } else {
-                            (posting_nodes, &query_label_nodes.struct_vec)
-                        };
-
-                    for query_node_structural_vector in smaller_node_set.iter() {
-                        for posting_node_structural_vector in bigger_node_set.iter() {
-                            if svec_l1_strict(
-                                &query_node_structural_vector.mapping_regions,
-                                &posting_node_structural_vector.mapping_regions,
-                            ) as usize
-                                <= k
-                            {
-                                overlapping_nodes += 1;
-                                break;
-                            }
-                        }
-                    }
+                    let overlapping_nodes = get_nodes_overlap(query_label_nodes, posting_nodes, k);
 
                     tree_intersections
                         .entry(*tid)

@@ -8,6 +8,7 @@ use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
+use parsing::get_frequency_ordering;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -222,6 +223,8 @@ fn main() -> Result<(), anyhow::Error> {
             // let split_distribution =
             // move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
             // let _structural_split_sets = lc.create_split(&trees, split_distribution);
+            let ordering = get_frequency_ordering(&label_dict);
+
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
             let lbms: [LBM; 3] = [LBM::Lblint, LBM::Sed, LBM::Structural];
             // let label_dict = dbg!(label_dict);
@@ -254,9 +257,11 @@ fn main() -> Result<(), anyhow::Error> {
                         let start = Instant::now();
                         let mut index_candidates = vec![];
                         for (qid, (t, query)) in lblint_queries.iter().enumerate() {
-                            index_candidates.append(&mut lblint_index.query_index(
+                            index_candidates.append(&mut lblint_index.query_index_prefix(
                                 query,
                                 *t,
+                                &ordering,
+                                &lblint_indexes,
                                 Some(qid),
                             ));
                         }
@@ -320,14 +325,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 index_used_cnt += 1;
                                 total_lookup_duration += lookup_duration;
                                 total_filter_duration += filter_duration;
-                                // c1.sort();
-                                // let c2 = post_index
-                                //     .query(sed_query.postorder.clone(), *threshold)
-                                //     .unwrap();
-                                // let c2 = FxHashSet::from_iter(&c2);
-                                // let c1 = FxHashSet::from_iter(&c1);
-                                // let all_candidates = c1.union(&c2);
-                                // println!("Candidates size: {}", c1.len());
+
                                 let mut correct_results = 0;
                                 for cid in c1.iter() {
                                     if sed_k(sed_query, &sed_indexes[*cid], *threshold)
@@ -407,30 +405,32 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, lc.create_single(q)))
                             .collect_vec();
 
-                        // let mut index_candidates = vec![];
-                        // let start = Instant::now();
-                        // for (qid, (t, query)) in structural_queries.iter().enumerate() {
-                        //     index_candidates.append(&mut struct_index.query_index(
-                        //         query,
-                        //         *t,
-                        //         Some(qid),
-                        //     ));
-                        // }
-                        // println!(
-                        //     "Structural index found {canlen} candidates in {dur}ms",
-                        //     canlen = index_candidates.len(),
-                        //     dur = start.elapsed().as_millis()
-                        // );
-                        // index_candidates.par_sort();
-                        // let mut output_file = output.clone();
-                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        // write_file(
-                        //     output_file,
-                        //     &index_candidates
-                        //         .iter()
-                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
-                        //         .collect_vec(),
-                        // )?;
+                        let mut index_candidates = vec![];
+                        let start = Instant::now();
+                        for (qid, (t, query)) in structural_queries.iter().enumerate() {
+                            index_candidates.append(&mut struct_index.query_index_prefix(
+                                query,
+                                &ordering,
+                                *t,
+                                &structural_sets,
+                                Some(qid),
+                            ));
+                        }
+                        println!(
+                            "Structural index found {canlen} candidates in {dur}ms",
+                            canlen = index_candidates.len(),
+                            dur = start.elapsed().as_millis()
+                        );
+                        index_candidates.par_sort();
+                        let mut output_file = output.clone();
+                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        write_file(
+                            output_file,
+                            &index_candidates
+                                .iter()
+                                .map(|(c1, c2)| format!("{c1},{c2}"))
+                                .collect_vec(),
+                        )?;
 
                         lb::iterate_queries!(structural_queries, structural_sets, struct_ted_k)
                     }

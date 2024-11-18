@@ -8,10 +8,10 @@ from concurrent.futures import ProcessPoolExecutor
 dataset = sys.argv[1]
 min_k = int(sys.argv[2]) if len(sys.argv) > 2 else 1
 max_k = int(sys.argv[3]) if len(sys.argv) > 3 else 24
-Q = 2
+Q = 1
 MAX_QUERIES = 200
-MIN_RESULTS = 500
-MAX_RESULTS = 3000
+MIN_RESULTS = 5
+MAX_RESULTS = 200
 
 distances_path = join("resources/workloads", f"distances-{dataset}.csv")
 
@@ -19,7 +19,7 @@ with open(join("resources/workloads", f"{dataset}_sorted.bracket")) as f:
     lines = [l.strip() for l in f]
 
 
-sig_sizes = [t.count("{") // Q for t in lines]
+sig_sizes = [t.count("{") // Q + 1 for t in lines]
 
 df = pl.read_csv(
     distances_path,

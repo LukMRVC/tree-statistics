@@ -6,13 +6,13 @@ use rustc_hash::FxHashMap;
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
 struct QSig {
     sig: Vec<i32>,
-    pos: usize,
+    pos: i32,
 }
 
 pub struct IndexGram {
     q: usize,
     // q_grams: Vec<(usize, Vec<QSig>)>,
-    inv_index: FxHashMap<Vec<i32>, Vec<(usize, usize, usize)>>,
+    inv_index: FxHashMap<Vec<i32>, Vec<(usize, i32, i32)>>,
     pub true_matches: Duration,
     pub cnt: Duration,
 }
@@ -24,16 +24,16 @@ impl IndexGram {
 
         for (sid, mut sdata) in data.iter().cloned().enumerate() {
             let sig_size = sdata.len().div_ceil(q);
-            let orig_len = sdata.len();
+            let orig_len = sdata.len() as i32;
             sdata.append(&mut vec![Self::EMPTY_VALUE; sig_size * q - sdata.len()]);
 
             sdata.windows(q).enumerate().for_each(|(i, w)| {
                 inv_index
                     .entry(w.to_vec())
-                    .and_modify(|postings: &mut Vec<(usize, usize, usize)>| {
-                        postings.push((sid, orig_len, i))
+                    .and_modify(|postings: &mut Vec<(usize, i32, i32)>| {
+                        postings.push((sid, orig_len, i as i32))
                     })
-                    .or_insert(vec![(sid, orig_len, i)]);
+                    .or_insert(vec![(sid, orig_len, i as i32)]);
             });
         }
 
@@ -63,19 +63,19 @@ impl IndexGram {
             // );
             return Err("Query is too small for that threshold!".to_owned());
         }
-        let min_match_size = query.len().saturating_sub(k);
-        let max_match_size = query.len() + k + 1;
+        let min_match_size = query.len().saturating_sub(k) as i32;
+        let max_match_size = (query.len() + k + 1) as i32;
         query.append(&mut vec![
             Self::EMPTY_VALUE;
             sig_size * self.q - query.len()
         ]);
 
-        let mut chunks: Vec<QSig> = query
+        let chunks: Vec<QSig> = query
             .chunks(self.q)
             .enumerate()
             .map(|(pos, c)| QSig {
                 sig: c.to_vec(),
-                pos: pos * self.q,
+                pos: (pos * self.q) as i32,
             })
             .collect();
         let mut cs = FxHashMap::default();
@@ -102,9 +102,9 @@ impl IndexGram {
                 };
                 let to_take = end - start;
                 for (cid, _, gram_pos) in postings.iter().skip(start).take(to_take) {
-                    if chunk.pos.abs_diff(*gram_pos) <= k {
+                    if chunk.pos.abs_diff(*gram_pos) <= (k as u32) {
                         cs.entry(*cid)
-                            .and_modify(|candidate_grams: &mut Vec<(&QSig, usize)>| {
+                            .and_modify(|candidate_grams: &mut Vec<(&QSig, i32)>| {
                                 candidate_grams.push((chunk, *gram_pos))
                             })
                             .or_insert(vec![(chunk, *gram_pos)]);
@@ -130,7 +130,7 @@ impl IndexGram {
                 // true match filter
                 let omni_match = QSig {
                     sig: vec![-1],
-                    pos: usize::MAX,
+                    pos: i32::MAX,
                 };
                 candidate_gram_matches.insert(0, (&omni_match, omni_match.pos));
                 // let mut opt = vec![0; candidate_gram_matches.len()];
@@ -141,11 +141,12 @@ impl IndexGram {
                 }
 
                 #[inline(always)]
-                fn compatible(m1: &(&QSig, usize), m2: &(&QSig, usize), n: usize) -> bool {
+                fn compatible(m1: &(&QSig, i32), m2: &(&QSig, i32), n: i32) -> bool {
                     *unsafe { m2.0.sig.get_unchecked(0) } == -1
                         || ((m1.0.pos != m2.0.pos && m1.0.sig != m2.0.sig) && m1.1 >= m2.1 + n)
                 }
 
+                let qsize = self.q as i32;
                 unsafe {
                     // the first in tuple is the q-chunk of query, second is q-gram of data string
 
@@ -158,7 +159,7 @@ impl IndexGram {
                                 && compatible(
                                     candidate_gram_matches.get_unchecked(kc),
                                     candidate_gram_matches.get_unchecked(kc - i),
-                                    self.q,
+                                    qsize,
                                 )
                             {
                                 mx = opt.get_unchecked(kc - i) + 1;

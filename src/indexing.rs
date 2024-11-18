@@ -1,6 +1,7 @@
-use crate::parsing::{LabelDict, LabelId, ParsedTree};
+use crate::parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree};
 use indextree::NodeId;
 
+use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
 pub trait Indexer {
@@ -81,6 +82,20 @@ impl Indexer for InvertedListLabelPostorderIndex {
     }
 }
 
+impl InvertedListLabelPostorderIndex {
+    pub fn get_sorted_nodes(&self, ordering: &LabelFreqOrdering) -> Vec<&LabelId> {
+        self.inverted_list
+            .keys()
+            .sorted_by_key(|label| {
+                if **label as usize >= ordering.len() {
+                    return usize::MAX;
+                }
+                ordering[**label as usize - 1]
+            })
+            .collect_vec()
+    }
+}
+
 fn traverse_inverted(
     nid: NodeId,
     tree: &ParsedTree,
@@ -103,8 +118,6 @@ fn traverse_inverted(
 
 #[cfg(test)]
 mod tests {
-    
-    
 
     /*
     #[test]

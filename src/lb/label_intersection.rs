@@ -1,6 +1,9 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{indexing::InvertedListLabelPostorderIndex, parsing::LabelId};
+use crate::{
+    indexing::InvertedListLabelPostorderIndex,
+    parsing::{LabelFreqOrdering, LabelId},
+};
 
 pub fn label_intersection(
     t1: &InvertedListLabelPostorderIndex,
@@ -80,6 +83,69 @@ impl LabelIntersectionIndex {
         }
     }
 
+    pub fn query_index_prefix(
+        &self,
+        query_tree: &InvertedListLabelPostorderIndex,
+        k: usize,
+        ordering: &LabelFreqOrdering,
+        trees: &[InvertedListLabelPostorderIndex],
+        query_id: Option<usize>,
+    ) -> Vec<(usize, usize)> {
+        let prefix = query_tree.get_sorted_nodes(ordering);
+        let query_id = query_id.unwrap_or(0);
+        let mut candidates = FxHashSet::default();
+        let mut overlaps = FxHashMap::default();
+
+        if query_tree.c.tree_size <= k {
+            // find candidates that have no label overlap but can fit by size because of threshold
+            for (cid, tree_size) in self.size_index.iter().enumerate().take_while(|(_, ts)| {
+                **ts < query_tree.c.tree_size || query_tree.c.tree_size.abs_diff(**ts) <= k
+            }) {
+                candidates.insert(cid);
+                overlaps.insert(cid, (*tree_size, 1));
+            }
+        }
+
+        // for each TID stores the current intersection size
+        for (lbl, query_label_cnt) in query_tree.inverted_list.iter().take(k + 1) {
+            let query_label_cnt = query_label_cnt.len();
+            if let Some(posting_list) = self.index.get(lbl) {
+                for (tid, tree_size, label_cnt) in posting_list
+                    .iter()
+                    // .skip(start)
+                    .skip_while(|(_, size, _)| query_tree.c.tree_size - size > k)
+                    .take_while(|(_, size, _)| *size <= k + query_tree.c.tree_size)
+                {
+                    overlaps
+                        .entry(*tid)
+                        .and_modify(|(intersection_size, _)| {
+                            *intersection_size += std::cmp::min(query_label_cnt, *label_cnt);
+                        })
+                        .or_insert((std::cmp::min(query_label_cnt, *label_cnt), *tree_size));
+                }
+            }
+        }
+
+        for (cid, (overlap, size)) in overlaps.iter_mut() {
+            for label in prefix.iter().skip(k + 1) {
+                let self_nodes = query_tree.inverted_list.get(*label).unwrap().len();
+
+                if let Some(nodes) = trees[*cid].inverted_list.get(*label) {
+                    *overlap += std::cmp::min(nodes.len(), self_nodes);
+                }
+            }
+
+            if std::cmp::max(query_tree.c.tree_size, *size) - *overlap <= k {
+                candidates.insert(*cid);
+            }
+        }
+
+        candidates
+            .into_iter()
+            .map(|cid| (query_id, cid))
+            .collect::<Vec<(usize, usize)>>()
+    }
+
     pub fn query_index(
         &self,
         query_tree: &InvertedListLabelPostorderIndex,
@@ -92,20 +158,6 @@ impl LabelIntersectionIndex {
         for (lbl, query_label_cnt) in query_tree.inverted_list.iter() {
             let query_label_cnt = query_label_cnt.len();
             if let Some(posting_list) = self.index.get(lbl) {
-                // let min_size_for_start = if k > query_tree.c.tree_size {
-                //     0
-                // } else {
-                //     query_tree.c.tree_size - k
-                // };
-
-                // let skip_list = self.skip_list.get(lbl).unwrap();
-                // let start_index = skip_list.binary_search_by_key(&min_size_for_start, |(s, _)| *s);
-                // let start = if let Ok(start_index) = start_index {
-                //     skip_list[start_index].1
-                // } else {
-                //     posting_list.len()
-                // };
-
                 for (tid, tree_size, label_cnt) in posting_list
                     .iter()
                     // .skip(start)

@@ -2,6 +2,7 @@ use indextree::{Arena, NodeEdge, NodeId};
 use itertools::Itertools;
 use memchr::memchr2_iter;
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -21,6 +22,8 @@ pub enum DatasetParseError {
 pub type LabelId = i32;
 
 pub type LabelDict = HashMap<String, (LabelId, usize)>;
+// the index is the labelId, and the value on that index is the frequency of it
+pub type LabelFreqOrdering = Vec<usize>;
 pub(crate) type ParsedTree = Arena<LabelId>;
 
 pub enum TreeOutput {
@@ -55,6 +58,16 @@ fn tree_to_graphviz(tree: &ParsedTree) -> String {
     graphviz.push('}');
     graphviz.push('\n');
     graphviz
+}
+
+pub fn get_frequency_ordering(ld: &LabelDict) -> LabelFreqOrdering {
+    ld.values().sorted_by_key(|(label, _)| label).fold(
+        Vec::with_capacity(ld.values().len()),
+        |mut ordering, (_, label_count)| {
+            ordering.push(*label_count);
+            ordering
+        },
+    )
 }
 
 fn tree_to_bracket(tree: &ParsedTree) -> String {
@@ -400,6 +413,25 @@ mod tests {
             ("2".to_owned(), (5, 1)),
         ]);
         assert_eq!(ld, tld, "Label dicts are equal");
+    }
+
+    #[test]
+    fn test_frequency_ordering_build() {
+        let ld: LabelDict = LabelDict::from([
+            ("A".to_owned(), (0, 5)),
+            ("B".to_owned(), (1, 2)),
+            ("C".to_owned(), (2, 3)),
+            ("D".to_owned(), (3, 1)),
+            ("F".to_owned(), (4, 5)),
+        ]);
+
+        let freq_ordering = get_frequency_ordering(&ld);
+        assert_eq!(freq_ordering, vec![5, 2, 3, 1, 5]);
+
+        let mut values = vec![0, 2, 3, 0, 4];
+        values.sort_by_key(|lbl| freq_ordering[*lbl]);
+
+        assert_eq!(values, vec![3, 2, 0, 0, 4]);
     }
 
     /*
