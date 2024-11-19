@@ -39,6 +39,7 @@ rand = { version = "0.8.5" }
 rand_xoshiro = "0.6.0"
 num-traits = "0.2.19"
 serde = { version = "1.0.203", features = ["derive", "serde_derive"] }
+crossbeam-channel = "0.5.13"
 
 # [target.x86_64-unknown-linux-gnu]
 # rustflags = ["-Z", "linker-features=-lld", "-Z", "threads=8"]
