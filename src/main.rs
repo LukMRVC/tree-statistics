@@ -408,11 +408,11 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut index_candidates = vec![];
                         let start = Instant::now();
                         for (qid, (t, query)) in structural_queries.iter().enumerate() {
-                            index_candidates.append(&mut struct_index.query_index_prefix(
+                            index_candidates.append(&mut struct_index.query_index(
                                 query,
-                                &ordering,
+                                // &ordering,
                                 *t,
-                                &structural_sets,
+                                // &structural_sets,
                                 Some(qid),
                             ));
                         }

@@ -107,35 +107,34 @@ impl LabelIntersectionIndex {
         }
 
         // for each TID stores the current intersection size
-        for (lbl, query_label_cnt) in query_tree.inverted_list.iter().take(k + 1) {
-            let query_label_cnt = query_label_cnt.len();
+        for (lbl, query_label_cnt) in prefix.iter().take(k + 1) {
             if let Some(posting_list) = self.index.get(lbl) {
-                for (tid, tree_size, label_cnt) in posting_list
-                    .iter()
-                    // .skip(start)
-                    .skip_while(|(_, size, _)| query_tree.c.tree_size - size > k)
-                    .take_while(|(_, size, _)| *size <= k + query_tree.c.tree_size)
+                for (tid, tree_size, label_cnt) in posting_list.iter().filter(|(_, ts, _)| {
+                    *ts >= query_tree.c.tree_size.saturating_sub(k)
+                        && ts.abs_diff(query_tree.c.tree_size) <= k
+                })
+                // // .skip(start)
+                // .skip_while(|(_, size, _)| query_tree.c.tree_size - size > k)
+                // .take_while(|(_, size, _)| *size <= k + query_tree.c.tree_size)
                 {
                     overlaps
                         .entry(*tid)
                         .and_modify(|(intersection_size, _)| {
-                            *intersection_size += std::cmp::min(query_label_cnt, *label_cnt);
+                            *intersection_size += std::cmp::min(query_label_cnt, label_cnt);
                         })
-                        .or_insert((std::cmp::min(query_label_cnt, *label_cnt), *tree_size));
+                        .or_insert((std::cmp::min(*query_label_cnt, *label_cnt), *tree_size));
                 }
             }
         }
 
         for (cid, (overlap, size)) in overlaps.iter_mut() {
-            for label in prefix.iter().skip(k + 1) {
-                let self_nodes = query_tree.inverted_list.get(*label).unwrap().len();
-
+            for (label, self_nodes) in prefix.iter().skip(k + 1) {
                 if let Some(nodes) = trees[*cid].inverted_list.get(*label) {
-                    *overlap += std::cmp::min(nodes.len(), self_nodes);
+                    *overlap += std::cmp::min(nodes.len(), *self_nodes);
                 }
             }
 
-            if std::cmp::max(query_tree.c.tree_size, *size) - *overlap <= k {
+            if std::cmp::max(query_tree.c.tree_size, *size).saturating_sub(*overlap) <= k {
                 candidates.insert(*cid);
             }
         }
