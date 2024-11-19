@@ -266,20 +266,20 @@ fn main() -> Result<(), anyhow::Error> {
                             ));
                         }
                         println!(
-                            "Lblint index found {canlen} candidates in {dur}ms",
+                            "Lblint index execution time was:{dur}ms and found {canlen} candidates",
                             canlen = index_candidates.len(),
                             dur = start.elapsed().as_millis()
                         );
-                        index_candidates.par_sort();
-                        let mut output_file = output.clone();
-                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        write_file(
-                            output_file,
-                            &index_candidates
-                                .iter()
-                                .map(|(c1, c2)| format!("{c1},{c2}"))
-                                .collect_vec(),
-                        )?;
+                        // index_candidates.par_sort();
+                        // let mut output_file = output.clone();
+                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        // write_file(
+                        //     output_file,
+                        //     &index_candidates
+                        //         .iter()
+                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
+                        //         .collect_vec(),
+                        // )?;
 
                         lb::iterate_queries!(
                             lblint_queries,
@@ -363,7 +363,7 @@ fn main() -> Result<(), anyhow::Error> {
                         }
 
                         println!(
-                            "Querying indexes took: {}ms and found {} candidates... index was used {}/{}  the avg precision was: {:.4}",
+                            "Sed Index lookup was: {}ms and found {} candidates... index was used {}/{}  the avg precision was: {:.4}",
                             start.elapsed().as_millis(),
                             index_candidates.len(),
                             index_used_cnt,
@@ -371,27 +371,27 @@ fn main() -> Result<(), anyhow::Error> {
                             avg_precision,
                         );
 
-                        println!(
-                            "Total lookup duration was: {}ms",
-                            total_lookup_duration.as_millis(),
-                        );
-                        println!(
-                            "Total count filter duration was: {}ms --- CNT:{}ms/TM:{}ms",
-                            total_filter_duration.as_millis(),
-                            pre_index.cnt.as_millis(),
-                            pre_index.true_matches.as_millis(),
-                        );
+                        // println!(
+                        //     "Total lookup duration was: {}ms",
+                        //     total_lookup_duration.as_millis(),
+                        // );
+                        // println!(
+                        //     "Total count filter duration was: {}ms --- CNT:{}ms/TM:{}ms",
+                        //     total_filter_duration.as_millis(),
+                        //     pre_index.cnt.as_millis(),
+                        //     pre_index.true_matches.as_millis(),
+                        // );
 
-                        index_candidates.par_sort();
-                        let mut output_file = output.clone();
-                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        write_file(
-                            output_file,
-                            &index_candidates
-                                .iter()
-                                .map(|(c1, c2)| format!("{c1},{c2}"))
-                                .collect_vec(),
-                        )?;
+                        // index_candidates.par_sort();
+                        // let mut output_file = output.clone();
+                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        // write_file(
+                        //     output_file,
+                        //     &index_candidates
+                        //         .iter()
+                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
+                        //         .collect_vec(),
+                        // )?;
 
                         lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map)
                     }
@@ -417,20 +417,20 @@ fn main() -> Result<(), anyhow::Error> {
                             ));
                         }
                         println!(
-                            "Structural index found {canlen} candidates in {dur}ms",
+                            "Structural index lookup was: {dur}ms and found {canlen}",
                             canlen = index_candidates.len(),
                             dur = start.elapsed().as_millis()
                         );
-                        index_candidates.par_sort();
-                        let mut output_file = output.clone();
-                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        write_file(
-                            output_file,
-                            &index_candidates
-                                .iter()
-                                .map(|(c1, c2)| format!("{c1},{c2}"))
-                                .collect_vec(),
-                        )?;
+                        // index_candidates.par_sort();
+                        // let mut output_file = output.clone();
+                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        // write_file(
+                        //     output_file,
+                        //     &index_candidates
+                        //         .iter()
+                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
+                        //         .collect_vec(),
+                        // )?;
 
                         lb::iterate_queries!(structural_queries, structural_sets, struct_ted_k)
                     }
