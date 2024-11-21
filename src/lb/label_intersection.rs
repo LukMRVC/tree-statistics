@@ -136,6 +136,8 @@ impl LabelIntersectionIndex {
 
             if std::cmp::max(query_tree.c.tree_size, *size).saturating_sub(*overlap) <= k {
                 candidates.insert(*cid);
+            } else {
+                candidates.remove(cid);
             }
         }
 

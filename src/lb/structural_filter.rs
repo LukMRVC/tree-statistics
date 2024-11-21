@@ -681,6 +681,8 @@ impl StructuralFilterIndex {
 
                 if std::cmp::max(query_tree.0, *size).saturating_sub(*overlap) <= k {
                     candidates.insert(*cid);
+                } else {
+                    candidates.remove(cid);
                 }
             }
         }
