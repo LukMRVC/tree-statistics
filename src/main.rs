@@ -3,6 +3,7 @@ use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use gxhash::HashMapExt;
 use itertools::Itertools;
 use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
@@ -408,11 +409,11 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut index_candidates = vec![];
                         let start = Instant::now();
                         for (qid, (t, query)) in structural_queries.iter().enumerate() {
-                            index_candidates.append(&mut struct_index.query_index(
+                            index_candidates.append(&mut &mut struct_index.query_index_prefix(
                                 query,
-                                // &ordering,
+                                &ordering,
                                 *t,
-                                // &structural_sets,
+                                &structural_sets,
                                 Some(qid),
                             ));
                         }

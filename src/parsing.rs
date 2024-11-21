@@ -1,9 +1,9 @@
 use crossbeam_channel::Sender;
+use gxhash::{HashMap, HashMapExt};
 use indextree::{Arena, NodeEdge, NodeId};
 use itertools::Itertools;
 use memchr::memchr2_iter;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
@@ -103,7 +103,7 @@ pub fn parse_dataset(
     dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
-    let (sender, receiver) = crossbeam_channel::bounded::<String>(15_000);
+    let (sender, receiver) = crossbeam_channel::unbounded::<String>();
     let ld = Arc::new(Mutex::new(label_dict));
     let copy_ld = Arc::clone(&ld);
     let collection_tree_tokens = std::thread::scope(|s| {
@@ -111,7 +111,6 @@ pub fn parse_dataset(
             let mut ld = copy_ld.lock().unwrap();
             let mut max_node_id = ld.values().len() as LabelId;
             while let Ok(label) = receiver.recv() {
-                // println!("Received: {label}");
                 ld.entry(label)
                     .and_modify(|(_, lblcnt)| *lblcnt += 1)
                     .or_insert_with(|| {
