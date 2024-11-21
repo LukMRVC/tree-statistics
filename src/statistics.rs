@@ -15,12 +15,6 @@ pub struct TreeStatistics {
     pub depths: Vec<usize>,
     /// number of nodes in a tree
     pub size: usize,
-    /// average node degree
-    pub avg_degree: f64,
-    /// average path len from root to leaf,
-    pub avg_depth: f64,
-    /// Max path from root to leaf
-    pub height: usize,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -86,17 +80,10 @@ pub fn gather(tree: &ParsedTree) -> TreeStatistics {
         degrees.push(degree);
     }
 
-    let height = depths.iter().max().copied().unwrap_or(0);
-    let avg_degree = degrees.iter().sum::<usize>() as f64 / degrees.len() as f64;
-    let avg_depth = depths.iter().sum::<usize>() as f64 / depths.len() as f64;
-
     TreeStatistics {
         degrees,
         depths,
         size: tree.count(),
-        height,
-        avg_degree,
-        avg_depth,
     }
 }
 
@@ -149,9 +136,6 @@ mod tests {
 
         assert_eq!(stats.depths, vec![3]);
         assert_eq!(stats.degrees, vec![1, 2, 2, 1]);
-        assert_eq!(stats.height, 3);
-        assert_eq!(stats.avg_depth, 3f64);
-        assert_eq!(stats.avg_degree, 1.5f64);
         assert_eq!(stats.size, 4);
     }
 

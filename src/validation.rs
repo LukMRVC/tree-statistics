@@ -110,17 +110,23 @@ pub fn get_precision(
     }
     real_result.par_sort();
     let mut matches = vec![0; trees_total];
-    matches.par_iter_mut().enumerate().for_each(|(tree_id, tau_match)| {
-        for (t1, _) in candidates.iter() {
-            if *t1 == tree_id {
-                *tau_match += 1;
+    matches
+        .par_iter_mut()
+        .enumerate()
+        .for_each(|(tree_id, tau_match)| {
+            for (t1, _) in candidates.iter() {
+                if *t1 == tree_id {
+                    *tau_match += 1;
+                }
             }
-        }
-    });
+        });
 
-    let selectivity: Vec<f64> = matches.par_iter().enumerate().map(|(tree_id, tau_match)| 100f64 * (*tau_match as f64 / (trees_total - tree_id) as f64)).collect();
+    let selectivity: Vec<f64> = matches
+        .par_iter()
+        .enumerate()
+        .map(|(tree_id, tau_match)| 100f64 * (*tau_match as f64 / (trees_total - tree_id) as f64))
+        .collect();
     let mean_sel = crate::statistics::mean(&selectivity);
-    
 
     let extra = candidates.iter().fold(0usize, |acc, (c1, c2)| {
         match real_result.binary_search(&(*c1, *c2)) {

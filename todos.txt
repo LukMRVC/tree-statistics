@@ -42,3 +42,8 @@ Pri pocitani LB, najit X nejvice spolecnych labelu v obou stromech a pak rozdeli
 Prvni budou mapovaci regiony BEZ nalezenych nejvice spolecny, druha osa mapovaci regiony a POUZE nalezene nejvice spolecne labely.
 
 Vysledek je pak L1(OSA 1) + L1(OSA 2)
+
+
+
+{inproceedings{key{conf/miccai/BaloghDSKVMCF04}}{mdate{2017-06-04}}{author{Emese Balogh}}{author{Anton Deguet}}{author{Robert C. Susil}}{author{Axel Krieger}}{author{orcid{0000-0003-3810-6217}}{Anand Viswanathan}}{author{Cynthia Menard}}{author{Jonathan A. Coleman}}{author{Gabor Fichtinger}}{title{Visualization, Planning, and Monitoring Software for MRI-Guided Prostate Intervention Robot.}}{pages{73-80}}{ee{https://doi.org/10.1007/978-3-540-30136-3_10}}{year{2004}}{crossre 147653 f{conf/miccai/2004-2}}{booktitle{MICCAI (2)}}{url{db/conf/miccai/miccai2004-2.html#BaloghDSKVMCF04}}}
+{inproceedings{key{conf/miccai/BanoHNCDWHSM12}}{mdate{2017-05-23}}{author{Jordan Bano}}{author{Alexandre Hostettler}}{author{Stephane Nicolau}}{author{StephaneCotin}}{author{Christophe Doignon}}{author{H. S. Wu}}{author{M. H. Huang}}{author{Luc Soler}}{author{Jacques Marescaux}}{title{Simulation of Pneumoperitoneum for Laparoscopic Surgery Planning.}}{pages{91-98}}{year{2012}}{booktitle{MICCAI (1)}}{ee{https://doi.org/10.1007/978-3-642-33415-3_12}}{crossref{conf/miccai/2012-1}}{url{db/conf/miccai/miccai2012-1.html#BanoHNCDWHSM12}}}

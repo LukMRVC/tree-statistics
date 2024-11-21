@@ -7,3 +7,9 @@ resources/workloads
 
 resources/
 .ipynb_checkpoints
+
+*.xz
+*.gz
+*.tar*
+
+.vscode
