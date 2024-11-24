@@ -650,10 +650,9 @@ impl StructuralFilterIndex {
                 .size_index
                 .iter()
                 .enumerate()
-                .take_while(|(_, ts)| **ts < query_tree.0 || query_tree.0.abs_diff(**ts) <= k)
+                .take_while(|(_, &ts)| ts < query_tree.0 + k)
             {
-                candidates.insert(cid);
-                overlaps.insert(cid, (*tree_size, 1));
+                overlaps.insert(cid, (*tree_size, 0));
             }
         }
 
@@ -682,12 +681,9 @@ impl StructuralFilterIndex {
                         *overlap += get_nodes_overlap(&label_set, nodes, k);
                     }
                 }
-
-                if std::cmp::max(query_tree.0, *size).saturating_sub(*overlap) <= k {
-                    candidates.insert(*cid);
-                } else {
-                    candidates.remove(cid);
-                }
+            }
+            if std::cmp::max(query_tree.0, *size).saturating_sub(*overlap) <= k {
+                candidates.insert(*cid);
             }
         }
 

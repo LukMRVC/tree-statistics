@@ -3,7 +3,6 @@ use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use gxhash::HashMapExt;
 use itertools::Itertools;
 use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
@@ -124,7 +123,7 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .exit();
     }
-    let mut label_dict = LabelDict::new();
+    let mut label_dict = LabelDict::default();
     let mut trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
         Err(e) => {
@@ -214,7 +213,7 @@ fn main() -> Result<(), anyhow::Error> {
             size_map.insert(first.count(), 0);
             for (idx, t) in trees.iter().enumerate().skip(1) {
                 if size != t.count() {
-                    for i in size..t.count() {
+                    for i in (size + 1)..t.count() {
                         size_map.insert(i, idx);
                     }
                     size = t.count();
@@ -275,16 +274,16 @@ fn main() -> Result<(), anyhow::Error> {
                             canlen = index_candidates.len(),
                             dur = start.elapsed().as_millis()
                         );
-                        // index_candidates.par_sort();
-                        // let mut output_file = output.clone();
-                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        // write_file(
-                        //     output_file,
-                        //     &index_candidates
-                        //         .iter()
-                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
-                        //         .collect_vec(),
-                        // )?;
+                        index_candidates.par_sort();
+                        let mut output_file = output.clone();
+                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        write_file(
+                            output_file,
+                            &index_candidates
+                                .iter()
+                                .map(|(c1, c2)| format!("{c1},{c2}"))
+                                .collect_vec(),
+                        )?;
 
                         lb::iterate_queries!(
                             lblint_queries,

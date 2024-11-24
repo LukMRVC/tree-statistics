@@ -1,9 +1,10 @@
 use crossbeam_channel::Sender;
-use gxhash::{HashMap, HashMapExt};
+// use gxhash::{HashMap, HashMapExt};
 use indextree::{Arena, NodeEdge, NodeId};
 use itertools::Itertools;
 use memchr::memchr2_iter;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
@@ -24,10 +25,16 @@ pub enum DatasetParseError {
 pub type LabelId = i32;
 
 pub type LabelDict = HashMap<String, (LabelId, usize)>;
+
 // the index is the labelId, and the value on that index is the frequency of it
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LabelFreqOrdering<T = usize>(Vec<T>);
 
 impl<T> LabelFreqOrdering<T> {
+    pub fn new(data: Vec<T>) -> Self {
+        Self(data)
+    }
+
     pub fn get(&self, index: NonZeroUsize) -> Option<&T> {
         self.0.get(index.get() - 1)
     }
@@ -138,6 +145,7 @@ pub fn parse_dataset(
             .collect::<Result<Vec<String>, _>>()
             .expect("Unable to read input file");
         println!("Consumed {} lines of trees", tree_lines.len());
+
         tree_lines
             .into_par_iter()
             .map_with(sender, |s, tree_line| {
@@ -201,6 +209,7 @@ pub fn parse_queries(
         .iter()
         .map(|(_, tkns)| tkns.iter().map(|t| t.as_str()).collect_vec())
         .collect_vec();
+
     update_label_dict(&only_tokens, ld);
     let trees = trees
         .iter()
@@ -223,10 +232,10 @@ pub fn parse_single(tree_str: String, label_dict: &mut LabelDict) -> ParsedTree 
     }
 
     let tokens = parse_tree_tokens(tree_str, None).expect("Failed to parse single tree");
-    let token_col = vec![tokens.clone()];
-    todo!("Not implemented ");
-    // update_label_dict(&token_col[0], label_dict);
-    // parse_tree(&tokens, label_dict).unwrap()
+    let str_tokens = tokens.iter().map(|t| t.as_str()).collect_vec();
+    let token_col = vec![str_tokens];
+    update_label_dict(&token_col, label_dict);
+    parse_tree(&tokens, label_dict).unwrap()
 }
 
 pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
@@ -472,10 +481,14 @@ mod tests {
         ]);
 
         let freq_ordering = get_frequency_ordering(&ld);
-        assert_eq!(freq_ordering, vec![5, 2, 3, 1, 5]);
+        assert_eq!(freq_ordering, LabelFreqOrdering::new(vec![5, 2, 3, 1, 5]));
 
         let mut values = vec![0, 2, 3, 0, 4];
-        values.sort_by_key(|lbl| freq_ordering[*lbl]);
+        values.sort_by_key(|lbl| {
+            freq_ordering
+                .get(NonZeroUsize::new(*lbl as usize).unwrap())
+                .unwrap()
+        });
 
         assert_eq!(values, vec![3, 2, 0, 0, 4]);
     }

@@ -156,7 +156,7 @@ mod tests {
         n1.append(n2, &mut a);
         n2.append(n3, &mut a);
         n3.append(n4, &mut a);
-        let ordering = LabelFreqOrdering(vec![1, 1, 1, 1]);
+        let ordering = LabelFreqOrdering::new(vec![1, 1, 1, 1]);
         let stats = gather(&a, &ordering);
 
         assert_eq!(stats.depths, vec![3]);
@@ -182,7 +182,7 @@ mod tests {
 
         n1.append(n6, &mut a);
         n6.append(n7, &mut a);
-        let ordering = LabelFreqOrdering(vec![1, 2, 2, 1, 1]);
+        let ordering = LabelFreqOrdering::new(vec![1, 2, 2, 1, 1]);
 
         let stats = gather(&a, &ordering);
 

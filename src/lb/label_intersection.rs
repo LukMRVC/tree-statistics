@@ -30,9 +30,9 @@ pub fn label_intersection_k(
     let bigger_tree = max(t1.c.tree_size, t2.c.tree_size);
 
     // if all labels matched, but just the size difference was too much, just exit
-    // if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
-    //     return k + 1;
-    // }
+    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+        return k + 1;
+    }
 
     for (label, postings) in t1.inverted_list.iter() {
         let Some(t2postings) = t2.inverted_list.get(label) else {
@@ -98,11 +98,13 @@ impl LabelIntersectionIndex {
 
         if query_tree.c.tree_size <= k {
             // find candidates that have no label overlap but can fit by size because of threshold
-            for (cid, tree_size) in self.size_index.iter().enumerate().take_while(|(_, ts)| {
-                **ts < query_tree.c.tree_size || query_tree.c.tree_size.abs_diff(**ts) <= k
-            }) {
-                candidates.insert(cid);
-                overlaps.insert(cid, (*tree_size, 1));
+            for (cid, tree_size) in self
+                .size_index
+                .iter()
+                .enumerate()
+                .take_while(|(_, &ts)| ts < query_tree.c.tree_size + k)
+            {
+                overlaps.insert(cid, (0, *tree_size));
             }
         }
 
@@ -127,17 +129,16 @@ impl LabelIntersectionIndex {
             }
         }
 
-        for (cid, (overlap, size)) in overlaps.iter_mut() {
-            for (label, self_nodes) in prefix.iter().skip(k + 1) {
-                if let Some(nodes) = trees[*cid].inverted_list.get(*label) {
-                    *overlap += std::cmp::min(nodes.len(), *self_nodes);
+        for (&cid, (overlap, size)) in overlaps.iter_mut() {
+            if *overlap > 0 {
+                for (label, self_nodes) in prefix.iter().skip(k + 1) {
+                    if let Some(nodes) = trees[cid].inverted_list.get(*label) {
+                        *overlap += std::cmp::min(nodes.len(), *self_nodes);
+                    }
                 }
             }
-
             if std::cmp::max(query_tree.c.tree_size, *size).saturating_sub(*overlap) <= k {
-                candidates.insert(*cid);
-            } else {
-                candidates.remove(cid);
+                candidates.insert(cid);
             }
         }
 
@@ -210,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_lblint() {
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
 
         let t2 = parse_single("{b{e}{d{a}}}".to_owned(), &mut ld);
         let t3 = parse_single("{d{c}{b{a}{d{a}}}}".to_owned(), &mut ld);
@@ -228,10 +229,42 @@ mod tests {
     }
 
     #[test]
+    fn test_lblint_2() {
+        let mut ld = LabelDict::default();
+
+        let t1 = parse_single(
+            "{NP{NP{NN{Business}}}{Interpunction{:}}{NP{NNS{Savings}}{CC{and}}{NN{loan}}}}"
+                .to_owned(),
+            &mut ld,
+        );
+
+        let t2 = parse_single(
+            "{NP{NP{VBN{Guaranteed}}{NN{minimum}}}{NP{CD{6}}{NN{%}}}{Interpunction{.}}}".to_owned(),
+            &mut ld,
+        );
+
+        let q = parse_single(
+            "{NPHLN{NNPS{Fundamentalists}}{NNP{Jihad}}}".to_owned(),
+            &mut ld,
+        );
+
+        let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
+        let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
+        let qi = InvertedListLabelPostorderIndex::index_tree(&q, &ld);
+
+        let k = 12;
+        let t1t2_lb = label_intersection_k(&t1i, &qi, k);
+        assert!(t1t2_lb > k);
+
+        let t1t2_lb = label_intersection_k(&t2i, &qi, k);
+        assert!(t1t2_lb > k);
+    }
+
+    #[test]
     fn test_missing_label_lb() {
         let i1 = "{pietro gobetti str.{8}{10}}".to_owned();
         let i2 = "{wendelsteinstrasse{1{{1}{2}{3}{4}{5}{6}{7}{14}}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let t1 = parse_single(i1, &mut ld);
         let t2 = parse_single(i2, &mut ld);
 
@@ -247,7 +280,7 @@ mod tests {
     fn test_correctness_index() {
         let i = "{0{1 Abysmally}{0 pathetic}}".to_owned();
         let q = "{3{2{2 Unfolds}{3{2 in}{2{2{2{2 a}{2 series}}{2{2 of}{2{2 achronological}{2 vignettes}}}}{3{2{2{2 whose}{2 cumulative}}{2 effect}}{2{2 is}{3 chilling}}}}}}{2 .}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let t1 = parse_single(i, &mut ld);
         let t2 = parse_single(q, &mut ld);
         let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
@@ -262,10 +295,37 @@ mod tests {
     }
 
     #[test]
+    fn test_correctness_index_sizes_2() {
+        let i = "{NP{NP{NN{Business}}}{Interpunction{:}}{NP{NNS{Savings}}{CC{and}}{NN{loan}}}}"
+            .to_owned();
+        let i2 =
+            "{NP{NP{VBN{Guaranteed}}{NN{minimum}}}{NP{CD{6}}{NN{%}}}{Interpunction{.}}}".to_owned();
+        let q = "{NPHLN{NNPS{Fundamentalists}}{NNP{Jihad}}}".to_owned();
+        let mut ld = LabelDict::default();
+        let t1 = parse_single(i, &mut ld);
+        let t2 = parse_single(i2, &mut ld);
+        let q = parse_single(q, &mut ld);
+        let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);
+        let t2i = InvertedListLabelPostorderIndex::index_tree(&t2, &ld);
+        let qi = InvertedListLabelPostorderIndex::index_tree(&q, &ld);
+
+        let k = 12;
+
+        let lb = label_intersection_k(&t1i, &qi, k);
+        assert!(lb > k, "Lower bound is bigger than 12");
+        let lb = label_intersection_k(&t2i, &qi, k);
+        assert!(lb > k, "Lower bound is bigger than 12");
+
+        let lblint_index = LabelIntersectionIndex::new(&[t1i, t2i]);
+        let candidates = lblint_index.query_index(&qi, k, Some(0));
+        assert_eq!(candidates.len(), 0, "No candidates found")
+    }
+
+    #[test]
     fn test_correctness_index_tree_sizes() {
         let i = r#"{inproceedings{key{conf/miccai/BanoHNCDWHSM12}}{mdate{2017-05-23}}{author{Jordan Bano}}{author{Alexandre Hostettler}}{author{Stephane Nicolau}}{author{Stephane Cotin}}{author{Christophe Doignon}}{author{H. S. Wu}}{author{M. H. Huang}}{author{Luc Soler}}{author{Jacques Marescaux}}{title{Simulation of Pneumoperitoneum for Laparoscopic Surgery Planning.}}{pages{91-98}}{year{2012}}{booktitle{MICCAI (1)}}{ee{https://doi.org/10.1007/978-3-642-33415-3_12}}{crossref{conf/miccai/2012-1}}{url{db/conf/miccai/miccai2012-1.html#BanoHNCDWHSM12}}}"#.to_owned();
         let q = r#"{inproceedings{key{conf/miccai/BanoHNCDWHSM12}}{mdate{2017-05-23}}{author{Jordan Bano}}{author{Alexandre Hostettler}}{author{Stephane Nicolau}}{author{Stephane Cotin}}{author{Christophe Doignon}}{author{H. S. Wu}}{author{M. H. Huang}}{author{Luc Soler}}{author{Jacques Marescaux}}{title{Simulation of Pneumoperitoneum for Laparoscopic Surgery Planning.}}{pages{91-98}}{year{2012}}{booktitle{MICCAI (1)}}{ee{https://doi.org/10.1007/978-3-642-33415-3_12}}{crossref{conf/miccai/2012-1}}{url{db/conf/miccai/miccai2012-1.html#BanoHNCDWHSM12}}}"#.to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let t1 = parse_single(i, &mut ld);
         let q = parse_single(q, &mut ld);
         let t1i = InvertedListLabelPostorderIndex::index_tree(&t1, &ld);

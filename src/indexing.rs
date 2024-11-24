@@ -90,7 +90,7 @@ impl InvertedListLabelPostorderIndex {
             .iter()
             .sorted_by_key(|(&label, _)| {
                 if label as usize >= ordering.len() {
-                    return usize::MAX;
+                    return usize::MIN;
                 }
                 *ordering
                     .get(NonZeroUsize::new(label as usize).unwrap())
