@@ -102,7 +102,7 @@ impl LabelIntersectionIndex {
                 .size_index
                 .iter()
                 .enumerate()
-                .take_while(|(_, &ts)| ts < query_tree.c.tree_size + k)
+                .take_while(|(_, &ts)| ts <= k)
             {
                 overlaps.insert(cid, (0, *tree_size));
             }

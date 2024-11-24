@@ -650,7 +650,7 @@ impl StructuralFilterIndex {
                 .size_index
                 .iter()
                 .enumerate()
-                .take_while(|(_, &ts)| ts < query_tree.0 + k)
+                .take_while(|(_, &ts)| ts <= k)
             {
                 overlaps.insert(cid, (*tree_size, 0));
             }
