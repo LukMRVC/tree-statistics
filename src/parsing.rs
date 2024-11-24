@@ -7,6 +7,7 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::string::String;
 use std::sync::{Arc, Mutex};
@@ -24,7 +25,18 @@ pub type LabelId = i32;
 
 pub type LabelDict = HashMap<String, (LabelId, usize)>;
 // the index is the labelId, and the value on that index is the frequency of it
-pub type LabelFreqOrdering = Vec<usize>;
+pub struct LabelFreqOrdering<T = usize>(Vec<T>);
+
+impl<T> LabelFreqOrdering<T> {
+    pub fn get(&self, index: NonZeroUsize) -> Option<&T> {
+        self.0.get(index.get() - 1)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 pub(crate) type ParsedTree = Arena<LabelId>;
 
 pub enum TreeOutput {
@@ -62,13 +74,13 @@ fn tree_to_graphviz(tree: &ParsedTree) -> String {
 }
 
 pub fn get_frequency_ordering(ld: &LabelDict) -> LabelFreqOrdering {
-    ld.values().sorted_by_key(|(label, _)| label).fold(
+    LabelFreqOrdering(ld.values().sorted_by_key(|(label, _)| label).fold(
         Vec::with_capacity(ld.values().len()),
         |mut ordering, (_, label_count)| {
             ordering.push(*label_count);
             ordering
         },
-    )
+    ))
 }
 
 fn tree_to_bracket(tree: &ParsedTree) -> String {

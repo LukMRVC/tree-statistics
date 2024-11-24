@@ -140,9 +140,13 @@ fn main() -> Result<(), anyhow::Error> {
 
     match cli.command {
         Commands::Statistics { hists } => {
-            let stats: Vec<_> = trees.par_iter().map(statistics::gather).collect();
+            let freq_ordering = get_frequency_ordering(&label_dict);
+            let stats: Vec<_> = trees
+                .par_iter()
+                .map(|tree| statistics::gather(tree, &freq_ordering))
+                .collect();
             let summary = statistics::summarize(&stats);
-            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,distinct_labels\n{summary},{}", label_dict.keys().len());
+            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,avg_distinct_label_per_tree,distinct_labels,\n{summary},{}", label_dict.keys().len());
             if hists.is_some() {
                 let mut output_path = hists.unwrap();
                 if output_path.exists() && !output_path.is_dir() {
@@ -585,12 +589,12 @@ fn write_files(
             .flat_map(|s| &s.depths)
             .collect::<Vec<&usize>>(),
     )?;
-    // write_file(
-    //     [&out, &PathBuf::from("labels.csv")].iter().collect::<PathBuf>(),
-    //     &stats.iter().flat_map(|s| {
-    //         s.distinct_labels.iter().map(|(k, v)| format!("{k},{v}")).collect::<Vec<_>>()
-    //     }).collect::<Vec<_>>()
-    // )?;
+    write_file(
+        [&out, &PathBuf::from("distinct_labels.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats.iter().map(|s| s.distinct_labels).collect::<Vec<_>>(),
+    )?;
 
     Ok(())
 }

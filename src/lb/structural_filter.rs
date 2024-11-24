@@ -2,7 +2,7 @@ use crate::parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree};
 use indextree::NodeId;
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::cmp::{max, Ordering};
+use std::{cmp::max, num::NonZeroUsize};
 
 type StructHashMap = FxHashMap<LabelId, LabelSetElement>;
 type SplitStructHashMap = FxHashMap<LabelId, SplitLabelSetElement>;
@@ -64,11 +64,13 @@ impl StructuralFilterTuple {
     pub fn get_prefix(&self, ordering: &LabelFreqOrdering, k: usize) -> Vec<&LabelSetElement> {
         self.1
             .iter()
-            .sorted_by_key(|(label, _)| {
-                if **label as usize >= ordering.len() {
+            .sorted_by_key(|(&label, _)| {
+                if label as usize >= ordering.len() {
                     return usize::MAX;
                 }
-                ordering[**label as usize - 1]
+                *ordering
+                    .get(NonZeroUsize::new(label as usize).unwrap())
+                    .unwrap()
             })
             .map(|(_, set_element)| set_element)
             .take(k + 1)
@@ -78,11 +80,13 @@ impl StructuralFilterTuple {
     pub fn get_sorted_nodes(&self, ordering: &LabelFreqOrdering) -> Vec<&LabelSetElement> {
         self.1
             .iter()
-            .sorted_by_key(|(label, _)| {
-                if **label as usize >= ordering.len() {
+            .sorted_by_key(|(&label, _)| {
+                if label as usize >= ordering.len() {
                     return usize::MAX;
                 }
-                ordering[**label as usize - 1]
+                *ordering
+                    .get(NonZeroUsize::new(label as usize).unwrap())
+                    .unwrap()
             })
             .map(|(_, set_element)| set_element)
             .collect_vec()

@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree};
 use indextree::NodeId;
 
@@ -86,11 +88,13 @@ impl InvertedListLabelPostorderIndex {
     pub fn get_sorted_nodes(&self, ordering: &LabelFreqOrdering) -> Vec<(&LabelId, usize)> {
         self.inverted_list
             .iter()
-            .sorted_by_key(|(label, _)| {
-                if **label as usize >= ordering.len() {
+            .sorted_by_key(|(&label, _)| {
+                if label as usize >= ordering.len() {
                     return usize::MAX;
                 }
-                ordering[**label as usize - 1]
+                *ordering
+                    .get(NonZeroUsize::new(label as usize).unwrap())
+                    .unwrap()
             })
             .map(|(l, lc)| (l, lc.len()))
             .collect_vec()
