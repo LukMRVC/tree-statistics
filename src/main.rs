@@ -32,7 +32,7 @@ struct Cli {
     #[arg(short, long, value_name = "FILE")]
     dataset_path: PathBuf,
     /// outputs only collected statistics
-    #[arg(short, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     quiet: bool,
     #[command(subcommand)]
     command: Commands,
@@ -206,7 +206,9 @@ fn main() -> Result<(), anyhow::Error> {
             // let mut times = vec![];
             // let mut candidate_times = vec![];
             // let mut selectivities = vec![];
-            println!("Preparing dataset and running preprocessing for all methods");
+            if !cli.quiet {
+                println!("Preparing dataset and running preprocessing for all methods");
+            }
             let mut size_map = BTreeMap::new();
             let first = trees.first().unwrap();
             let mut size = first.count();
@@ -269,21 +271,22 @@ fn main() -> Result<(), anyhow::Error> {
                                 Some(qid),
                             ));
                         }
+
                         println!(
-                            "Lblint index execution time was:{dur}ms and found {canlen} candidates",
+                            "Lblint index\ntime:{dur}ms\ncandidates:{canlen}",
                             canlen = index_candidates.len(),
                             dur = start.elapsed().as_millis()
                         );
-                        index_candidates.par_sort();
-                        let mut output_file = output.clone();
-                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        write_file(
-                            output_file,
-                            &index_candidates
-                                .iter()
-                                .map(|(c1, c2)| format!("{c1},{c2}"))
-                                .collect_vec(),
-                        )?;
+                        // index_candidates.par_sort();
+                        // let mut output_file = output.clone();
+                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        // write_file(
+                        //     output_file,
+                        //     &index_candidates
+                        //         .iter()
+                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
+                        //         .collect_vec(),
+                        // )?;
 
                         lb::iterate_queries!(
                             lblint_queries,
@@ -306,8 +309,9 @@ fn main() -> Result<(), anyhow::Error> {
                         // TODO: DBLP with Q = 2 is missing 4 results, find out why!
                         let mut pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
-                        println!("Building indexes took: {}ms", start.elapsed().as_millis());
-
+                        if !cli.quiet {
+                            println!("Building indexes took: {}ms", start.elapsed().as_millis());
+                        }
                         let sed_queries = queries
                             .iter()
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
@@ -367,12 +371,9 @@ fn main() -> Result<(), anyhow::Error> {
                         }
 
                         println!(
-                            "Sed Index lookup was: {}ms and found {} candidates... index was used {}/{}  the avg precision was: {:.4}",
+                            "Sed Index\ntime:{}ms\ncandidates:{}",
                             start.elapsed().as_millis(),
                             index_candidates.len(),
-                            index_used_cnt,
-                            sed_queries.len(),
-                            avg_precision,
                         );
 
                         // println!(
@@ -421,7 +422,7 @@ fn main() -> Result<(), anyhow::Error> {
                             ));
                         }
                         println!(
-                            "Structural index lookup was: {dur}ms and found {canlen}",
+                            "Structural Index\ntime:{dur}ms\ncandidates:{canlen}",
                             canlen = index_candidates.len(),
                             dur = start.elapsed().as_millis()
                         );
@@ -442,7 +443,7 @@ fn main() -> Result<(), anyhow::Error> {
                 };
 
                 println!(
-                    "Execution time for {current_method:?} was: {duration_ms}ms and found {canlen} candidates",
+                    "{current_method:?}\ntime:{duration_ms}ms\ncandidates:{canlen}",
                     duration_ms = duration.as_millis(),
                     canlen = candidates.len()
                 );

@@ -144,7 +144,7 @@ pub fn parse_dataset(
             .lines()
             .collect::<Result<Vec<String>, _>>()
             .expect("Unable to read input file");
-        println!("Consumed {} lines of trees", tree_lines.len());
+        // println!("Consumed {} lines of trees", tree_lines.len());
 
         tree_lines
             .into_par_iter()
@@ -159,11 +159,11 @@ pub fn parse_dataset(
             .unwrap()
     });
 
-    println!(
-        "Parsed {} lines of tree tokens",
-        collection_tree_tokens.len()
-    );
-    println!("Parsing tokens into trees");
+    // println!(
+    //     "Parsed {} lines of tree tokens",
+    //     collection_tree_tokens.len()
+    // );
+    // println!("Parsing tokens into trees");
     let label_dict = Arc::try_unwrap(ld)
         .expect("Arc has references")
         .into_inner()
@@ -173,7 +173,7 @@ pub fn parse_dataset(
         .map(|tokens| parse_tree(tokens, label_dict))
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
-    println!("Final number of trees: {}", trees.len());
+    // println!("Final number of trees: {}", trees.len());
 
     Ok(trees)
 }
