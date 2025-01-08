@@ -9,5 +9,6 @@ Swissprot
 Podobne kolekce stromu, kolem 1000 stromu, velikost stromu kolem 100, at jsou stromy velikostne podobne, ale lisi
 se strukturou - poctem labelu - tak at umime menit "nepodobnost"
 
-
 # Zkusit upravit strukturalni vektor tak, aby kazdy region mel zmenseny pocet uzlu podle vzdalenosti od aktualniho
+
+
