@@ -22,6 +22,7 @@ const REGION_DESC_IDX: usize = 3;
 // difference between children and descendants? Children nodes are only 1 level below current node level
 // while descendants are all nodes below the current node
 #[derive(Debug, Default, Clone, PartialEq)]
+#[repr(align(16))]
 pub struct StructuralVec {
     label_id: LabelId,
     /// Id of postorder tree traversal
@@ -31,6 +32,7 @@ pub struct StructuralVec {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+#[repr(align(16))]
 pub struct SplitStructuralVec {
     svec: StructuralVec,
     pub mapping_region_splits: [[RegionNumType; LabelSetConverter::MAX_SPLIT]; 4],
@@ -664,7 +666,7 @@ impl StructuralFilterIndex {
                         *ts >= query_tree.0.saturating_sub(k) && ts.abs_diff(query_tree.0) <= k
                     })
                     .for_each(|(cid, ts, nodes)| {
-                        let overlap = get_nodes_overlap(&l, nodes, k);
+                        let overlap = get_nodes_overlap(l, nodes, k);
                         // dbg!(nodes);
                         overlaps
                             .entry(*cid)
@@ -678,7 +680,7 @@ impl StructuralFilterIndex {
             if *overlap > 0 {
                 for label_set in prefix.iter().skip(k + 1) {
                     if let Some(nodes) = trees[*cid].1.get(&label_set.base.id) {
-                        *overlap += get_nodes_overlap(&label_set, nodes, k);
+                        *overlap += get_nodes_overlap(label_set, nodes, k);
                     }
                 }
             }

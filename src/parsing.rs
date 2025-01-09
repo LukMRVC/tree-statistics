@@ -214,7 +214,7 @@ pub fn parse_queries(
     let trees = trees
         .iter()
         .filter_map(|(t, tokens)| {
-            let parsed_tree = parse_tree(&tokens, ld);
+            let parsed_tree = parse_tree(tokens, ld);
             if parsed_tree.is_err() {
                 return None;
             }
@@ -328,7 +328,7 @@ fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseE
     Ok(())
 }
 
-fn parse_tree_tokens<'a>(
+fn parse_tree_tokens(
     tree_bytes: String,
     sender_channel: Option<&mut Sender<String>>,
 ) -> Result<Vec<String>, TreeParseError> {

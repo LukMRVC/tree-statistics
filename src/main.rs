@@ -145,7 +145,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .map(|tree| statistics::gather(tree, &freq_ordering))
                 .collect();
             let summary = statistics::summarize(&stats);
-            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,avg_distinct_label_per_tree,distinct_labels,\n{summary},{}", label_dict.keys().len());
+            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,avg_unique_labels_per_tree,avg_tree_distinct_labels,distinct_labels,\n{summary},{}", label_dict.keys().len());
             if hists.is_some() {
                 let mut output_path = hists.unwrap();
                 if output_path.exists() && !output_path.is_dir() {

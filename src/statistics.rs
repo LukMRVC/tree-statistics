@@ -3,6 +3,8 @@ use crate::parsing::{LabelFreqOrdering, ParsedTree};
 use itertools::Itertools;
 use num_traits::Num;
 use rayon::prelude::*;
+use rustc_hash::FxHashSet;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
 use std::iter::Sum;
@@ -18,6 +20,8 @@ pub struct TreeStatistics {
     pub size: usize,
     /// distinct labels in current tree
     pub distinct_labels: usize,
+    /// collection wide unique labels in current tree
+    pub collection_unique_labels: usize,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -30,20 +34,23 @@ pub struct CollectionStatistics {
     pub avg_tree_size: f64,
     /// number of distinct labels in collection
     pub trees: usize,
-    /// distinct labels per tree
-    pub avg_distinct_label_per_tree: f64,
+    /// average unique collection labels per tree
+    pub avg_unique_label_per_tree: f64,
+    /// average distinct labels per each tree
+    pub avg_tree_distinct_labels: f64,
 }
 
 impl fmt::Display for CollectionStatistics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{},{},{:.6},{},{:.6}",
+            "{},{},{:.6},{},{:.6},{:.6}",
             self.min_tree_size,
             self.max_tree_size,
             self.avg_tree_size,
             self.trees,
-            self.avg_distinct_label_per_tree,
+            self.avg_unique_label_per_tree,
+            self.avg_tree_distinct_labels,
         )
     }
 }
@@ -62,11 +69,15 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
     let root_id = tree.get_node_id(root).unwrap();
     let mut degrees = vec![];
     let mut depths = vec![];
-    let mut distinct_labels = 0;
+    let mut unique_labels = 0;
+
+    let mut distinct_label_set = HashSet::new();
 
     if let Some(&freq) = freq_ordering.get(NonZeroUsize::new(*root.get() as usize).unwrap()) {
-        distinct_labels += usize::from(freq == 1);
+        unique_labels += usize::from(freq == 1);
     }
+
+    distinct_label_set.insert(*root.get());
 
     #[inline]
     fn is_leaf(children: &usize) -> bool {
@@ -78,8 +89,9 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         let mut degree = nid.children(tree).count();
 
         if let Some(&freq) = freq_ordering.get(NonZeroUsize::new(*n.get() as usize).unwrap()) {
-            distinct_labels += usize::from(freq == 1);
+            unique_labels += usize::from(freq == 1);
         }
+        distinct_label_set.insert(*n.get());
 
         // pop node ids from stack to get into
         while !node_stack.is_empty()
@@ -102,7 +114,8 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         degrees,
         depths,
         size: tree.count(),
-        distinct_labels,
+        distinct_labels: distinct_label_set.len(),
+        collection_unique_labels: unique_labels,
     }
 }
 
@@ -117,7 +130,13 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
 
     let avg_size = all_statistics.par_iter().map(|s| s.size).sum::<usize>() as f64
         / all_statistics.len() as f64;
-    let avg_distinct_per_tree = all_statistics
+    let avg_unique_label_per_tree = all_statistics
+        .par_iter()
+        .map(|s| s.collection_unique_labels)
+        .sum::<usize>() as f64
+        / all_statistics.len() as f64;
+
+    let avg_tree_distinct_labels = all_statistics
         .par_iter()
         .map(|s| s.distinct_labels)
         .sum::<usize>() as f64
@@ -128,7 +147,8 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
         max_tree_size: max,
         avg_tree_size: avg_size,
         trees: all_statistics.len(),
-        avg_distinct_label_per_tree: avg_distinct_per_tree,
+        avg_tree_distinct_labels,
+        avg_unique_label_per_tree,
     }
 }
 
