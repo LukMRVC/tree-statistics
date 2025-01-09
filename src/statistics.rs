@@ -4,7 +4,6 @@ use itertools::Itertools;
 use num_traits::Num;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Formatter;
 use std::iter::Sum;
@@ -71,7 +70,7 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
     let mut depths = vec![];
     let mut unique_labels = 0;
 
-    let mut distinct_label_set = HashSet::new();
+    let mut distinct_label_set = FxHashSet::default();
 
     if let Some(&freq) = freq_ordering.get(NonZeroUsize::new(*root.get() as usize).unwrap()) {
         unique_labels += usize::from(freq == 1);
