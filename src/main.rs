@@ -593,6 +593,15 @@ fn write_files(
             .collect::<Vec<&usize>>(),
     )?;
     write_file(
+        [&out, &PathBuf::from("unique_labels.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats
+            .iter()
+            .map(|s| s.collection_unique_labels)
+            .collect::<Vec<_>>(),
+    )?;
+    write_file(
         [&out, &PathBuf::from("distinct_labels.csv")]
             .iter()
             .collect::<PathBuf>(),
