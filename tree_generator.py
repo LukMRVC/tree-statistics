@@ -10,7 +10,7 @@ class TreeNode:
     """Basic tree node class."""
     def __init__(self, label, index: int, size: int=0):
         self.label = label
-        self.children = []
+        self.children: list[TreeNode] = []
         self.index = index
         self.size = size
 
@@ -52,16 +52,25 @@ def generate_random_tree(size: int, shape_modifier: float, labels: list[int]):
         weights.append(1 - shape_modifier)
     return root
 
-def generate_random_tree_from_base(tree: TreeNode, similarity: float, labels: list[int]) -> TreeNode:
-    if random.random() > similarity:
-        op = random.choice(['label', 'append', 'remove'])
+def remove_random_children(tree: TreeNode):
+    if not tree.children:
+        return
+    child_to_delete = random.choice(tree.children)
+    tree.children.extend(child_to_delete.children)
+    tree.children.remove(child_to_delete)
+
+def generate_random_tree_from_base(tree: TreeNode, similarity: float, labels: list[int], max_edits: int = 9999999, current_edits: int = 0) -> TreeNode:
+    if random.random() > similarity and current_edits < max_edits:
+        [op] = random.choices(['label', 'append', 'remove'], weights=[2, 1, 1])
         match op:
             case 'label': tree.label = random.choice(labels)
             case 'append': tree.children.append(TreeNode(random.choice(labels), -1))
-            case 'remove': tree.children and tree.children.remove(random.choice(tree.children))
+            case 'remove': remove_random_children(tree)
+        current_edits += 1
     for c in tree.children:
-        generate_random_tree_from_base(c, similarity, labels)
-    return tree
+        _, ce = generate_random_tree_from_base(c, similarity, labels, max_edits, current_edits)
+        current_edits += ce
+    return tree, current_edits
 
 
 def validate_shape_modifier(ctx, param, value):
@@ -88,7 +97,16 @@ def validate_min_max_tree_size(_, __, value):
 @click.option('-M', '--min_max_tree_size', required=True, type=str,
               help='Min and max tree size, delimited by comma',
               callback=validate_min_max_tree_size)
-def cli(tree_count: int, distinct_labels:int, shape_modifier: float, min_max_tree_size: tuple[int, int]):
+@click.option('-B', '--base_trees', required=False, type=int, help='Number of base trees from which to permute')
+@click.option('-E', '--max_edits', required=False, type=int, help='Number of maximum edits in each tree')
+def cli(
+    tree_count: int,
+    distinct_labels:int,
+    shape_modifier: float,
+    min_max_tree_size: tuple[int, int],
+    base_trees: None | int,
+    max_edits: None | int,
+    ):
     # print(min_max_tree_size, shape_modifier, tree_count)
     min_size, max_size = min_max_tree_size
 
@@ -98,7 +116,7 @@ def cli(tree_count: int, distinct_labels:int, shape_modifier: float, min_max_tre
     f = functools.partial(generate_random_tree, shape_modifier=shape_modifier, labels=labels)
 
     # have 1/5 of trees as "base random trees"
-    base_trees = tree_count // 10 * 2
+    base_trees = base_trees if base_trees is not None else tree_count // 10 * 2
     base_tree_sizes = sorted(random.randint(min_size, max_size) for _ in range(base_trees))
 
 
@@ -110,11 +128,12 @@ def cli(tree_count: int, distinct_labels:int, shape_modifier: float, min_max_tre
 
     derived = (tree_count - base_trees) // base_trees
     i = 0
+    max_edits_dist = max_edits if max_edits is not None else 99999999
     for tree in trees[:base_trees]:
         for _ in range(derived):
             # i += 1
             # print(i, 'out of ', len(trees) * derived)
-            dt: TreeNode = generate_random_tree_from_base(copy.deepcopy(tree), similarity=0.99, labels=labels)
+            dt, _ = generate_random_tree_from_base(copy.deepcopy(tree), similarity=0.75, labels=labels, max_edits = max_edits_dist)
             # bisect.insort(trees, dt, key=lambda x: x.size)
             trees.append(dt)
 
