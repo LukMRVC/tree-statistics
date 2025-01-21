@@ -35,7 +35,7 @@ class TreeNode:
 
 
 
-def generate_random_tree(size: int, shape_modifier: float, labels: list[int]):
+def generate_random_tree(size: int, labels: list[int], shape_modifier: float):
     """Generate a random tree."""
     root = TreeNode(random.choice(labels), 0, size)
     nodes = [root]
@@ -87,6 +87,19 @@ def validate_min_max_tree_size(_, __, value):
         raise click.BadParameter('Must containt exactly 2 values for min and max! e.g. 10,50...')
     return (int(mn), int(mx))
 
+
+def validate_distinct_labels(_, __, value):
+    if not value:
+        return value
+    if ',' not in value:
+        raise click.BadParameter('Must contain a comma as separator! e.g. 10,50')
+    try:
+        mn, mx = value.split(',')
+    except ValueError:
+        raise click.BadParameter('Must containt exactly 2 values for min and max! e.g. 10,50...')
+    return (int(mn), int(mx))
+
+
 @click.command()
 @click.option('-T', '--tree_count', required=True, type=int, help='Tree count in resulting dataset')
 @click.option('-D', '--distinct_labels', required=True, type=int,
@@ -100,6 +113,8 @@ def validate_min_max_tree_size(_, __, value):
 @click.option('-B', '--base_trees', required=False, type=int, help='Number of base trees from which to permute')
 @click.option('-E', '--max_edits', required=False, type=int, help='Number of maximum edits in each tree')
 @click.option('-X', '--similarity', required=False, type=float, help='Number of maximum edits in each tree', default = 0.5)
+@click.option('-A', '--distinct_labels_per_tree', required=False, type=str,
+              help='Distinct labels range per tree, delimited by comma', callback=validate_distinct_labels)
 def cli(
     tree_count: int,
     distinct_labels:int,
@@ -108,6 +123,7 @@ def cli(
     base_trees: None | int,
     max_edits: None | int,
     similarity: None | float = 0.5,
+    distinct_labels_per_tree: None | tuple[int, int] = None,
     ):
     # print(min_max_tree_size, shape_modifier, tree_count)
     min_size, max_size = min_max_tree_size
@@ -115,15 +131,18 @@ def cli(
     labels = [i for i in range(1, distinct_labels + 1)]
 
     trees: list[TreeNode] = []
-    f = functools.partial(generate_random_tree, shape_modifier=shape_modifier, labels=labels)
+    f = functools.partial(generate_random_tree, shape_modifier=shape_modifier)
 
     # have 1/5 of trees as "base random trees"
     base_trees = base_trees if base_trees is not None else tree_count // 10 * 2
     base_tree_sizes = sorted(random.randint(min_size, max_size) for _ in range(base_trees))
 
-
+    dmin, dmax = distinct_labels_per_tree or (1, 1)
     with ProcessPoolExecutor() as p:
-        for tree in p.map(f, base_tree_sizes):
+        for tree in p.map(f, base_tree_sizes, [
+                random.choices(labels, k=random.randint(dmin, dmax)) if distinct_labels_per_tree else labels
+                for _ in range(base_trees)
+            ]):
             # bisect.insort(trees, tree, key=lambda x: x.size)
             trees.append(tree)
             # print(tree)

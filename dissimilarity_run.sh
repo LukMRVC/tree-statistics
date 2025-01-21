@@ -7,7 +7,7 @@ echo $BASE;
 P=resources/workloads/generated/base-${BASE}/${DS}
 mkdir -p $P
 
-python3 tree_generator.py -T 1000 -D $LBLS -S 0.5 -M 95,105 -B $BASE -X 0.25 > $P/trees.bracket
+python3 tree_generator.py -T 1000 -D $LBLS -S 0.5 -M 95,105 -B $BASE -X 0.5 -A 30,50 > $P/trees.bracket
 ./target/release/tree-statistics -d $P/trees.bracket statistics | tail -n 2 > $P/collection.csv
 python3  dissimilarity_query_gen.py -F $P/trees.bracket
 
