@@ -3,11 +3,14 @@
 DS=$1
 LBLS=$2
 BASE="${3:-50}"
+SIZES="150,200"
 echo $BASE;
-P=resources/workloads/generated-10-20/base-${BASE}/${DS}
+P=resources/workloads/generated-$(echo $SIZES | tr ',' '-')/base-${BASE}/${DS}
 mkdir -p $P
+echo $P;
 
-python3 tree_generator.py -T 1000 -D $LBLS -S 0.5 -M 95,105 -B $BASE -X 0.5 -A 10,20 > $P/trees.bracket
+
+python3 tree_generator.py -T 1000 -D $LBLS -S 0.5 -M 95,105 -B $BASE -X 0.25 -A $SIZES > $P/trees.bracket
 ./target/release/tree-statistics -d $P/trees.bracket statistics | tail -n 2 > $P/collection.csv
 python3  dissimilarity_query_gen.py -F $P/trees.bracket
 
