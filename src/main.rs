@@ -307,10 +307,15 @@ fn main() -> Result<(), anyhow::Error> {
                         let start = Instant::now();
                         // TODO: Heuristic: Calculate the best Q for each dataset
                         // TODO: DBLP with Q = 2 is missing 4 results, find out why!
+
                         let mut pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         if !cli.quiet {
-                            println!("Building indexes took: {}ms", start.elapsed().as_millis());
+                            println!(
+                                "Building indexes took: {}ms with qgram-size={}",
+                                start.elapsed().as_millis(),
+                                q
+                            );
                         }
                         let sed_queries = queries
                             .iter()

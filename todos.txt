@@ -12,3 +12,7 @@ se strukturou - poctem labelu - tak at umime menit "nepodobnost"
 # Zkusit upravit strukturalni vektor tak, aby kazdy region mel zmenseny pocet uzlu podle vzdalenosti od aktualniho
 
 
+Udělat nové generační generování stromů, vychází se jen z 1 stromu, ale generuje se kolekce stromů, které jsou podobné
+v každé generaci se vytvoří max X nových stromů a přimichávají se nové labely
+
+Pak změřit nepodobnost kolekce, následně udělat dotazy s 1% selektivitou a změřit výsledky

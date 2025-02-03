@@ -1,8 +1,11 @@
+#!/usr/bin/env python3
+
 import polars as pl
 import sys
 from math import ceil
 from os.path import join
 from concurrent.futures import ProcessPoolExecutor
+import click
 
 
 def get_queries(dataset: str, min_k: int, max_k: int, Q: int, overrides: dict = dict()):
@@ -78,5 +81,85 @@ setup = (
     ("sentiment", 5, 20, 2, {"min_r": 2, "max_r": 300}),
 )
 
-for qs in setup:
-    get_queries(*qs)
+# for qs in setup:
+#     get_queries(*qs)
+
+
+@click.command()
+@click.argument("csv_path", type=click.Path(exists=True))
+# accept a path to another existing file, that is just plain text file
+@click.argument("data_path", type=click.Path(exists=True))
+def cli(csv_path, data_path):
+    df = pl.read_csv(
+        csv_path,
+        has_header=False,
+        schema={"T1": pl.Int32(), "T2": pl.Int32(), "dist": pl.Int32()},
+    )
+    max_dist = df["dist"].max()
+
+    df = df.sort(["T1", "T2"])
+    # filter out values where T1 and T2 are equal
+    df = df.filter(df["T1"] != df["T2"])
+    # count the number of distinct values in column T1
+    distinct_t1 = df["T1"].n_unique()
+    # get 1 percent from the distinct values
+    one_percent = ceil(distinct_t1 / 100)
+    # get half a percent from the distinct values
+    half_percent = ceil(one_percent / 2)
+    # iterate from 1 to max_dist, for each iteration, get rows where dist is less than or equal to the current iteration
+    # group by T1 and count the number of rows in each group
+    # filter out rows where the count is greater than 1.5 percent and less than 0.5 percent of the total distinct values
+    query_set = dict()
+    for i in range(1, max_dist + 1):
+        # print(i)
+        g = df.filter(df["dist"] <= i).group_by("T1").agg(cnt=pl.len())
+        g = g.filter(
+            (g["cnt"] >= half_percent) & (g["cnt"] < (one_percent + half_percent))
+        )
+        # print(g.head())
+        # iterate through the rows in the group and add set T1 value to the query_set if not already in the set
+        dictdf = g.to_dict(as_series=True)
+        for t1 in dictdf["T1"]:
+            if t1 not in query_set:
+                # print(t1)
+                query_set[t1] = i
+            if len(query_set.keys()) >= 300:
+                # break outer loop
+                break  # break inner loop
+        else:
+            continue
+        break
+
+    sorted_query_set = sorted(query_set.items(), key=lambda x: x[0])
+
+    # read the data file and get the lines into array
+    with open(data_path) as f:
+        lines = [l.strip() for l in f]
+
+    for t1, dist in sorted_query_set:
+        print(f"{dist};{lines[t1]}")
+    # print(f"Number of queries: {len(query_set)}")
+    # print(f"Max value in dist column: {max_dist}")
+
+
+if __name__ == "__main__":
+    cli()
+
+
+def query_selectivity(
+    query_results: pl.DataFrame,
+    data: pl.DataFrame,
+) -> float:
+    """
+    Calculate the selectivity of the query results
+    """
+    df = query_results.group_by("T1").agg(cnt=pl.len())
+    # get the number of rows in the data
+    data_count = data.shape[0]
+
+    # now divide the cnt by the data_count
+    # to get the selectivity
+    df["selectivity"] = df["cnt"] / data_count
+
+    # calculate the selectivity
+    return df["selectivity"].mean()
