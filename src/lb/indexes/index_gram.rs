@@ -47,7 +47,7 @@ impl IndexGram {
     }
 
     pub fn query(
-        &mut self,
+        &self,
         mut query: Vec<i32>,
         k: usize,
     ) -> Result<(Vec<usize>, Duration, Duration), String> {

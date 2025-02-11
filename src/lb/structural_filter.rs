@@ -460,14 +460,16 @@ pub fn ted(s1: &StructuralFilterTuple, s2: &StructuralFilterTuple, k: usize) -> 
             };
 
             for n1 in s1c.struct_vec.iter() {
-                // let k_window = n1.postorder_id as i32 - k as i32;
-                // let k_window = std::cmp::max(k_window, 0) as usize;
+                let k_window = n1.postorder_id as i32 - k as i32;
+                let k_window = std::cmp::max(k_window, 0) as usize;
 
                 // apply postorder filter
                 // let s2clen = s2c.struct_vec.len();
-                for n2 in s2c.struct_vec.iter()
-                // .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
-                // .take_while(|n2| !(n2.postorder_id > k as usize + n1.postorder_id))
+                for n2 in s2c
+                    .struct_vec
+                    .iter()
+                    .skip_while(|n2| k_window < s2c.struct_vec.len() && n2.postorder_id < k_window)
+                    .take_while(|n2| !(n2.postorder_id > k as usize + n1.postorder_id))
                 {
                     let l1_region_distance =
                         svec_l1_strict(&n1.mapping_regions, &n2.mapping_regions);

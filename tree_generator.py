@@ -10,13 +10,14 @@ import bisect
 class TreeNode:
     """Basic tree node class."""
 
-    def __init__(self, label, index: int, size: int = 0):
+    def __init__(self, label, index: int, size: int = 0, parent: 'TreeNode' = None):
         self.label = label
         self.children: list[TreeNode] = []
         self.index = index
         self.size = size
+        self.parent = parent
 
-    def add_child(self, child):
+    def add_child(self, child: 'TreeNode'):
         self.children.append(child)
 
     def get_size(self) -> int:
@@ -24,6 +25,13 @@ class TreeNode:
         for c in self.children:
             _s += c.get_size()
         return _s
+    
+    # get all nodes of the tree
+    def get_all_nodes(self) -> list['TreeNode']:
+        nodes = [self]
+        for c in self.children:
+            nodes.extend(c.get_all_nodes())
+        return nodes
 
     def __repr__(self, level=0):
         # ret = "\t" * level + repr(self.label) + "\n"
@@ -47,7 +55,7 @@ def generate_random_tree(size: int, labels: list[int], shape_modifier: float):
             weights=weights,
         )[0]
         weights[parent.index] = shape_modifier
-        child = TreeNode(random.choice(labels), i)
+        child = TreeNode(random.choice(labels), i, parent=parent)
         parent.add_child(child)
         nodes.append(child)
         weights.append(1 - shape_modifier)
@@ -70,15 +78,16 @@ def generate_random_tree_from_base(
     current_edits: int = 0,
 ) -> TreeNode:
     if random.random() > similarity and current_edits < max_edits:
-        [op] = random.choices(["label", "append", "remove"], weights=[1, 1, 1])
-        match op:
-            case "label":
-                tree.label = random.choice(labels)
-            case "append":
-                tree.children.append(TreeNode(random.choice(labels), -1))
-            case "remove":
-                remove_random_children(tree)
-        current_edits += 1
+        # for increased randomness, we can add more operations
+        random_ops = random.randint(1, 2)
+        for _ in range(random_ops):
+            [op] = random.choices(["label", "append"], weights=[2, 1])
+            match op:
+                case "label":
+                    tree.label = random.choice(labels)
+                case "append":
+                    tree.children.append(TreeNode(random.choice(labels), -1, parent=tree))
+            current_edits += 1
     for c in tree.children:
         _, ce = generate_random_tree_from_base(c, similarity, labels, max_edits, current_edits)
         current_edits += ce
@@ -193,7 +202,8 @@ def generational_random_generator(
         if len(labels_to_use) < len(labels):
             labels_to_use.extend(labels[max_label_idx : max_label_idx + generation_max_new_nodes])
             max_label_idx += generation_max_new_nodes
-        next_generation_size = min(prev_generation_size * 2, generation_max_new_nodes)
+        # next_generation_size = min(prev_generation_size * 2, generation_max_new_nodes)
+        next_generation_size = min(prev_generation_size * 2, 2)
         # generate new generation from previous generation
         current_trees_len = len(trees)
 
@@ -206,8 +216,30 @@ def generational_random_generator(
                     copy.deepcopy(gen_base_tree),
                     similarity=similarity,
                     labels=labels,
-                    max_edits=99999999,
+                    max_edits=9999999,
                 )
+                
+                new_tree: TreeNode
+                new_tree_size = new_tree.get_size()
+                if not (min_size > new_tree_size > max_size):
+                    delete_modifications = new_tree_size - random.randint(min_size, max_size)
+                    all_tree_nodes = new_tree.get_all_nodes()
+                    all_tree_nodes.remove(new_tree)
+                    for _ in range(delete_modifications):
+                        # pick any random node
+                        node_to_remove = None
+                        while node_to_remove is None:
+                            node_parent = random.choice(all_tree_nodes)
+                            if not node_parent.children:
+                                node_parent = node_parent.parent
+                            node_to_remove = random.choice(node_parent.children)
+                        
+                        for c in node_to_remove.children:
+                            c.parent = node_parent
+                        
+                        node_parent.children.extend(node_to_remove.children)
+                        node_parent.children.remove(node_to_remove)
+                        all_tree_nodes.remove(node_to_remove)
 
                 trees.append(new_tree)
         prev_generation_size = next_generation_size
