@@ -89,13 +89,19 @@ setup = (
 @click.argument("csv_path", type=click.Path(exists=True))
 # accept a path to another existing file, that is just plain text file
 @click.argument("data_path", type=click.Path(exists=True))
-def cli(csv_path, data_path):
+# accept an int argument that is minimum threshold value
+@click.option("--min-threshold", type=int, default=1)
+# accept an int argument that is maximum threshold value
+@click.option("--max-threshold", type=int, default=9999)
+def cli(csv_path, data_path, min_threshold, max_threshold):
     df = pl.read_csv(
         csv_path,
         has_header=False,
         schema={"T1": pl.Int32(), "T2": pl.Int32(), "dist": pl.Int32()},
     )
     max_dist = df["dist"].max()
+
+    query_tau_end = min(max_dist, max_threshold)
 
     df = df.sort(["T1", "T2"])
     # filter out values where T1 and T2 are equal
@@ -110,7 +116,7 @@ def cli(csv_path, data_path):
     # group by T1 and count the number of rows in each group
     # filter out rows where the count is greater than 1.5 percent and less than 0.5 percent of the total distinct values
     query_set = dict()
-    for i in range(1, max_dist + 1):
+    for i in range(min_threshold, query_tau_end + 1):
         # print(i)
         g = df.filter(df["dist"] <= i).group_by("T1").agg(cnt=pl.len())
         g = g.filter(
