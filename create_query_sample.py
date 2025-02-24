@@ -93,7 +93,9 @@ setup = (
 @click.option("--min-threshold", type=int, default=1)
 # accept an int argument that is maximum threshold value
 @click.option("--max-threshold", type=int, default=9999)
-def cli(csv_path, data_path, min_threshold, max_threshold):
+# option for target selectivity of a query
+@click.option("--target-selectivity", type=float, default=1)
+def cli(csv_path, data_path, min_threshold, max_threshold, target_selectivity):
     df = pl.read_csv(
         csv_path,
         has_header=False,
@@ -110,6 +112,10 @@ def cli(csv_path, data_path, min_threshold, max_threshold):
     distinct_t1 = df["T1"].n_unique()
     # get 1 percent from the distinct values
     one_percent = ceil(distinct_t1 / 100)
+
+    # get target percent based on target selectivity
+    target_percent = one_percent * target_selectivity
+
     # get half a percent from the distinct values
     half_percent = ceil(one_percent / 2)
     # iterate from 1 to max_dist, for each iteration, get rows where dist is less than or equal to the current iteration
@@ -120,7 +126,8 @@ def cli(csv_path, data_path, min_threshold, max_threshold):
         # print(i)
         g = df.filter(df["dist"] <= i).group_by("T1").agg(cnt=pl.len())
         g = g.filter(
-            (g["cnt"] >= half_percent) & (g["cnt"] < (one_percent + half_percent))
+            (g["cnt"] >= target_percent - half_percent)
+            & (g["cnt"] < (target_percent + half_percent))
         )
         # print(g.head())
         # iterate through the rows in the group and add set T1 value to the query_set if not already in the set
