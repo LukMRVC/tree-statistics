@@ -245,6 +245,7 @@ def generational_random_generator(
                         min_size, max_size
                     )
                     all_tree_nodes = new_tree.get_all_nodes()
+                    # remove the root from the list of nodes so we don't remove it by accident
                     all_tree_nodes.remove(new_tree)
                     for _ in range(delete_modifications):
                         # pick any random node
@@ -261,6 +262,15 @@ def generational_random_generator(
                         node_parent.children.extend(node_to_remove.children)
                         node_parent.children.remove(node_to_remove)
                         all_tree_nodes.remove(node_to_remove)
+
+                used_labels = list(set([t.label for t in all_tree_nodes]))
+                if not (dmin < len(used_labels) < dmax):
+                    new_used_labels = random.choices(
+                        used_labels, k=random.randint(dmin, dmax)
+                    )
+                    for t in all_tree_nodes:
+                        if t.label not in new_used_labels:
+                            t.label = random.choice(new_used_labels)
 
                 trees.append(new_tree)
         prev_generation_size = next_generation_size
