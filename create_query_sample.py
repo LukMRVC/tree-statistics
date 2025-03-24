@@ -89,13 +89,21 @@ setup = (
 @click.argument("csv_path", type=click.Path(exists=True))
 # accept a path to another existing file, that is just plain text file
 @click.argument("data_path", type=click.Path(exists=True))
-def cli(csv_path, data_path):
+# accept an int argument that is minimum threshold value
+@click.option("--min-threshold", type=int, default=1)
+# accept an int argument that is maximum threshold value
+@click.option("--max-threshold", type=int, default=9999)
+# option for target selectivity of a query
+@click.option("--target-selectivity", type=float, default=1)
+def cli(csv_path, data_path, min_threshold, max_threshold, target_selectivity):
     df = pl.read_csv(
         csv_path,
         has_header=False,
         schema={"T1": pl.Int32(), "T2": pl.Int32(), "dist": pl.Int32()},
     )
     max_dist = df["dist"].max()
+
+    query_tau_end = min(max_dist, max_threshold)
 
     df = df.sort(["T1", "T2"])
     # filter out values where T1 and T2 are equal
@@ -104,17 +112,22 @@ def cli(csv_path, data_path):
     distinct_t1 = df["T1"].n_unique()
     # get 1 percent from the distinct values
     one_percent = ceil(distinct_t1 / 100)
+
+    # get target percent based on target selectivity
+    target_percent = one_percent * target_selectivity
+
     # get half a percent from the distinct values
     half_percent = ceil(one_percent / 2)
     # iterate from 1 to max_dist, for each iteration, get rows where dist is less than or equal to the current iteration
     # group by T1 and count the number of rows in each group
     # filter out rows where the count is greater than 1.5 percent and less than 0.5 percent of the total distinct values
     query_set = dict()
-    for i in range(1, max_dist + 1):
+    for i in range(min_threshold, query_tau_end + 1):
         # print(i)
         g = df.filter(df["dist"] <= i).group_by("T1").agg(cnt=pl.len())
         g = g.filter(
-            (g["cnt"] >= half_percent) & (g["cnt"] < (one_percent + half_percent))
+            (g["cnt"] >= target_percent - half_percent)
+            & (g["cnt"] < (target_percent + half_percent))
         )
         # print(g.head())
         # iterate through the rows in the group and add set T1 value to the query_set if not already in the set
