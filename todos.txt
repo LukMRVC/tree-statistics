@@ -16,3 +16,10 @@ Udělat nové generační generování stromů, vychází se jen z 1 stromu, ale
 v každé generaci se vytvoří max X nových stromů a přimichávají se nové labely
 
 Pak změřit nepodobnost kolekce, následně udělat dotazy s 1% selektivitou a změřit výsledky
+
+# Brezen 2025
+
+Vratit se k realnym kolekcim - na techto kolekcich chceme overit, ze zavisi na avg. distinct labels
+a tree-size. Kolekce rozdelime na 3 casti - male, stredni a velke stromy. Pro kazdou z techto casti potrebujeme
+pripravit dotazy (se selektivitou okolo 1%). Statistiky dotazu by mely odpovidat stastistice pro danou cast
+kolekce. Nasledne bude potreba overit a pustit sady dotazu nad celou kolekci a zmerit.
