@@ -11,9 +11,6 @@ repository = "https://github.com/LukMRVC/tree-statistics"
 keywords = ["bracket", "notation", "statistics", "tree"]
 categories = ["command-line-utilities", "data-structures"]
 
-[build]
-rustflags = ["-C", "target-cpu=native"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.release-with-debug]
 inherits = "release"

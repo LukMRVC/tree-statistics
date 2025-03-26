@@ -613,6 +613,13 @@ fn write_files(
         &stats.iter().map(|s| s.distinct_labels).collect::<Vec<_>>(),
     )?;
 
+    write_file(
+        [&out, &PathBuf::from("tree_sizes.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats.iter().map(|s| s.size).collect::<Vec<_>>(),
+    )?;
+
     Ok(())
 }
 
