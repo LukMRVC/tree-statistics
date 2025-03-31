@@ -9,6 +9,7 @@ use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::sed_k;
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use parsing::get_frequency_ordering;
+use rand::seq::index;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -17,6 +18,7 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, exit};
 use std::time::{Duration, Instant};
+use std::u128;
 
 mod indexing;
 mod lb;
@@ -85,6 +87,10 @@ enum Commands {
         /// Q size for QGrams for SED indexing
         #[arg(long = "qgram-size")]
         q: Option<usize>,
+        /// Total number of runs for each method
+        /// Then the lowest duration of all runs is taken as result
+        #[arg(long = "runs", short = 'r', default_value_t = 1)]
+        runs: usize,
     },
     /// Validates candidate results against real results
     Validate {
@@ -195,6 +201,7 @@ fn main() -> Result<(), anyhow::Error> {
             method: filter_method,
             results_path: _results,
             q,
+            runs,
         } => {
             use LowerBoundMethods as LBM;
             if !output.is_dir() {
@@ -260,40 +267,54 @@ fn main() -> Result<(), anyhow::Error> {
                             })
                             .collect_vec();
 
-                        let start = Instant::now();
-                        let mut index_candidates = vec![];
-                        for (qid, (t, query)) in lblint_queries.iter().enumerate() {
-                            index_candidates.append(&mut lblint_index.query_index_prefix(
-                                query,
-                                *t,
-                                &ordering,
-                                &lblint_indexes,
-                                Some(qid),
-                            ));
+                        let mut index_duration_millis = u128::MAX;
+                        let mut index_candidates_len = usize::MAX;
+                        for _ in 0..runs {
+                            let start = Instant::now();
+                            let mut index_candidates = vec![];
+                            for (qid, (t, query)) in lblint_queries.iter().enumerate() {
+                                index_candidates.append(&mut lblint_index.query_index_prefix(
+                                    query,
+                                    *t,
+                                    &ordering,
+                                    &lblint_indexes,
+                                    Some(qid),
+                                ));
+                            }
+                            index_candidates_len =
+                                std::cmp::min(index_candidates.len(), index_candidates_len);
+                            index_duration_millis =
+                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
                         }
 
                         println!(
                             "Lblint index\ntime:{dur}ms\ncandidates:{canlen}",
-                            canlen = index_candidates.len(),
-                            dur = start.elapsed().as_millis()
+                            canlen = index_candidates_len,
+                            dur = index_duration_millis
                         );
-                        index_candidates.par_sort();
-                        let mut output_file = output.clone();
-                        output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        write_file(
-                            output_file,
-                            &index_candidates
-                                .iter()
-                                .map(|(c1, c2)| format!("{c1},{c2}"))
-                                .collect_vec(),
-                        )?;
-
-                        lb::iterate_queries!(
-                            lblint_queries,
-                            lblint_indexes,
-                            label_intersection_k,
-                            size_map
-                        )
+                        // index_candidates.par_sort();
+                        // let mut output_file = output.clone();
+                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
+                        // write_file(
+                        //     output_file,
+                        //     &index_candidates
+                        //         .iter()
+                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
+                        //         .collect_vec(),
+                        // )?;
+                        let mut candidates = vec![];
+                        let mut elapsed: Duration = Duration::MAX;
+                        for _ in 0..runs {
+                            let elapsed_run: Duration;
+                            (candidates, elapsed_run) = lb::iterate_queries!(
+                                lblint_queries,
+                                lblint_indexes,
+                                label_intersection_k,
+                                size_map
+                            );
+                            elapsed = std::cmp::min(elapsed, elapsed_run)
+                        }
+                        (candidates, elapsed)
                     }
                     LBM::Sed => {
                         let sed_indexes = trees
@@ -308,7 +329,7 @@ fn main() -> Result<(), anyhow::Error> {
                         // TODO: Heuristic: Calculate the best Q for each dataset
                         // TODO: DBLP with Q = 2 is missing 4 results, find out why!
 
-                        let mut pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
+                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         if !cli.quiet {
                             println!(
@@ -326,59 +347,66 @@ fn main() -> Result<(), anyhow::Error> {
 
                         let mut index_used_cnt = 0;
                         let mut index_candidates = Vec::with_capacity(15_000);
-                        let start = Instant::now();
                         let sed_indexes_len = sed_indexes.len();
                         let mut total_lookup_duration = Duration::new(0, 0);
                         let mut total_filter_duration = Duration::new(0, 0);
                         let mut avg_precision = 0.0;
 
-                        for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
-                            let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
-                            if let Ok((c1, lookup_duration, filter_duration)) = c1 {
-                                index_used_cnt += 1;
-                                total_lookup_duration += lookup_duration;
-                                total_filter_duration += filter_duration;
+                        let mut index_duration_millis = u128::MAX;
+                        let mut index_candidates_len = usize::MAX;
 
-                                let mut correct_results = 0;
-                                for cid in c1.iter() {
-                                    if sed_k(sed_query, &sed_indexes[*cid], *threshold)
-                                        <= *threshold
-                                    {
-                                        correct_results += 1;
-                                        index_candidates.push((qid, *cid));
+                        for _ in 0..runs {
+                            let start = Instant::now();
+                            for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
+                                let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
+                                if let Ok((c1, lookup_duration, filter_duration)) = c1 {
+                                    index_used_cnt += 1;
+                                    total_lookup_duration += lookup_duration;
+                                    total_filter_duration += filter_duration;
+
+                                    let mut correct_results = 0;
+                                    for cid in c1.iter() {
+                                        if sed_k(sed_query, &sed_indexes[*cid], *threshold)
+                                            <= *threshold
+                                        {
+                                            correct_results += 1;
+                                            index_candidates.push((qid, *cid));
+                                        }
                                     }
-                                }
-                                let precision =
-                                    correct_results as f64 / std::cmp::max(c1.len(), 1) as f64;
-                                avg_precision = avg_precision
-                                    + (precision - avg_precision) / (index_used_cnt as f64);
-                            } else {
-                                let start_idx = size_map
-                                    .get(&sed_query.c.tree_size.saturating_sub(*threshold))
-                                    .unwrap_or(&0);
-                                let end_idx = size_map
-                                    .get(&(sed_query.c.tree_size + threshold + 1))
-                                    .unwrap_or(&sed_indexes_len);
-                                let idx_diff = end_idx - start_idx + 1;
-                                // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
+                                    let precision =
+                                        correct_results as f64 / std::cmp::max(c1.len(), 1) as f64;
+                                    avg_precision = avg_precision
+                                        + (precision - avg_precision) / (index_used_cnt as f64);
+                                } else {
+                                    let start_idx = size_map
+                                        .get(&sed_query.c.tree_size.saturating_sub(*threshold))
+                                        .unwrap_or(&0);
+                                    let end_idx = size_map
+                                        .get(&(sed_query.c.tree_size + threshold + 1))
+                                        .unwrap_or(&sed_indexes_len);
+                                    let idx_diff = end_idx - start_idx + 1;
+                                    // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
 
-                                for (tid, tree) in sed_indexes
-                                    .iter()
-                                    .enumerate()
-                                    .skip(*start_idx)
-                                    .take(idx_diff)
-                                {
-                                    if sed_k(sed_query, tree, *threshold) <= *threshold {
-                                        index_candidates.push((qid, tid));
+                                    for (tid, tree) in sed_indexes
+                                        .iter()
+                                        .enumerate()
+                                        .skip(*start_idx)
+                                        .take(idx_diff)
+                                    {
+                                        if sed_k(sed_query, tree, *threshold) <= *threshold {
+                                            index_candidates.push((qid, tid));
+                                        }
                                     }
                                 }
                             }
+                            index_candidates_len =
+                                std::cmp::min(index_candidates.len(), index_candidates_len);
+                            index_duration_millis =
+                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
                         }
-
                         println!(
                             "Sed Index\ntime:{}ms\ncandidates:{}",
-                            start.elapsed().as_millis(),
-                            index_candidates.len(),
+                            index_duration_millis, index_candidates_len,
                         );
 
                         // println!(
@@ -403,7 +431,15 @@ fn main() -> Result<(), anyhow::Error> {
                         //         .collect_vec(),
                         // )?;
 
-                        lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map)
+                        let mut candidates = vec![];
+                        let mut elapsed: Duration = Duration::MAX;
+                        for _ in 0..runs {
+                            let elapsed_run: Duration;
+                            (candidates, elapsed_run) =
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map);
+                            elapsed = std::cmp::min(elapsed, elapsed_run)
+                        }
+                        (candidates, elapsed)
                     }
                     LBM::Structural => {
                         let mut lc = LabelSetConverter::default();
@@ -415,24 +451,34 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, lc.create_single(q)))
                             .collect_vec();
 
-                        let start = Instant::now();
-                        let index_candidates = structural_queries
-                            .par_iter()
-                            .enumerate()
-                            .flat_map(|(qid, (t, query))| {
-                                struct_index.query_index_prefix(
-                                    query,
-                                    &ordering,
-                                    *t,
-                                    &structural_sets,
-                                    Some(qid),
-                                )
-                            })
-                            .collect::<Vec<(usize, usize)>>();
+                        let mut index_duration_millis = u128::MAX;
+                        let mut candidates_len = usize::MAX;
+
+                        for _ in 0..runs {
+                            let start = Instant::now();
+                            let index_candidates = structural_queries
+                                .par_iter()
+                                .enumerate()
+                                .flat_map(|(qid, (t, query))| {
+                                    struct_index.query_index_prefix(
+                                        query,
+                                        &ordering,
+                                        *t,
+                                        &structural_sets,
+                                        Some(qid),
+                                    )
+                                })
+                                .collect::<Vec<(usize, usize)>>();
+
+                            candidates_len = std::cmp::min(candidates_len, index_candidates.len());
+                            index_duration_millis =
+                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
+                        }
+
                         println!(
                             "Structural Index\ntime:{dur}ms\ncandidates:{canlen}",
-                            canlen = index_candidates.len(),
-                            dur = start.elapsed().as_millis()
+                            canlen = candidates_len,
+                            dur = index_duration_millis
                         );
                         // index_candidates.par_sort();
                         // let mut output_file = output.clone();
@@ -445,7 +491,18 @@ fn main() -> Result<(), anyhow::Error> {
                         //         .collect_vec(),
                         // )?;
 
-                        lb::iterate_queries!(structural_queries, structural_sets, struct_ted_k)
+                        let mut candidates = vec![];
+                        let mut elapsed: Duration = Duration::MAX;
+                        for _ in 0..runs {
+                            let elapsed_run: Duration;
+                            (candidates, elapsed_run) = lb::iterate_queries!(
+                                structural_queries,
+                                structural_sets,
+                                struct_ted_k
+                            );
+                            elapsed = std::cmp::min(elapsed, elapsed_run)
+                        }
+                        (candidates, elapsed)
                     }
                     _ => todo!(),
                 };
