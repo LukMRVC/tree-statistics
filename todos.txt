@@ -20,6 +20,13 @@ Pak změřit nepodobnost kolekce, následně udělat dotazy s 1% selektivitou a 
 # Brezen 2025
 
 Vratit se k realnym kolekcim - na techto kolekcich chceme overit, ze zavisi na avg. distinct labels
-a tree-size. Kolekce rozdelime na 3 casti - male, stredni a velke stromy. Pro kazdou z techto casti potrebujeme
+a tree-size. 
+Jinak: Pro kolekci najdeme nejcetnejsi velikost stromu `tree_size` a vezmeme X dotazu.
+Zjistime si, jake jsou statistiky tech dotazu. Pro kazdy dotazovaci strom nastavime treshold tak,
+aby selektivita daneho dotazu byla 1%. Následně koukáme na precision a časy jednotlivých filtrů + na statistky stromů procházející filtrem.
+
+
+/**
+Kolekce rozdelime na 3 casti - male, stredni a velke stromy. Pro kazdou z techto casti potrebujeme
 pripravit dotazy (se selektivitou okolo 1%). Statistiky dotazu by mely odpovidat stastistice pro danou cast
 kolekce. Nasledne bude potreba overit a pustit sady dotazu nad celou kolekci a zmerit.
