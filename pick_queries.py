@@ -12,11 +12,11 @@ datasets_most_frequest_sizes = dict(
     # take 2 for DBLP - 25 and 27
     # TODO: bigger distances are needed for this size
     # dblp=(25,25),
-    ptb=(70,72),
+    # ptb=(70,72),
     # rna=(12,12),
     # take 2 for rna - 23 through 25
     # rna=(23, 25),
-    swissprot=(261, 265),
+    # swissprot=(261, 265),
     # treefam=(174, 179),
     # python=(49,51),
 )
@@ -96,7 +96,7 @@ for dataset, (min_size, max_size) in datasets_most_frequest_sizes.items():
     
     print('Total queries for ', dataset, ': ', len(qs))
     # write the queries to a file
-    with open(f"resources/workloads/{dataset}_queries.csv", "w") as f:
+    with open(f"resources/workloads/divided/{dataset}/queries.csv", "w") as f:
         for tid, tau in qs.items():
             # write the tree and tau
             f.write(f"{tau};{trees[tid]}\n")
