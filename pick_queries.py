@@ -13,7 +13,7 @@ datasets_most_frequest_sizes = dict(
     # TODO: bigger distances are needed for this size
     # dblp=(25,25),
     # ptb=(70, 72),
-    rna=(12, 12),
+    # rna=(12, 12),
     # take 2 for rna - 23 through 25
     # rna=(23, 25),
     # swissprot=(261, 265),
