@@ -1,4 +1,4 @@
-use crate::indexing::SEDIndex;
+use crate::indexing::{SEDIndex, SEDIndexWithStructure};
 
 pub fn sed(t1: &SEDIndex, t2: &SEDIndex) -> usize {
     let (mut t1, mut t2) = (t1, t2);
@@ -20,8 +20,8 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
     let mut cache: Vec<usize> = (1..s2len + 1).collect();
     let mut result = s2len;
     for (i, ca) in s1.iter().enumerate() {
-        result = i + 1;
         let mut dist_b = i;
+        result = i + 1;
 
         for (j, cb) in s2.iter().enumerate() {
             let dist_a = dist_b + usize::from(ca != cb);
@@ -32,6 +32,103 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
             }
         }
     }
+
+    result
+}
+
+/// Computes bounded string edit distance with known maximal threshold.
+/// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
+pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: usize) -> usize {
+    let (mut t1, mut t2) = (t1, t2);
+    // if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+    //     return k + 1;
+    // }
+
+    if t1.preorder.len() > t2.preorder.len() {
+        (t1, t2) = (t2, t1);
+    }
+    // let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
+
+    // if pre_dist > k {
+    //     return pre_dist;
+    // }
+
+    let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
+    return post_dist;
+    // std::cmp::max(pre_dist, post_dist)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TraversalCharacter {
+    pub char: i32,
+    pub info: i32,
+}
+
+/// Implements fastest known way to compute exact string edit between two strings
+fn string_edit_distance_with_structure(
+    s1: &[TraversalCharacter],
+    s2: &[TraversalCharacter],
+    k: u32,
+) -> usize {
+    use std::cmp::min;
+    // assumes size of s2 is smaller or equal than s1
+    let s2len = s2.len();
+    // let mut matrix = vec![];
+    let mut cache: Vec<usize> = (1..s2len + 1).collect();
+    // matrix.push(cache.clone());
+    // dbg!(&cache);
+    let mut result = s2len;
+    for (i, ca) in s1.iter().enumerate() {
+        let mut dist_b = i;
+        result = i + 1;
+
+        for (j, cb) in s2.iter().enumerate() {
+            let mut dist_a = dist_b;
+            if dist_a != usize::MAX {
+                dist_a += usize::from(ca.char != cb.char)
+            }
+            unsafe {
+                // TODO: If ca.info.abs_diff(cb.info) > k mark the cell as invalid, thus no computations
+                // can be done from that cell
+                dist_b = *cache.get_unchecked(j);
+                if dist_b == usize::MAX {
+                    result = min(result + 1, dist_a);
+                } else if result == usize::MAX {
+                    result = min(dist_a, dist_b + 1);
+                } else {
+                    result = min(result + 1, min(dist_a, dist_b + 1));
+                }
+
+                *cache.get_unchecked_mut(j) = result;
+                if ca.info.abs_diff(cb.info) > k {
+                    // dbg!(&ca, &cb);
+                    result = usize::MAX;
+                    *cache.get_unchecked_mut(j) = usize::MAX;
+                }
+            }
+        }
+        // matrix.push(cache.clone());
+        // dbg!(&cache);
+    }
+
+    // Print matrix by columns
+    // println!("Matrix by columns:");
+    // print!("Row    S1   ");
+    // for c in s1.iter() {
+    //     print!("  {:>3}", c.char);
+    // }
+    // println!("");
+    // for j in 0..cache.len() {
+    //     print!("Row  {:>3}: [", s2[j].char);
+    //     for i in 0..matrix.len() {
+    //         if i > 0 {
+    //             print!(",");
+    //         }
+    //         print!("{:>3}", matrix[i][j]);
+    //     }
+    //     println!("]");
+    // }
+    // dbg!(&matrix);
 
     result
 }
@@ -188,8 +285,150 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     }
 }
 
+pub fn bounded_string_edit_distance_with_structure(
+    s1: &[i32],
+    s2: &[i32],
+    info1: &[i32],
+    info2: &[i32],
+    k: usize,
+) -> usize {
+    use std::cmp::{max, min};
+    // assumes size of s2 is smaller or equal than s1
+    let mut s1len = s1.len();
+    let mut s2len = s2.len();
+    // perform suffix trimming
+    for _ in s1
+        .iter()
+        .rev()
+        .zip(s2.iter().rev())
+        .take_while(|(s1c, s2c)| s1c == s2c)
+    {
+        s1len -= 1;
+        s2len -= 1;
+        if s1len == 0 {
+            break;
+        }
+    }
+
+    let mut common_prefix = 0;
+
+    // now prefix trimming
+    for _ in s1.iter().zip(s2.iter()).take_while(|(s1c, s2c)| s1c == s2c) {
+        common_prefix += 1;
+        if common_prefix >= s1len {
+            break;
+        }
+    }
+
+    if s1len == 0 {
+        return s2len;
+    }
+
+    // prefix trimming done
+    let s1 = &s1[common_prefix..s1len];
+    let s2 = &s2[common_prefix..s2len];
+    let info1 = &info1[common_prefix..s1len];
+    let info2 = &info2[common_prefix..s2len];
+
+    s1len -= common_prefix;
+    s2len -= common_prefix;
+    // one string is gone by suffix and prefix trimming, so just return the remaining size
+    if s1len == 0 {
+        return s2len;
+    }
+    let s1len = s1len as i64;
+    let s2len = s2len as i64;
+
+    let threshold = min(s2len, k as i64);
+    let size_diff = s2len - s1len;
+
+    if threshold < size_diff {
+        return threshold as usize;
+    }
+
+    let zero_k: i64 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
+
+    let arr_len = size_diff + (zero_k) * 2 + 2;
+
+    let mut current_row = vec![-1i64; arr_len as usize];
+    let mut next_row = vec![-1i64; arr_len as usize];
+    let mut i = 0;
+    let condition_row = size_diff + zero_k;
+    let end_max = condition_row << 1;
+
+    loop {
+        i += 1;
+        std::mem::swap(&mut next_row, &mut current_row);
+
+        let start: i64;
+        let mut next_cell: i64;
+        let mut previous_cell: i64;
+        let mut current_cell: i64 = -1;
+
+        if i <= zero_k {
+            start = -i + 1;
+            next_cell = i - 2i64;
+        } else {
+            start = i - (zero_k << 1) + 1;
+            unsafe {
+                next_cell = *current_row.get_unchecked((zero_k + start) as usize);
+            }
+        }
+
+        let end: i64;
+        if i <= condition_row {
+            end = i;
+            unsafe {
+                *next_row.get_unchecked_mut((zero_k + i) as usize) = -1;
+            }
+        } else {
+            end = end_max - i;
+        }
+
+        let mut row_index = (start + zero_k) as usize;
+
+        let mut t;
+
+        for q in start..end {
+            previous_cell = current_cell;
+            current_cell = next_cell;
+            unsafe {
+                next_cell = *current_row.get_unchecked(row_index + 1);
+            }
+
+            // max()
+            t = max(max(current_cell + 1, previous_cell), next_cell + 1);
+
+            unsafe {
+                while t < s1len
+                    && (t + q) < s2len
+                    && s1.get_unchecked(t as usize) == s2.get_unchecked((t + q) as usize)
+                {
+                    t += 1;
+                }
+            }
+
+            unsafe {
+                *next_row.get_unchecked_mut(row_index) = t;
+            }
+            row_index += 1;
+        }
+
+        unsafe {
+            if !(*next_row.get_unchecked(condition_row as usize) < s1len && i <= threshold) {
+                break (i - 1) as usize;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::{
+        indexing::Indexer,
+        parsing::{parse_single, LabelDict},
+    };
+
     use super::*;
 
     #[test]
@@ -199,6 +438,76 @@ mod tests {
 
         let result = string_edit_distance(&v1, &v2);
         assert_eq!(result, 3);
+    }
+
+    #[test]
+    fn test_sed_simple() {
+        let v1 = vec![
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 2, info: 0 },
+        ];
+        let v2 = vec![
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 2, info: 0 },
+            TraversalCharacter { char: 3, info: 0 },
+        ];
+
+        let result = string_edit_distance_with_structure(&v1, &v2, 2);
+        assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn test_sed_wt_structure() {
+        // preorder traversal of simple tree with info about preceding nodes
+        let v1: Vec<TraversalCharacter> = vec![
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 2, info: 0 },
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 1, info: 0 },
+        ];
+        let v2 = vec![
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 2, info: 0 },
+            TraversalCharacter { char: 2, info: 0 },
+            TraversalCharacter { char: 1, info: 0 },
+            TraversalCharacter { char: 1, info: 2 },
+        ];
+
+        let result = string_edit_distance_with_structure(&v1, &v2, 1);
+        assert_eq!(result, 2);
+    }
+
+    #[test]
+    fn test_sed_query_and_tree() {
+        let qstr = "{3{4{4{4{4{3{3{3 Good}{2{2 car}{2 chases}}}{2 ,}}{3{4 great}{2{2 fight}{2 scenes}}}}{2 ,}}{2 and}}{3{3{2 a}{2{3 distinctive}{2 blend}}}{2{2 of}{2{2 European}{2{2 ,}{2{2 American}{2{2 and}{2{2 Asian}{2 influences}}}}}}}}}}".to_owned();
+        let tstr = "{0{2{1{0{0{2{3 Collateral}{2 Damage}}{0{2 is}{0 trash}}}{2 ,}}{2 but}}{3{2 it}{3{3{2 earns}{3{2 extra}{2 points}}}{2{2 by}{2{2 acting}{2{2 as}{2{2 if}{2{2 it}{2{2 were}{2 n't}}}}}}}}}}{2 .}}".to_owned();
+        let mut ld = LabelDict::new();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+
+        let result = sed_struct_k(&qs, &ts, 31);
+
+        assert!(
+            result == 30,
+            "SED result is not as expected: {result} == 30"
+        );
+    }
+
+    #[test]
+    fn test_sed_string_structure_corectness() {
+        let qstr = "{a{a{a{a}}}}".to_owned();
+        let tstr = "{a{a}{a}{a}}".to_owned();
+        let mut ld = LabelDict::new();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+        let result = sed_struct_k(&qs, &ts, 1);
+        assert!(result > 0, "SED result is not as expected: {result} > 0");
     }
 
     #[test]

@@ -1,6 +1,9 @@
 use std::num::NonZeroUsize;
 
-use crate::parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree};
+use crate::{
+    lb::sed::TraversalCharacter,
+    parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree},
+};
 use indextree::NodeId;
 
 use itertools::Itertools;
@@ -54,6 +57,88 @@ fn traverse(nid: NodeId, tree: &ParsedTree, pre: &mut Vec<i32>, post: &mut Vec<i
         traverse(cnid, tree, pre, post);
     }
     post.push(*label);
+}
+
+#[derive(Debug)]
+pub struct SEDIndexWithStructure {
+    pub preorder: Vec<TraversalCharacter>,
+    pub postorder: Vec<TraversalCharacter>,
+    pub c: ConstantsIndex,
+}
+
+impl Indexer for SEDIndexWithStructure {
+    fn index_tree(tree: &ParsedTree, _label_dict: &LabelDict) -> Self {
+        let Some(root) = tree.iter().next() else {
+            panic!("Unable to get root but tree is not empty!");
+        };
+        let root_id = tree.get_node_id(root).unwrap();
+
+        let mut pre = Vec::with_capacity(tree.count());
+        let mut post = Vec::with_capacity(tree.count());
+
+        let mut postorder_id = 0usize;
+        let mut preorder_id = 0usize;
+        let mut depth = 0usize;
+        Self::traverse_with_info(
+            root_id,
+            tree,
+            &mut pre,
+            &mut post,
+            &mut postorder_id,
+            &mut preorder_id,
+            &mut depth,
+        );
+
+        Self {
+            postorder: post,
+            preorder: pre,
+            c: ConstantsIndex {
+                tree_size: tree.count(),
+            },
+        }
+    }
+}
+
+impl SEDIndexWithStructure {
+    fn traverse_with_info(
+        nid: NodeId,
+        tree: &ParsedTree,
+        pre: &mut Vec<TraversalCharacter>,
+        post: &mut Vec<TraversalCharacter>,
+        postorder_id: &mut usize,
+        preorder_id: &mut usize,
+        depth: &mut usize,
+    ) -> usize {
+        let mut subtree_size = 1;
+        *depth += 1;
+        // i am here at the current root
+        let label = tree.get(nid).unwrap().get();
+        pre.push(TraversalCharacter {
+            char: *label,
+            info: 0,
+        });
+        // let node_char = pre.last_mut().unwrap();
+        for cnid in nid.children(tree) {
+            subtree_size +=
+                Self::traverse_with_info(cnid, tree, pre, post, postorder_id, preorder_id, depth);
+        }
+
+        *depth -= 1;
+        *postorder_id += 1;
+        *preorder_id += 1;
+
+        // preceding
+        let preceding = *postorder_id - subtree_size;
+        let following = tree.count() - (*postorder_id + *depth);
+
+        post.push(TraversalCharacter {
+            char: *label,
+            info: preceding as i32,
+        });
+        // node_char.info = following as i32;
+
+        subtree_size
+    }
 }
 
 pub type InvListLblPost = FxHashMap<LabelId, Vec<i32>>;

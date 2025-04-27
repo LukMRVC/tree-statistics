@@ -30,3 +30,9 @@ aby selektivita daneho dotazu byla 1%. Následně koukáme na precision a časy 
 Kolekce rozdelime na 3 casti - male, stredni a velke stromy. Pro kazdou z techto casti potrebujeme
 pripravit dotazy (se selektivitou okolo 1%). Statistiky dotazu by mely odpovidat stastistice pro danou cast
 kolekce. Nasledne bude potreba overit a pustit sady dotazu nad celou kolekci a zmerit.
+
+# Duben 2025
+
+Zkusit pridat do SEDIndexu k uzlu informaci o following nebo preceding mnozinach (staci vybrat jednu) a zkusit,
+jestli by se tim nedal SED trochu vylepsit, hlavne co se tyce precision
+
