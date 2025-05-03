@@ -49,14 +49,14 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    // let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
+    let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
 
     // if pre_dist > k {
     //     return pre_dist;
     // }
 
-    let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
-    return post_dist;
+    // let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32 + 1);
+    return pre_dist;
     // std::cmp::max(pre_dist, post_dist)
 }
 
@@ -95,7 +95,7 @@ fn string_edit_distance_with_structure(
                 insert_dist = *cache.get_unchecked(j);
 
                 result = match (replace_dist, insert_dist, result) {
-                    (usize::MAX, usize::MAX, usize::MAX) => usize::MAX,
+                    (usize::MAX, usize::MAX, usize::MAX) => continue, //usize::MAX,
                     (usize::MAX, usize::MAX, res) => res + 1,
                     (usize::MAX, ins, usize::MAX) => ins + 1,
                     (repl, usize::MAX, usize::MAX) => repl,
@@ -108,13 +108,13 @@ fn string_edit_distance_with_structure(
                 *cache.get_unchecked_mut(j) = result;
                 if result != usize::MAX && ca.following.abs_diff(cb.following) > k {
                     // dbg!(&ca, &cb);
-                    result = usize::MAX;
+                    // result = result + 1;
                     *cache.get_unchecked_mut(j) = usize::MAX;
                 }
             }
         }
         // matrix.push(cache.clone());
-        // dbg!(&cache);
+        dbg!(&cache);
     }
 
     // Print matrix by columns
@@ -431,9 +431,11 @@ pub fn bounded_string_edit_distance_with_structure(
 
 #[cfg(test)]
 mod tests {
+    use std::process::Output;
+
     use crate::{
         indexing::Indexer,
-        parsing::{parse_single, LabelDict},
+        parsing::{parse_single, tree_to_string, LabelDict, TreeOutput},
     };
 
     use super::*;
@@ -531,6 +533,70 @@ mod tests {
     }
 
     #[test]
+    fn test_sed_preorder_structure() {
+        let t1str = "{a{a{b{a{a}}}}}".to_owned();
+        let t2str = "{a{b{b{b}}{a{a}}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let qt = parse_single(t1str, &mut ld);
+        let tt = parse_single(t2str, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+        assert_eq!(
+            qs.preorder,
+            vec![
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 2,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+            ]
+        );
+        assert_eq!(
+            ts.preorder,
+            vec![
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 2,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 2,
+                    following: 2
+                },
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+                TraversalCharacter {
+                    char: 1,
+                    following: 0
+                },
+            ]
+        );
+
+        let result = sed_struct_k(&qs, &ts, 1);
+        assert_eq!(result, 3);
+    }
+
+    #[test]
     fn test_sed_query_and_tree() {
         let qstr = "{3{4{4{4{4{3{3{3 Good}{2{2 car}{2 chases}}}{2 ,}}{3{4 great}{2{2 fight}{2 scenes}}}}{2 ,}}{2 and}}{3{3{2 a}{2{3 distinctive}{2 blend}}}{2{2 of}{2{2 European}{2{2 ,}{2{2 American}{2{2 and}{2{2 Asian}{2 influences}}}}}}}}}}".to_owned();
         let tstr = "{0{2{1{0{0{2{3 Collateral}{2 Damage}}{0{2 is}{0 trash}}}{2 ,}}{2 but}}{3{2 it}{3{3{2 earns}{3{2 extra}{2 points}}}{2{2 by}{2{2 acting}{2{2 as}{2{2 if}{2{2 it}{2{2 were}{2 n't}}}}}}}}}}{2 .}}".to_owned();
@@ -547,6 +613,20 @@ mod tests {
             result == 30,
             "SED result is not as expected: {result} == 30"
         );
+    }
+
+    #[test]
+    fn test_sed_struct_correctness() {
+        let qstr = "{a{b}{a{a}}}".to_owned();
+        let tstr = "{a{a{a}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+        let result = sed_struct_k(&qs, &ts, 1);
+        dbg!(result);
+        assert!(result <= 1, "SED result is not as expected: {result} <= 1");
     }
 
     #[test]
