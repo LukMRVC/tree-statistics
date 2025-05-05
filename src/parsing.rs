@@ -4,6 +4,7 @@ use indextree::{Arena, NodeEdge, NodeId};
 use itertools::Itertools;
 use memchr::memchr2_iter;
 use rayon::prelude::*;
+use serde::de;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -148,7 +149,8 @@ pub fn parse_dataset(
 
         tree_lines
             .into_par_iter()
-            .map_with(sender, |s, tree_line| {
+            .enumerate()
+            .map_with(sender, |s, (_, tree_line)| {
                 if !tree_line.is_ascii() {
                     return Err(TreeParseError::IsNotAscii);
                 }
@@ -174,7 +176,6 @@ pub fn parse_dataset(
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
     // println!("Final number of trees: {}", trees.len());
-
     Ok(trees)
 }
 

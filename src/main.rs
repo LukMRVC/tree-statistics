@@ -131,14 +131,13 @@ fn main() -> Result<(), anyhow::Error> {
         .exit();
     }
     let mut label_dict = LabelDict::default();
-    let mut trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
+    let trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
         Err(e) => {
             eprintln!("Got unexpected error: {}", e);
             exit(1);
         }
     };
-    trees.par_sort_by(|a, b| a.count().cmp(&b.count()));
 
     if !cli.quiet {
         println!("Parsed {} trees", trees.len());
@@ -322,6 +321,7 @@ fn main() -> Result<(), anyhow::Error> {
                             .par_iter()
                             .map(|t| SEDIndexWithStructure::index_tree(t, &label_dict))
                             .collect::<Vec<_>>();
+
                         // let pre_only = sed_indexes
                         //     .iter()
                         //     .map(|si| si.preorder.clone())

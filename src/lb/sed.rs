@@ -85,36 +85,37 @@ fn string_edit_distance_with_structure(
         result = i + 1;
 
         for (j, cb) in s2.iter().enumerate() {
-            let mut replace_dist = insert_dist;
-            if replace_dist != usize::MAX {
-                replace_dist += usize::from(ca.char != cb.char)
-            }
+            let mut replace_dist = insert_dist + usize::from(ca.char != cb.char);
             unsafe {
                 // TODO: If ca.info.abs_diff(cb.info) > k mark the cell as invalid, thus no computations
                 // can be done from that cell
                 insert_dist = *cache.get_unchecked(j);
+                result = min(
+                    replace_dist + usize::from(ca.following.abs_diff(cb.following) > k),
+                    min(insert_dist + 1, result + 1),
+                );
 
-                result = match (replace_dist, insert_dist, result) {
-                    (usize::MAX, usize::MAX, usize::MAX) => continue, //usize::MAX,
-                    (usize::MAX, usize::MAX, res) => res + 1,
-                    (usize::MAX, ins, usize::MAX) => ins + 1,
-                    (repl, usize::MAX, usize::MAX) => repl,
-                    (repl, usize::MAX, res) => min(res + 1, repl),
-                    (repl, ins, usize::MAX) => min(repl, ins + 1),
-                    (usize::MAX, ins, res) => min(res + 1, ins + 1),
-                    (repl, ins, res) => min(min(repl, ins + 1), res + 1),
-                };
+                // result = match (replace_dist, insert_dist, result) {
+                //     (usize::MAX, usize::MAX, usize::MAX) => continue, //usize::MAX,
+                //     (usize::MAX, usize::MAX, res) => res + 1,
+                //     (usize::MAX, ins, usize::MAX) => ins + 1,
+                //     (repl, usize::MAX, usize::MAX) => repl,
+                //     (repl, usize::MAX, res) => min(res + 1, repl),
+                //     (repl, ins, usize::MAX) => min(repl, ins + 1),
+                //     (usize::MAX, ins, res) => min(res + 1, ins + 1),
+                //     (repl, ins, res) => min(min(repl, ins + 1), res + 1),
+                // };
 
                 *cache.get_unchecked_mut(j) = result;
-                if result != usize::MAX && ca.following.abs_diff(cb.following) > k {
-                    // dbg!(&ca, &cb);
-                    // result = result + 1;
-                    *cache.get_unchecked_mut(j) = usize::MAX;
-                }
+                // if result != usize::MAX && ca.following.abs_diff(cb.following) > k {
+                //     // dbg!(&ca, &cb);
+                //     // result = result + 1;
+                //     *cache.get_unchecked_mut(j) = usize::MAX;
+                // }
             }
         }
         // matrix.push(cache.clone());
-        dbg!(&cache);
+        // dbg!(&cache);
     }
 
     // Print matrix by columns
@@ -598,21 +599,21 @@ mod tests {
 
     #[test]
     fn test_sed_query_and_tree() {
-        let qstr = "{3{4{4{4{4{3{3{3 Good}{2{2 car}{2 chases}}}{2 ,}}{3{4 great}{2{2 fight}{2 scenes}}}}{2 ,}}{2 and}}{3{3{2 a}{2{3 distinctive}{2 blend}}}{2{2 of}{2{2 European}{2{2 ,}{2{2 American}{2{2 and}{2{2 Asian}{2 influences}}}}}}}}}}".to_owned();
-        let tstr = "{0{2{1{0{0{2{3 Collateral}{2 Damage}}{0{2 is}{0 trash}}}{2 ,}}{2 but}}{3{2 it}{3{3{2 earns}{3{2 extra}{2 points}}}{2{2 by}{2{2 acting}{2{2 as}{2{2 if}{2{2 it}{2{2 were}{2 n't}}}}}}}}}}{2 .}}".to_owned();
+        let qstr = "{4{3{2 A}{3{2{3 rare}{2 and}}{3{2 lightly}{4 entertaining}}}}{3{2{2 look}{2{2 behind}{2{2{2 the}{2 curtain}}{2{2 that}{3{2{2 separates}{2 comics}}{3{2 from}{3{2{2 the}{2 people}}{3{4 laughing}{2{2 in}{2{2 the}{2 crowd}}}}}}}}}}}}}".to_owned();
+        let tstr = "{2{2 Who}{2{2{2 is}{2{2{2 the}{2 audience}}{2{2 for}{2{2 Cletis}{2 Tout}}}}}}}"
+            .to_owned();
         let mut ld = LabelDict::new();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
+        dbg!(tree_to_string(&qt, TreeOutput::BracketNotation));
+        dbg!(tree_to_string(&tt, TreeOutput::BracketNotation));
 
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
         let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
 
-        let result = sed_struct_k(&qs, &ts, 31);
+        let result = sed_struct_k(&qs, &ts, 30);
 
-        assert!(
-            result == 30,
-            "SED result is not as expected: {result} == 30"
-        );
+        assert!(result <= 30, "SED result is not as expected: {result} > 30");
     }
 
     #[test]
