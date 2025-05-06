@@ -51,13 +51,12 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     }
     let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
 
-    // if pre_dist > k {
-    //     return pre_dist;
-    // }
+    if pre_dist > k {
+        return pre_dist;
+    }
 
-    // let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32 + 1);
-    return pre_dist;
-    // std::cmp::max(pre_dist, post_dist)
+    let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
+    std::cmp::max(pre_dist, post_dist)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -154,15 +153,13 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     let k = k + 1;
     let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
 
-    // if pre_dist > k {
-    //     return pre_dist;
-    // }
+    if pre_dist > k {
+        return pre_dist;
+    }
 
-    // let post_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
+    let post_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
 
-    // std::cmp::max(pre_dist, post_dist)
-    // post_dist
-    pre_dist
+    std::cmp::max(pre_dist, post_dist)
 }
 
 pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {

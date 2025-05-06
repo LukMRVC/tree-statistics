@@ -123,10 +123,8 @@ pub fn parse_dataset(
     dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
-    let (sender, receiver) = crossbeam_channel::unbounded::<String>();
-    let ld = Arc::new(Mutex::new(label_dict));
-    let copy_ld = Arc::clone(&ld);
-    let collection_tree_tokens = std::thread::scope(|s| {
+    let ld = label_dict;
+    let collection_tree_tokens = {
         s.spawn(move || {
             let mut ld = copy_ld.lock().unwrap();
             let mut max_node_id = ld.values().len() as LabelId;
@@ -148,28 +146,25 @@ pub fn parse_dataset(
         // println!("Consumed {} lines of trees", tree_lines.len());
 
         tree_lines
-            .into_par_iter()
-            .enumerate()
-            .map_with(sender, |s, (_, tree_line)| {
+            .into_iter()
+            .map(|tree_line| {
                 if !tree_line.is_ascii() {
                     return Err(TreeParseError::IsNotAscii);
                 }
-                parse_tree_tokens(tree_line, Some(s))
+                parse_tree_tokens(tree_line)
             })
             .filter(Result::is_ok)
             .collect::<Result<Vec<_>, _>>()
             .unwrap()
-    });
+    };
+
+    for token in collection_tree_tokens.iter().flatten() {}
 
     // println!(
     //     "Parsed {} lines of tree tokens",
     //     collection_tree_tokens.len()
     // );
     // println!("Parsing tokens into trees");
-    let label_dict = Arc::try_unwrap(ld)
-        .expect("Arc has references")
-        .into_inner()
-        .unwrap();
     let trees = collection_tree_tokens
         .par_iter()
         .map(|tokens| parse_tree(tokens, label_dict))
@@ -329,10 +324,7 @@ fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseE
     Ok(())
 }
 
-fn parse_tree_tokens(
-    tree_bytes: String,
-    sender_channel: Option<&mut Sender<String>>,
-) -> Result<Vec<String>, TreeParseError> {
+fn parse_tree_tokens(tree_bytes: String) -> Result<Vec<String>, TreeParseError> {
     use TreeParseError as TPE;
 
     let tree_bytes = tree_bytes.as_bytes();
@@ -368,9 +360,6 @@ fn parse_tree_tokens(
                     String::from_utf8_unchecked(tree_bytes[(token_pos + 1)..**token_end].to_vec())
                 };
                 str_tokens.push(label.clone());
-                if let Some(ref s) = sender_channel {
-                    s.send(label).expect("Failed sending label");
-                }
             }
             TOKEN_END => {
                 braces_parity_check(&mut parity_check, -1)?;
@@ -378,9 +367,6 @@ fn parse_tree_tokens(
                     String::from_utf8_unchecked(tree_bytes[*token_pos..(token_pos + 1)].to_vec())
                 };
                 str_tokens.push(label.clone());
-                if let Some(ref s) = sender_channel {
-                    s.send(label).expect("Failed sending label");
-                }
             }
             _ => return Err(TPE::TokenizerError),
         }

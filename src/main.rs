@@ -319,18 +319,18 @@ fn main() -> Result<(), anyhow::Error> {
                     LBM::Sed => {
                         let sed_indexes = trees
                             .par_iter()
-                            .map(|t| SEDIndexWithStructure::index_tree(t, &label_dict))
+                            .map(|t| SEDIndex::index_tree(t, &label_dict))
                             .collect::<Vec<_>>();
 
-                        // let pre_only = sed_indexes
-                        //     .iter()
-                        //     .map(|si| si.preorder.clone())
-                        //     .collect::<Vec<Vec<i32>>>();
+                        let pre_only = sed_indexes
+                            .iter()
+                            .map(|si| si.preorder.clone())
+                            .collect::<Vec<Vec<i32>>>();
                         let start = Instant::now();
                         // TODO: Heuristic: Calculate the best Q for each dataset
                         // TODO: DBLP with Q = 2 is missing 4 results, find out why!
 
-                        // let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
+                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
                         // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
                         if !cli.quiet {
                             println!(
@@ -341,74 +341,74 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                         let sed_queries = queries
                             .iter()
-                            .map(|(t, q)| (*t, SEDIndexWithStructure::index_tree(q, &label_dict)))
+                            .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
 
                         // dbg!(&pre_only[])
 
-                        // let mut index_used_cnt = 0;
-                        // let mut index_candidates = Vec::with_capacity(15_000);
-                        // let sed_indexes_len = sed_indexes.len();
-                        // let mut total_lookup_duration = Duration::new(0, 0);
-                        // let mut total_filter_duration = Duration::new(0, 0);
-                        // let mut avg_precision = 0.0;
+                        let mut index_used_cnt = 0;
+                        let mut index_candidates = Vec::with_capacity(15_000);
+                        let sed_indexes_len = sed_indexes.len();
+                        let mut total_lookup_duration = Duration::new(0, 0);
+                        let mut total_filter_duration = Duration::new(0, 0);
+                        let mut avg_precision = 0.0;
 
-                        // let mut index_duration_millis = u128::MAX;
-                        // let mut index_candidates_len = usize::MAX;
+                        let mut index_duration_millis = u128::MAX;
+                        let mut index_candidates_len = usize::MAX;
 
-                        // for _ in 0..runs {
-                        //     let start = Instant::now();
-                        //     for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
-                        //         let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
-                        //         if let Ok((c1, lookup_duration, filter_duration)) = c1 {
-                        //             index_used_cnt += 1;
-                        //             total_lookup_duration += lookup_duration;
-                        //             total_filter_duration += filter_duration;
+                        for _ in 0..runs {
+                            let start = Instant::now();
+                            for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
+                                let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
+                                if let Ok((c1, lookup_duration, filter_duration)) = c1 {
+                                    index_used_cnt += 1;
+                                    total_lookup_duration += lookup_duration;
+                                    total_filter_duration += filter_duration;
 
-                        //             let mut correct_results = 0;
-                        //             for cid in c1.iter() {
-                        //                 if sed_k(sed_query, &sed_indexes[*cid], *threshold)
-                        //                     <= *threshold
-                        //                 {
-                        //                     correct_results += 1;
-                        //                     index_candidates.push((qid, *cid));
-                        //                 }
-                        //             }
-                        //             let precision =
-                        //                 correct_results as f64 / std::cmp::max(c1.len(), 1) as f64;
-                        //             avg_precision = avg_precision
-                        //                 + (precision - avg_precision) / (index_used_cnt as f64);
-                        //         } else {
-                        //             let start_idx = size_map
-                        //                 .get(&sed_query.c.tree_size.saturating_sub(*threshold))
-                        //                 .unwrap_or(&0);
-                        //             let end_idx = size_map
-                        //                 .get(&(sed_query.c.tree_size + threshold + 1))
-                        //                 .unwrap_or(&sed_indexes_len);
-                        //             let idx_diff = end_idx - start_idx + 1;
-                        //             // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
+                                    let mut correct_results = 0;
+                                    for cid in c1.iter() {
+                                        if sed_k(sed_query, &sed_indexes[*cid], *threshold)
+                                            <= *threshold
+                                        {
+                                            correct_results += 1;
+                                            index_candidates.push((qid, *cid));
+                                        }
+                                    }
+                                    let precision =
+                                        correct_results as f64 / std::cmp::max(c1.len(), 1) as f64;
+                                    avg_precision = avg_precision
+                                        + (precision - avg_precision) / (index_used_cnt as f64);
+                                } else {
+                                    let start_idx = size_map
+                                        .get(&sed_query.c.tree_size.saturating_sub(*threshold))
+                                        .unwrap_or(&0);
+                                    let end_idx = size_map
+                                        .get(&(sed_query.c.tree_size + threshold + 1))
+                                        .unwrap_or(&sed_indexes_len);
+                                    let idx_diff = end_idx - start_idx + 1;
+                                    // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
 
-                        //             for (tid, tree) in sed_indexes
-                        //                 .iter()
-                        //                 .enumerate()
-                        //                 .skip(*start_idx)
-                        //                 .take(idx_diff)
-                        //             {
-                        //                 if sed_k(sed_query, tree, *threshold) <= *threshold {
-                        //                     index_candidates.push((qid, tid));
-                        //                 }
-                        //             }
-                        //         }
-                        //     }
-                        //     index_candidates_len =
-                        //         std::cmp::min(index_candidates.len(), index_candidates_len);
-                        //     index_duration_millis =
-                        //         std::cmp::min(index_duration_millis, start.elapsed().as_millis());
-                        // }
-                        // println!(
-                        //     "Sed Index\ntime:{}ms\ncandidates:{}",
-                        //     index_duration_millis, index_candidates_len,
-                        // );
+                                    for (tid, tree) in sed_indexes
+                                        .iter()
+                                        .enumerate()
+                                        .skip(*start_idx)
+                                        .take(idx_diff)
+                                    {
+                                        if sed_k(sed_query, tree, *threshold) <= *threshold {
+                                            index_candidates.push((qid, tid));
+                                        }
+                                    }
+                                }
+                            }
+                            index_candidates_len =
+                                std::cmp::min(index_candidates.len(), index_candidates_len);
+                            index_duration_millis =
+                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
+                        }
+                        println!(
+                            "Sed Index\ntime:{}ms\ncandidates:{}",
+                            index_duration_millis, index_candidates_len,
+                        );
 
                         // println!(
                         //     "Total lookup duration was: {}ms",
@@ -436,12 +436,8 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut elapsed: Duration = Duration::MAX;
                         for _ in 0..runs {
                             let elapsed_run: Duration;
-                            (candidates, elapsed_run) = lb::iterate_queries!(
-                                sed_queries,
-                                sed_indexes,
-                                sed_struct_k,
-                                size_map
-                            );
+                            (candidates, elapsed_run) =
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map);
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
                         (candidates, elapsed)
