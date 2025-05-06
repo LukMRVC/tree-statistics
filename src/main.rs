@@ -241,7 +241,7 @@ fn main() -> Result<(), anyhow::Error> {
             let ordering = get_frequency_ordering(&label_dict);
 
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
-            let lbms: [LBM; 3] = [LBM::Lblint, LBM::Sed, LBM::Structural];
+            let lbms: [LBM; 4] = [LBM::Lblint, LBM::Sed, LBM::Structural, LBM::SEDStruct];
             // let label_dict = dbg!(label_dict);
 
             for current_method in lbms.iter().filter(|method| {
