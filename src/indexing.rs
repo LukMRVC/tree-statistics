@@ -115,7 +115,8 @@ impl SEDIndexWithStructure {
         let label = tree.get(nid).unwrap().get();
         pre.push(TraversalCharacter {
             char: *label,
-            following: 0,
+            preorder_following_postorder_preceding: 0,
+            preorder_descendant_postorder_ancestor: 0,
         });
         let pre_idx = pre.len() - 1;
         // let node_char = pre.last_mut().unwrap();
@@ -134,10 +135,12 @@ impl SEDIndexWithStructure {
 
         post.push(TraversalCharacter {
             char: *label,
-            following: preceding as i32,
+            preorder_following_postorder_preceding: preceding as i32,
+            preorder_descendant_postorder_ancestor: *depth as i32,
         });
 
-        pre[pre_idx].following = following as i32;
+        pre[pre_idx].preorder_following_postorder_preceding = following as i32;
+        pre[pre_idx].preorder_descendant_postorder_ancestor = subtree_size as i32 - 1;
         // node_char.info = following as i32;
 
         subtree_size

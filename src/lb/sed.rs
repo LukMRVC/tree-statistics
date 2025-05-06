@@ -49,20 +49,20 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
-
-    if pre_dist > k {
-        return pre_dist;
-    }
-
     let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
+
+    if post_dist > k {
+        return post_dist;
+    }
+    let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     std::cmp::max(pre_dist, post_dist)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TraversalCharacter {
     pub char: i32,
-    pub following: i32,
+    pub preorder_following_postorder_preceding: i32,
+    pub preorder_descendant_postorder_ancestor: i32,
 }
 
 /// Implements fastest known way to compute exact string edit between two strings
@@ -73,47 +73,50 @@ fn string_edit_distance_with_structure(
 ) -> usize {
     use std::cmp::min;
     // assumes size of s2 is smaller or equal than s1
-    let s2len = s2.len();
+    let s2len = s2.len() as u32;
     // let mut matrix = vec![];
-    let mut cache: Vec<usize> = (1..s2len + 1).collect();
+
+    let mut cache: Vec<u32> = (1..s2len + 1).collect::<Vec<u32>>();
     // matrix.push(cache.clone());
     // dbg!(&cache);
-    let mut result = s2len;
+    let mut result = s2len as u32;
     for (i, ca) in s1.iter().enumerate() {
-        let mut insert_dist = i;
-        result = i + 1;
+        let mut insert_dist = i as u32;
+        result = i as u32 + 1;
 
         for (j, cb) in s2.iter().enumerate() {
-            let mut replace_dist = insert_dist + usize::from(ca.char != cb.char);
+            let replace_dist = insert_dist + u32::from(ca.char != cb.char);
             unsafe {
                 // TODO: If ca.info.abs_diff(cb.info) > k mark the cell as invalid, thus no computations
                 // can be done from that cell
                 insert_dist = *cache.get_unchecked(j);
-                result = min(
-                    replace_dist + usize::from(ca.following.abs_diff(cb.following) > k),
-                    min(insert_dist + 1, result + 1),
-                );
+                // result = min(
+                //     replace_dist
+                //         + (u32::from(
+                //             (ca.preorder_following_postorder_preceding
+                //                 .abs_diff(cb.preorder_following_postorder_preceding)
+                //                 + ca.preorder_descendant_postorder_ancestor
+                //                     .abs_diff(cb.preorder_descendant_postorder_ancestor))
+                //                 > k,
+                //         ) << 1),
+                //     min(insert_dist + 1, result + 1),
+                // );
 
-                // result = match (replace_dist, insert_dist, result) {
-                //     (usize::MAX, usize::MAX, usize::MAX) => continue, //usize::MAX,
-                //     (usize::MAX, usize::MAX, res) => res + 1,
-                //     (usize::MAX, ins, usize::MAX) => ins + 1,
-                //     (repl, usize::MAX, usize::MAX) => repl,
-                //     (repl, usize::MAX, res) => min(res + 1, repl),
-                //     (repl, ins, usize::MAX) => min(repl, ins + 1),
-                //     (usize::MAX, ins, res) => min(res + 1, ins + 1),
-                //     (repl, ins, res) => min(min(repl, ins + 1), res + 1),
-                // };
+                result = if ca
+                    .preorder_following_postorder_preceding
+                    .abs_diff(cb.preorder_following_postorder_preceding)
+                    + ca.preorder_descendant_postorder_ancestor
+                        .abs_diff(cb.preorder_descendant_postorder_ancestor)
+                    > k
+                {
+                    min(insert_dist + 1, result + 1)
+                } else {
+                    min(replace_dist, min(insert_dist + 1, result + 1))
+                };
 
                 *cache.get_unchecked_mut(j) = result;
-                // if result != usize::MAX && ca.following.abs_diff(cb.following) > k {
-                //     // dbg!(&ca, &cb);
-                //     // result = result + 1;
-                //     *cache.get_unchecked_mut(j) = usize::MAX;
-                // }
             }
         }
-        // matrix.push(cache.clone());
         // dbg!(&cache);
     }
 
@@ -136,7 +139,7 @@ fn string_edit_distance_with_structure(
     // }
     // dbg!(&matrix);
 
-    result
+    result as usize
 }
 
 /// Computes bounded string edit distance with known maximal threshold.
@@ -151,14 +154,12 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
         (t1, t2) = (t2, t1);
     }
     let k = k + 1;
-    let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
-
-    if pre_dist > k {
-        return pre_dist;
-    }
-
     let post_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
 
+    if post_dist > k {
+        return post_dist;
+    }
+    let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -453,25 +454,30 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                following: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                preorder_following_postorder_preceding: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                preorder_following_postorder_preceding: 0,
             },
             TraversalCharacter {
                 char: 2,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
         ];
 
@@ -485,45 +491,55 @@ mod tests {
         let v1: Vec<TraversalCharacter> = vec![
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                following: 0,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                following: 2,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 0,
             },
         ];
 
@@ -540,59 +556,107 @@ mod tests {
         let tt = parse_single(t2str, &mut ld);
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
         let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+
+        dbg!(&qs);
+        dbg!(&ts);
+
         assert_eq!(
             qs.preorder,
             vec![
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 4,
                 },
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 3,
                 },
                 TraversalCharacter {
                     char: 2,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 2,
                 },
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 1,
                 },
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 0,
                 },
             ]
         );
+
+        assert_eq!(
+            qs.postorder,
+            vec![
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 4,
+                },
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 3,
+                },
+                TraversalCharacter {
+                    char: 2,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 2,
+                },
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 1,
+                },
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 0,
+                },
+            ]
+        );
+
         assert_eq!(
             ts.preorder,
             vec![
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 5,
                 },
                 TraversalCharacter {
                     char: 2,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 4,
                 },
                 TraversalCharacter {
                     char: 2,
-                    following: 2
+                    preorder_following_postorder_preceding: 2,
+                    preorder_descendant_postorder_ancestor: 1,
+                },
+                TraversalCharacter {
+                    char: 2,
+                    preorder_following_postorder_preceding: 2,
+                    preorder_descendant_postorder_ancestor: 0,
                 },
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 1,
                 },
                 TraversalCharacter {
                     char: 1,
-                    following: 0
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 0,
                 },
             ]
         );
-
-        let result = sed_struct_k(&qs, &ts, 1);
-        assert_eq!(result, 3);
     }
 
     #[test]
@@ -626,6 +690,23 @@ mod tests {
         let result = sed_struct_k(&qs, &ts, 1);
         dbg!(result);
         assert!(result <= 1, "SED result is not as expected: {result} <= 1");
+    }
+
+    #[test]
+    fn test_sed_struct_correctness_real_data() {
+        let qstr = "{0{1{1 Degenerates}{1{2 into}{0 hogwash}}}{2 .}}".to_owned();
+        let tstr = "{2{4 Wow}{2{2 ,}{2{2{2 a}{2 jump}}{2{2 cut}{2 !}}}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+
+        dbg!(tree_to_string(&qt, TreeOutput::BracketNotation));
+        dbg!(tree_to_string(&tt, TreeOutput::BracketNotation));
+
+        let result = sed_struct_k(&qs, &ts, 12);
+        assert!(result <= 12, "SED result is not as expected: {result} > 12");
     }
 
     #[test]

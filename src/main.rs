@@ -49,6 +49,8 @@ enum LowerBoundMethods {
     Lblint,
     /// String edit distance lower bound
     Sed,
+    /// String edit distance with structure lower bound
+    SEDStruct,
     /// Structural filter lower bound
     Structural,
     /// Structural variant filter lower bound
@@ -438,6 +440,31 @@ fn main() -> Result<(), anyhow::Error> {
                             let elapsed_run: Duration;
                             (candidates, elapsed_run) =
                                 lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map);
+                            elapsed = std::cmp::min(elapsed, elapsed_run)
+                        }
+                        (candidates, elapsed)
+                    }
+                    LBM::SEDStruct => {
+                        let sed_indexes = trees
+                            .par_iter()
+                            .map(|t| SEDIndexWithStructure::index_tree(t, &label_dict))
+                            .collect::<Vec<_>>();
+
+                        let sed_queries = queries
+                            .iter()
+                            .map(|(t, q)| (*t, SEDIndexWithStructure::index_tree(q, &label_dict)))
+                            .collect_vec();
+
+                        let mut candidates = vec![];
+                        let mut elapsed: Duration = Duration::MAX;
+                        for _ in 0..runs {
+                            let elapsed_run: Duration;
+                            (candidates, elapsed_run) = lb::iterate_queries!(
+                                sed_queries,
+                                sed_indexes,
+                                sed_struct_k,
+                                size_map
+                            );
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
                         (candidates, elapsed)

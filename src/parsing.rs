@@ -123,21 +123,7 @@ pub fn parse_dataset(
     dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
-    let ld = label_dict;
     let collection_tree_tokens = {
-        s.spawn(move || {
-            let mut ld = copy_ld.lock().unwrap();
-            let mut max_node_id = ld.values().len() as LabelId;
-            while let Ok(label) = receiver.recv() {
-                ld.entry(label)
-                    .and_modify(|(_, lblcnt)| *lblcnt += 1)
-                    .or_insert_with(|| {
-                        max_node_id += 1;
-                        (max_node_id, 1)
-                    });
-            }
-        });
-
         let reader = BufReader::new(File::open(dataset_file).unwrap());
         let tree_lines = reader
             .lines()
@@ -158,7 +144,19 @@ pub fn parse_dataset(
             .unwrap()
     };
 
-    for token in collection_tree_tokens.iter().flatten() {}
+    let mut max_node_id = label_dict.values().len() as LabelId;
+    for token in collection_tree_tokens.iter().flatten() {
+        label_dict
+            .entry(token.clone())
+            .and_modify(|(_, lblcnt)| {
+                *lblcnt += 1;
+            })
+            .or_insert_with(|| {
+                max_node_id += 1;
+                (max_node_id, 1)
+            });
+    }
+    let ld = Arc::new(label_dict);
 
     // println!(
     //     "Parsed {} lines of tree tokens",
@@ -167,7 +165,7 @@ pub fn parse_dataset(
     // println!("Parsing tokens into trees");
     let trees = collection_tree_tokens
         .par_iter()
-        .map(|tokens| parse_tree(tokens, label_dict))
+        .map(|tokens| parse_tree(tokens, Arc::clone(&ld)))
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
     // println!("Final number of trees: {}", trees.len());
@@ -187,7 +185,7 @@ pub fn parse_queries(
             Some((threshold_str.parse::<usize>().unwrap(), tree.to_string()))
         })
         .filter_map(|(t, tree)| {
-            let tokens = parse_tree_tokens(tree, None);
+            let tokens = parse_tree_tokens(tree);
             if tokens.is_err() {
                 return None;
             }
@@ -207,10 +205,11 @@ pub fn parse_queries(
         .collect_vec();
 
     update_label_dict(&only_tokens, ld);
+    let ld = Arc::new(ld);
     let trees = trees
         .iter()
         .filter_map(|(t, tokens)| {
-            let parsed_tree = parse_tree(tokens, ld);
+            let parsed_tree = parse_tree(tokens, Arc::clone(&ld));
             if parsed_tree.is_err() {
                 return None;
             }
@@ -227,11 +226,12 @@ pub fn parse_single(tree_str: String, label_dict: &mut LabelDict) -> ParsedTree 
         panic!("Passed tree string is not ASCII");
     }
 
-    let tokens = parse_tree_tokens(tree_str, None).expect("Failed to parse single tree");
+    let tokens = parse_tree_tokens(tree_str).expect("Failed to parse single tree");
     let str_tokens = tokens.iter().map(|t| t.as_str()).collect_vec();
     let token_col = vec![str_tokens];
     update_label_dict(&token_col, label_dict);
-    parse_tree(&tokens, label_dict).unwrap()
+    let label_dict = Arc::new(label_dict);
+    parse_tree(&tokens, label_dict.clone()).unwrap()
 }
 
 pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
@@ -257,7 +257,10 @@ pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
     }
 }
 
-pub fn parse_tree(tokens: &[String], ld: &LabelDict) -> Result<ParsedTree, TreeParseError> {
+pub fn parse_tree(
+    tokens: &[String],
+    ld: Arc<&mut LabelDict>,
+) -> Result<ParsedTree, TreeParseError> {
     let mut tree_arena = ParsedTree::with_capacity(tokens.len() / 2);
     let mut node_stack: Vec<NodeId> = vec![];
 
@@ -381,7 +384,7 @@ mod tests {
     #[test]
     fn test_parses_into_tokens() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
-        let tokens = parse_tree_tokens(input, None);
+        let tokens = parse_tree_tokens(input);
         assert!(tokens.is_ok());
         let tokens = tokens.unwrap();
         assert_eq!(
@@ -394,7 +397,7 @@ mod tests {
     fn test_parses_escaped() {
         use std::string::String;
         let input = String::from(r#"{article{key{An optimization of \log data}}}"#);
-        let tokens = parse_tree_tokens(input, None);
+        let tokens = parse_tree_tokens(input);
         assert!(tokens.is_ok());
         let tokens = tokens.unwrap();
         assert_eq!(
@@ -416,14 +419,15 @@ mod tests {
     #[test]
     fn test_parses_into_tree_arena() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
-        let tokens = parse_tree_tokens(input, None);
+        let tokens = parse_tree_tokens(input);
         let tokens = tokens.unwrap();
-        let ld = LabelDict::from([
+        let mut ld = LabelDict::from([
             ("einsteinstrasse".to_owned(), (1, 1)),
             ("1".to_owned(), (2, 1)),
             ("3".to_owned(), (3, 1)),
         ]);
-        let tree_arena = parse_tree(&tokens, &ld).unwrap();
+        let ld = Arc::new(&mut ld);
+        let tree_arena = parse_tree(&tokens, ld.clone()).unwrap();
         let mut arena = ParsedTree::new();
 
         let n1 = arena.new_node(1);
@@ -438,10 +442,10 @@ mod tests {
     #[test]
     fn test_updated_label_dict() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
-        let tokens = parse_tree_tokens(input, None);
+        let tokens = parse_tree_tokens(input);
         let tokens = tokens.unwrap();
         let input2 = "{weinsteinstrasse{3}{2}}".to_owned();
-        let tokens2 = parse_tree_tokens(input2, None);
+        let tokens2 = parse_tree_tokens(input2);
         let tokens2 = tokens2.unwrap();
         let mut ld = LabelDict::default();
         let token_col = vec![tokens, tokens2];
