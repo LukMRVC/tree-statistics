@@ -300,9 +300,8 @@ const ESCAPE_CHAR: u8 = b'\\';
 
 #[inline(always)]
 fn is_escaped(byte_string: &[u8], offset: usize) -> bool {
-    offset > 0
-        && byte_string[offset - 1] == ESCAPE_CHAR
-        && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
+    offset > 0 && byte_string[offset - 1] == ESCAPE_CHAR
+    // && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
 }
 
 #[derive(Error, Debug)]
@@ -482,6 +481,17 @@ mod tests {
         });
 
         assert_eq!(values, vec![3, 2, 0, 0, 4]);
+    }
+
+    #[test]
+    fn test_parsing() {
+        let input = r#"{title{Design of Reverse Converters for a New Flexible RNS Five-Moduli Set \\(\\\{ 2^k, 2^n-1, 2^n+1, 2^\{n+1\}-1, 2^\{n-1\}-1 \\\}\\) (}{i{n}}{ Even).}}"#.to_owned();
+        let mut ld = LabelDict::new();
+        let tokens = parse_tree_tokens(input);
+        assert!(tokens.is_ok());
+        let tokens = tokens.unwrap();
+        dbg!(&tokens);
+        assert_eq!(tokens.len(), 15);
     }
 
     /*
