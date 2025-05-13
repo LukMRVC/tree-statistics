@@ -304,43 +304,44 @@ pub fn bounded_string_edit_distance_with_structure(
 ) -> usize {
     use std::cmp::{max, min};
     // assumes size of s2 is bigger or equal than s1
-    let s1len = s1.len() as i64;
-    let s2len = s2.len() as i64;
+    let s1len = s1.len() as i32;
+    let s2len = s2.len() as i32;
     let size_diff = s2len - s1len;
     // Per Berghel & Roach, the threshold is the min of s2 length and k
-    let threshold = min(s2len, k as i64);
+    let threshold = min(s2len, k as i32);
 
     // zero_k represents the initial diagonal in the edit distance matrix
     // The shift by 1 and addition of 2 ensures sufficient buffer space
     // as described in the Berghel & Roach paper
-    let zero_k: i64 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
+    let zero_k: i32 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
 
     // Calculate array length needed to store diagonal values
     let arr_len = size_diff + (zero_k) * 2 + 2;
 
     // Instead of storing the full DP matrix, Ukkonen's algorithm only stores
     // the current and next row (optimization described in the paper)
-    let mut current_row = vec![-1i64; arr_len as usize];
-    let mut next_row = vec![-1i64; arr_len as usize];
+    let mut current_row = vec![-1i32; arr_len as usize];
+    let mut next_row = vec![-1i32; arr_len as usize];
     let mut i = 0;
     // Condition_row and end_max define the diagonal boundaries
     let condition_row = size_diff + zero_k;
     let end_max = condition_row << 1;
-
+    let s1len = s1.len();
+    let s2len = s2.len();
     loop {
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
 
-        let start: i64;
-        let mut next_cell: i64;
-        let mut previous_cell: i64;
-        let mut current_cell: i64 = -1;
+        let start: i32;
+        let mut next_cell: i32;
+        let mut previous_cell: i32;
+        let mut current_cell: i32 = -1;
 
         // Calculate the starting diagonal for this iteration
         // This follows Berghel & Roach's band algorithm approach
         if i <= zero_k {
             start = -i + 1;
-            next_cell = i - 2i64;
+            next_cell = i - 2i32;
         } else {
             start = i - (zero_k << 1) + 1;
             unsafe {
@@ -349,7 +350,7 @@ pub fn bounded_string_edit_distance_with_structure(
         }
 
         // Calculate the ending diagonal for this iteration
-        let end: i64;
+        let end: i32;
         if i <= condition_row {
             end = i;
             unsafe {
@@ -364,7 +365,7 @@ pub fn bounded_string_edit_distance_with_structure(
         let mut max_row_number;
 
         // Process each diagonal in the band for this iteration
-        for q in start..end {
+        for diag_offset in start..end {
             // Per Ukkonen's algorithm, we're tracking three values to compute each cell:
             // previous_cell, current_cell, and next_cell from the previous row
             previous_cell = current_cell;
@@ -375,27 +376,28 @@ pub fn bounded_string_edit_distance_with_structure(
 
             // Calculate the max of three possible operations (delete, insert, replace)
             // This is the standard dynamic programming recurrence relation for edit distance
-            max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1);
+            max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1) as usize;
 
             unsafe {
+                let diag_offset = diag_offset as usize;
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
                 // This is the diagonal extension from Ukkonen's algorithm
                 while max_row_number < s1len
-                    && (max_row_number + q) < s2len
-                    && s1.get_unchecked(max_row_number as usize).char
-                        == s2.get_unchecked((max_row_number + q) as usize).char
+                    && (max_row_number + diag_offset) < s2len
+                    && s1.get_unchecked(max_row_number).char
+                        == s2.get_unchecked((max_row_number + diag_offset)).char
                     && (s1
-                        .get_unchecked(max_row_number as usize)
+                        .get_unchecked(max_row_number)
                         .preorder_following_postorder_preceding
                         .abs_diff(
-                            s2.get_unchecked((max_row_number + q) as usize)
+                            s2.get_unchecked((max_row_number + diag_offset))
                                 .preorder_following_postorder_preceding,
                         )
-                        + s1.get_unchecked(max_row_number as usize)
+                        + s1.get_unchecked(max_row_number)
                             .preorder_descendant_postorder_ancestor
                             .abs_diff(
-                                s2.get_unchecked((max_row_number + q) as usize)
+                                s2.get_unchecked((max_row_number + diag_offset))
                                     .preorder_descendant_postorder_ancestor,
                             )
                         <= k as u32)
@@ -405,17 +407,23 @@ pub fn bounded_string_edit_distance_with_structure(
             }
 
             unsafe {
-                *next_row.get_unchecked_mut(row_index) = max_row_number;
+                *next_row.get_unchecked_mut(row_index) = max_row_number as i32;
             }
             row_index += 1;
         }
-        dbg!(&next_row);
+        // dbg!(&next_row);
 
         // Check termination condition: either we've computed enough rows
         // to determine the distance is > threshold, or we've reached the
         // threshold itself - this follows the "cutoff" principle in the paper
         unsafe {
-            if !(*next_row.get_unchecked(condition_row as usize) < s1len && i <= threshold) {
+            if !(*next_row.get_unchecked(condition_row as usize) < s1len as i32 && i <= threshold) {
+                if !(*next_row.get_unchecked(condition_row as usize) >= s1len as i32)
+                    && i > threshold
+                {
+                    break usize::MAX;
+                }
+
                 break (i - 1) as usize;
             }
         }
@@ -503,8 +511,78 @@ mod tests {
             },
         ];
 
-        let result = bounded_string_edit_distance_with_structure(&v1, &v2, 3);
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
         assert_eq!(result, 3);
+    }
+
+    #[test]
+    fn test_bounded_sed_structure_simple() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> a
+        // 2 -> b
+
+        let v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        let v2 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 2);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_bounded_sed_structure_simple_unmatched() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> a
+        // 2 -> b
+
+        let v1 = vec![
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        let v2 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
+        assert_eq!(result, usize::MAX);
     }
 
     #[test]
