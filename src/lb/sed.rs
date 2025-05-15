@@ -49,13 +49,14 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let post_dist = bounded_string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k);
-
-    if post_dist > k {
-        return post_dist;
-    }
+    // let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
+    // post_dist
+    // if post_dist > k {
+    //     return post_dist;
+    // }
     let pre_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
-    std::cmp::max(pre_dist, post_dist)
+    pre_dist
+    // std::cmp::max(pre_dist, post_dist)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -154,7 +155,6 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let k = k + 1;
     let post_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
 
     if post_dist > k {
@@ -287,6 +287,9 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 
         unsafe {
             if !(*next_row.get_unchecked(condition_row as usize) < s1len && i <= threshold) {
+                if !(*next_row.get_unchecked(condition_row as usize) >= s1len) && i > threshold {
+                    break usize::MAX;
+                }
                 break (i - 1) as usize;
             }
         }
@@ -326,8 +329,7 @@ pub fn bounded_string_edit_distance_with_structure(
     // Condition_row and end_max define the diagonal boundaries
     let condition_row = size_diff + zero_k;
     let end_max = condition_row << 1;
-    let s1len = s1.len();
-    let s2len = s2.len();
+    println!("Searching for first value: {s1len} on {size_diff} with max k={threshold}");
     loop {
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
@@ -360,7 +362,7 @@ pub fn bounded_string_edit_distance_with_structure(
             end = end_max - i;
         }
 
-        let mut row_index = (start + zero_k) as usize;
+        let mut diagonal_index = (start + zero_k) as usize;
 
         let mut max_row_number;
 
@@ -371,33 +373,34 @@ pub fn bounded_string_edit_distance_with_structure(
             previous_cell = current_cell;
             current_cell = next_cell;
             unsafe {
-                next_cell = *current_row.get_unchecked(row_index + 1);
+                next_cell = *current_row.get_unchecked(diagonal_index + 1);
             }
 
             // Calculate the max of three possible operations (delete, insert, replace)
             // This is the standard dynamic programming recurrence relation for edit distance
-            max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1) as usize;
+            max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1);
 
             unsafe {
-                let diag_offset = diag_offset as usize;
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
                 // This is the diagonal extension from Ukkonen's algorithm
                 while max_row_number < s1len
                     && (max_row_number + diag_offset) < s2len
-                    && s1.get_unchecked(max_row_number).char
-                        == s2.get_unchecked((max_row_number + diag_offset)).char
+                    && s1.get_unchecked(max_row_number as usize).char
+                        == s2
+                            .get_unchecked((max_row_number + diag_offset) as usize)
+                            .char
                     && (s1
-                        .get_unchecked(max_row_number)
+                        .get_unchecked(max_row_number as usize)
                         .preorder_following_postorder_preceding
                         .abs_diff(
-                            s2.get_unchecked((max_row_number + diag_offset))
+                            s2.get_unchecked((max_row_number + diag_offset) as usize)
                                 .preorder_following_postorder_preceding,
                         )
-                        + s1.get_unchecked(max_row_number)
+                        + s1.get_unchecked(max_row_number as usize)
                             .preorder_descendant_postorder_ancestor
                             .abs_diff(
-                                s2.get_unchecked((max_row_number + diag_offset))
+                                s2.get_unchecked((max_row_number + diag_offset) as usize)
                                     .preorder_descendant_postorder_ancestor,
                             )
                         <= k as u32)
@@ -407,11 +410,16 @@ pub fn bounded_string_edit_distance_with_structure(
             }
 
             unsafe {
-                *next_row.get_unchecked_mut(row_index) = max_row_number as i32;
+                *next_row.get_unchecked_mut(diagonal_index) = max_row_number as i32;
             }
-            row_index += 1;
+            diagonal_index += 1;
         }
         // dbg!(&next_row);
+        print!("p={} |", i - 1);
+        for v in next_row.iter() {
+            print!(" {v:>3} |");
+        }
+        println!("");
 
         // Check termination condition: either we've computed enough rows
         // to determine the distance is > threshold, or we've reached the
@@ -485,7 +493,7 @@ mod tests {
         ];
         let v2 = vec![
             TraversalCharacter {
-                char: 2,
+                char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
@@ -583,6 +591,51 @@ mod tests {
 
         let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
         assert_eq!(result, usize::MAX);
+    }
+
+    #[test]
+    fn test_bounded_sed_vs_unbouded_sed_edit_distance() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> a
+        // 2 -> b
+
+        let v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 2,
+            },
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 2,
+            },
+        ];
+        let v2 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
+        assert_eq!(result, 1);
     }
 
     #[test]
@@ -807,7 +860,7 @@ mod tests {
     #[test]
     fn test_sed_query_and_tree() {
         let qstr = "{4{3{2 A}{3{2{3 rare}{2 and}}{3{2 lightly}{4 entertaining}}}}{3{2{2 look}{2{2 behind}{2{2{2 the}{2 curtain}}{2{2 that}{3{2{2 separates}{2 comics}}{3{2 from}{3{2{2 the}{2 people}}{3{4 laughing}{2{2 in}{2{2 the}{2 crowd}}}}}}}}}}}}}".to_owned();
-        let tstr = "{2{2 Who}{2{2{2 is}{2{2{2 the}{2 audience}}{2{2 for}{2{2 Cletis}{2 Tout}}}}}}}"
+        let tstr = "{3{2 We}{2{3{2 're}{2{2 drawn}{2{2 in}{2{2 by}{2{2 the}{2{2 dark}{2 luster}}}}}}}{2 .}}}"
             .to_owned();
         let mut ld = LabelDict::new();
         let qt = parse_single(qstr, &mut ld);
@@ -820,7 +873,26 @@ mod tests {
 
         let result = sed_struct_k(&qs, &ts, 30);
 
-        assert!(result <= 30, "SED result is not as expected: {result} > 30");
+        assert!(result > 30, "SED result is not as expected: {result} <= 30");
+    }
+
+    #[test]
+    fn test_bounded_is_worse_than_normal() {
+        let mut ld = LabelDict::new();
+        let qstr = "{a{b}{a{a}}}".to_owned();
+        let tstr = "{b{b{a}}}".to_owned();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+
+        let sed = string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 3);
+        let bsed = bounded_string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 3);
+
+        assert!(
+            sed > bsed,
+            "SED is not worse than bounded SED: {sed} <= {bsed}"
+        );
     }
 
     #[test]
@@ -873,7 +945,7 @@ mod tests {
         let v2 = vec![1, 2, 3, 5, 6, 7, 6];
 
         let result = bounded_string_edit_distance(&v1, &v2, 2);
-        assert_eq!(result, 2);
+        assert_eq!(result, usize::MAX);
 
         let result = bounded_string_edit_distance(&v1, &v2, 4);
         assert_eq!(result, 3);
