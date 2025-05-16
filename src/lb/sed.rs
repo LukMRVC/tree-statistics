@@ -49,14 +49,12 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    // let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
-    // post_dist
-    // if post_dist > k {
-    //     return post_dist;
-    // }
+    let post_dist = bounded_string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k);
+    if post_dist > k {
+        return post_dist;
+    }
     let pre_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
-    pre_dist
-    // std::cmp::max(pre_dist, post_dist)
+    std::cmp::max(pre_dist, post_dist)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -329,7 +327,25 @@ pub fn bounded_string_edit_distance_with_structure(
     // Condition_row and end_max define the diagonal boundaries
     let condition_row = size_diff + zero_k;
     let end_max = condition_row << 1;
-    println!("Searching for first value: {s1len} on {size_diff} with max k={threshold}");
+    println!("Searching for first value: {s1len} on {condition_row} with max k={threshold} on ZERO_K={zero_k}");
+    print!(" --   |");
+    for i in 0..arr_len {
+        print!(" {i:>3} |");
+    }
+    println!("");
+
+    // prepare a simple test function if characters are eligible for substitution
+    #[inline]
+    fn can_be_substituted(t1: &TraversalCharacter, t2: &TraversalCharacter, k: usize) -> bool {
+        t1.char == t2.char
+            && (t1
+                .preorder_following_postorder_preceding
+                .abs_diff(t2.preorder_following_postorder_preceding)
+                + t1.preorder_descendant_postorder_ancestor
+                    .abs_diff(t2.preorder_descendant_postorder_ancestor)
+                <= k as u32)
+    }
+
     loop {
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
@@ -345,6 +361,7 @@ pub fn bounded_string_edit_distance_with_structure(
             start = -i + 1;
             next_cell = i - 2i32;
         } else {
+            // 2 if i = 11 and zero_k = 10
             start = i - (zero_k << 1) + 1;
             unsafe {
                 next_cell = *current_row.get_unchecked((zero_k + start) as usize);
@@ -370,15 +387,37 @@ pub fn bounded_string_edit_distance_with_structure(
         for diag_offset in start..end {
             // Per Ukkonen's algorithm, we're tracking three values to compute each cell:
             // previous_cell, current_cell, and next_cell from the previous row
+
+            // f(d-1, p-1) - insertion - row remains
             previous_cell = current_cell;
+            // f(d, p-1) - substitution of character
             current_cell = next_cell;
             unsafe {
+                // f(d+1, p-1) - deletion - max row index adds by +1
                 next_cell = *current_row.get_unchecked(diagonal_index + 1);
             }
 
             // Calculate the max of three possible operations (delete, insert, replace)
             // This is the standard dynamic programming recurrence relation for edit distance
-            max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1);
+
+            // however replacement can not occur in all cases, only if the mapping is possible
+            // Jak zjistim, kde aktualne jsem?
+
+            // current_cell is basically the row in the matrix
+
+            unsafe {
+                max_row_number = if current_cell + 1 < s1len
+                    && (current_cell + 1 + diag_offset) < s2len
+                    && can_be_substituted(
+                        s1.get_unchecked((current_cell + 1) as usize),
+                        s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
+                        k,
+                    ) {
+                    max(max(current_cell + 1, previous_cell), next_cell + 1)
+                } else {
+                    max(previous_cell, next_cell + 1)
+                };
+            }
 
             unsafe {
                 // The core extension to the original algorithm: match characters while possible
@@ -386,24 +425,11 @@ pub fn bounded_string_edit_distance_with_structure(
                 // This is the diagonal extension from Ukkonen's algorithm
                 while max_row_number < s1len
                     && (max_row_number + diag_offset) < s2len
-                    && s1.get_unchecked(max_row_number as usize).char
-                        == s2
-                            .get_unchecked((max_row_number + diag_offset) as usize)
-                            .char
-                    && (s1
-                        .get_unchecked(max_row_number as usize)
-                        .preorder_following_postorder_preceding
-                        .abs_diff(
-                            s2.get_unchecked((max_row_number + diag_offset) as usize)
-                                .preorder_following_postorder_preceding,
-                        )
-                        + s1.get_unchecked(max_row_number as usize)
-                            .preorder_descendant_postorder_ancestor
-                            .abs_diff(
-                                s2.get_unchecked((max_row_number + diag_offset) as usize)
-                                    .preorder_descendant_postorder_ancestor,
-                            )
-                        <= k as u32)
+                    && can_be_substituted(
+                        s1.get_unchecked(max_row_number as usize),
+                        s2.get_unchecked((max_row_number + diag_offset) as usize),
+                        k,
+                    )
                 {
                     max_row_number += 1;
                 }
@@ -415,11 +441,11 @@ pub fn bounded_string_edit_distance_with_structure(
             diagonal_index += 1;
         }
         // dbg!(&next_row);
-        print!("p={} |", i - 1);
+        print!("p={:>3} |", i - 1);
         for v in next_row.iter() {
             print!(" {v:>3} |");
         }
-        println!("");
+        println!(" -- cond: {condition_row}");
 
         // Check termination condition: either we've computed enough rows
         // to determine the distance is > threshold, or we've reached the
@@ -459,6 +485,7 @@ mod tests {
         // 5 -> e
         // 6 -> y
 
+        // arvey
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
@@ -477,13 +504,13 @@ mod tests {
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                preorder_following_postorder_preceding: 4,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 5,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 0,
+                preorder_descendant_postorder_ancestor: 4,
             },
             TraversalCharacter {
                 char: 6,
@@ -491,9 +518,10 @@ mod tests {
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
+        // avery
         let v2 = vec![
             TraversalCharacter {
-                char: 1,
+                char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
@@ -519,7 +547,11 @@ mod tests {
             },
         ];
 
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
+        let result = string_edit_distance_with_structure(&v2, &v1, 5);
+        dbg!(&result);
+        assert!(result >= 3);
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 5);
+        dbg!(&result);
         assert_eq!(result, 3);
     }
 
@@ -870,6 +902,16 @@ mod tests {
 
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
         let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+        dbg!(&qs
+            .preorder
+            .iter()
+            .map(|c| char::from_u32(c.char as u32 + 64).unwrap())
+            .collect::<Vec<char>>());
+        dbg!(&ts
+            .preorder
+            .iter()
+            .map(|c| char::from_u32(c.char as u32 + 64).unwrap())
+            .collect::<Vec<char>>());
 
         let result = sed_struct_k(&qs, &ts, 30);
 
