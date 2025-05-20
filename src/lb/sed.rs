@@ -327,23 +327,25 @@ pub fn bounded_string_edit_distance_with_structure(
     // Condition_row and end_max define the diagonal boundaries
     let condition_row = size_diff + zero_k;
     let end_max = condition_row << 1;
-    println!("Searching for first value: {s1len} on {condition_row} with max k={threshold} on ZERO_K={zero_k}");
-    print!(" --   |");
-    for i in 0..arr_len {
-        print!(" {i:>3} |");
+
+    #[cfg(debug_assertions)]
+    {
+        println!("Searching for first value: {s1len} on {condition_row} with max k={threshold} on ZERO_K={zero_k}");
+        print!(" --   |");
+        for i in 0..arr_len {
+            print!(" {i:>3} |");
+        }
+        println!("");
     }
-    println!("");
 
     // prepare a simple test function if characters are eligible for substitution
     #[inline]
     fn can_be_substituted(t1: &TraversalCharacter, t2: &TraversalCharacter, k: usize) -> bool {
-        t1.char == t2.char
-            && (t1
-                .preorder_following_postorder_preceding
-                .abs_diff(t2.preorder_following_postorder_preceding)
-                + t1.preorder_descendant_postorder_ancestor
-                    .abs_diff(t2.preorder_descendant_postorder_ancestor)
-                <= k as u32)
+        t1.preorder_following_postorder_preceding
+            .abs_diff(t2.preorder_following_postorder_preceding)
+            + t1.preorder_descendant_postorder_ancestor
+                .abs_diff(t2.preorder_descendant_postorder_ancestor)
+            <= k as u32
     }
 
     loop {
@@ -401,7 +403,6 @@ pub fn bounded_string_edit_distance_with_structure(
             // This is the standard dynamic programming recurrence relation for edit distance
 
             // however replacement can not occur in all cases, only if the mapping is possible
-            // Jak zjistim, kde aktualne jsem?
 
             // current_cell is basically the row in the matrix
 
@@ -415,7 +416,15 @@ pub fn bounded_string_edit_distance_with_structure(
                     ) {
                     max(max(current_cell + 1, previous_cell), next_cell + 1)
                 } else {
-                    max(previous_cell, next_cell + 1)
+                    // well here's the problem
+                    // if we are not allowing substitution due tue to structure, there is
+                    // a possibility on when to actually allowed the substitution but at higher cost...
+                    // which means that we need to check:
+                    // 1. (diagonal + 1) cell, which got on the same row with I edits
+                    // 2. (diagonal - 1) cell, which got on the same (row - 1) with I edits
+
+                    // max(previous_cell, next_cell + 1)
+                    max(max(previous_cell, next_cell + 1), current_cell)
                 };
             }
 
@@ -425,6 +434,10 @@ pub fn bounded_string_edit_distance_with_structure(
                 // This is the diagonal extension from Ukkonen's algorithm
                 while max_row_number < s1len
                     && (max_row_number + diag_offset) < s2len
+                    && s1.get_unchecked(max_row_number as usize).char
+                        == s2
+                            .get_unchecked((max_row_number + diag_offset) as usize)
+                            .char
                     && can_be_substituted(
                         s1.get_unchecked(max_row_number as usize),
                         s2.get_unchecked((max_row_number + diag_offset) as usize),
@@ -440,12 +453,16 @@ pub fn bounded_string_edit_distance_with_structure(
             }
             diagonal_index += 1;
         }
+
         // dbg!(&next_row);
-        print!("p={:>3} |", i - 1);
-        for v in next_row.iter() {
-            print!(" {v:>3} |");
+        #[cfg(debug_assertions)]
+        {
+            print!("p={:>3} |", i - 1);
+            for v in next_row.iter() {
+                print!(" {v:>3} |");
+            }
+            println!(" -- cond: {condition_row}");
         }
-        println!(" -- cond: {condition_row}");
 
         // Check termination condition: either we've computed enough rows
         // to determine the distance is > threshold, or we've reached the
@@ -504,13 +521,13 @@ mod tests {
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 4,
+                preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 5,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 4,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 6,
@@ -526,6 +543,11 @@ mod tests {
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
@@ -536,23 +558,18 @@ mod tests {
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
-                char: 3,
-                preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 0,
-            },
-            TraversalCharacter {
-                char: 6,
+                char: 5,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
 
-        let result = string_edit_distance_with_structure(&v2, &v1, 5);
+        let result = string_edit_distance_with_structure(&v2, &v1, 3);
         dbg!(&result);
-        assert!(result >= 3);
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 5);
+        assert!(result <= 2);
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
         dbg!(&result);
-        assert_eq!(result, 3);
+        assert_eq!(result, 2);
     }
 
     #[test]
