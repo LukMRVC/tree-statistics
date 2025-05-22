@@ -407,15 +407,19 @@ pub fn bounded_string_edit_distance_with_structure(
             // current_cell is basically the row in the matrix
 
             unsafe {
-                max_row_number = if current_cell + 1 < s1len
+                // TODO: checking if current_cell + 1 < s1len if not correct... I need to be able to
+                // do a current_cell + 1
+
+                max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1);
+
+                if current_cell + 1 < s1len
                     && (current_cell + 1 + diag_offset) < s2len
-                    && can_be_substituted(
+                    && !can_be_substituted(
                         s1.get_unchecked((current_cell + 1) as usize),
                         s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
                         k,
-                    ) {
-                    max(max(current_cell + 1, previous_cell), next_cell + 1)
-                } else {
+                    )
+                {
                     // well here's the problem
                     // if we are not allowing substitution due tue to structure, there is
                     // a possibility on when to actually allowed the substitution but at higher cost...
@@ -424,8 +428,9 @@ pub fn bounded_string_edit_distance_with_structure(
                     // 2. (diagonal - 1) cell, which got on the same (row - 1) with I edits
 
                     // max(previous_cell, next_cell + 1)
-                    max(max(previous_cell, next_cell + 1), current_cell)
-                };
+
+                    max_row_number = max(max(previous_cell, next_cell + 1), current_cell);
+                }
             }
 
             unsafe {
