@@ -49,11 +49,11 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let post_dist = bounded_string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k);
-    if post_dist > k {
-        return post_dist;
-    }
     let pre_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
+    if pre_dist > k {
+        return pre_dist;
+    }
+    let post_dist = bounded_string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k);
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -341,10 +341,10 @@ pub fn bounded_string_edit_distance_with_structure(
     // prepare a simple test function if characters are eligible for substitution
     #[inline]
     fn can_be_substituted(t1: &TraversalCharacter, t2: &TraversalCharacter, k: usize) -> bool {
-        t1.preorder_following_postorder_preceding
+        (t1.preorder_following_postorder_preceding
             .abs_diff(t2.preorder_following_postorder_preceding)
             + t1.preorder_descendant_postorder_ancestor
-                .abs_diff(t2.preorder_descendant_postorder_ancestor)
+                .abs_diff(t2.preorder_descendant_postorder_ancestor))
             <= k as u32
     }
 
@@ -409,30 +409,43 @@ pub fn bounded_string_edit_distance_with_structure(
             unsafe {
                 // TODO: checking if current_cell + 1 < s1len if not correct... I need to be able to
                 // do a current_cell + 1
-
-                max_row_number = max(max(current_cell + 1, previous_cell), next_cell + 1);
-
-                if current_cell + 1 < s1len
-                    && (current_cell + 1 + diag_offset) < s2len
-                    && !can_be_substituted(
-                        s1.get_unchecked((current_cell + 1) as usize),
-                        s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
-                        k,
-                    )
-                {
-                    // well here's the problem
-                    // if we are not allowing substitution due tue to structure, there is
-                    // a possibility on when to actually allowed the substitution but at higher cost...
-                    // which means that we need to check:
-                    // 1. (diagonal + 1) cell, which got on the same row with I edits
-                    // 2. (diagonal - 1) cell, which got on the same (row - 1) with I edits
-
-                    // max(previous_cell, next_cell + 1)
-
-                    max_row_number = max(max(previous_cell, next_cell + 1), current_cell);
+                max_row_number = max(current_cell + 1, max(previous_cell, next_cell + 1));
+                if !(current_cell + 1 < s1len && (current_cell + 1 + diag_offset) < s2len) {
+                    *next_row.get_unchecked_mut(diagonal_index) = max_row_number;
+                    diagonal_index += 1;
+                    continue;
                 }
-            }
 
+                // If substitution is not allowed, treat as insertion/deletion (not diagonal move)
+                if !can_be_substituted(
+                    s1.get_unchecked((current_cell + 1) as usize),
+                    s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
+                    k,
+                ) {
+                    max_row_number = max(previous_cell, next_cell + 1);
+                }
+
+                // if i32::from(
+                //     !(current_cell + 1 < s1len
+                //         && (current_cell + 1 + diag_offset) < s2len
+                //         && !can_be_substituted(
+                //             s1.get_unchecked((current_cell + 1) as usize),
+                //             s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
+                //             k,
+                //         )),
+                // ) {
+                //     // well here's the problem
+                //     // if we are not allowing substitution due tue to structure, there is
+                //     // a possibility on when to actually allowed the substitution but at higher cost...
+                //     // which means that we need to check:
+                //     // 1. (diagonal + 1) cell, which got on the same row with I edits
+                //     // 2. (diagonal - 1) cell, which got on the same (row - 1) with I edits
+
+                //     // max(previous_cell, next_cell + 1)
+
+                //     max_row_number = max(max(previous_cell, next_cell + 1), current_cell);
+                // }
+            }
             unsafe {
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
@@ -454,7 +467,7 @@ pub fn bounded_string_edit_distance_with_structure(
             }
 
             unsafe {
-                *next_row.get_unchecked_mut(diagonal_index) = max_row_number as i32;
+                *next_row.get_unchecked_mut(diagonal_index) = max_row_number;
             }
             diagonal_index += 1;
         }
