@@ -49,11 +49,12 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let pre_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
+    return string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
+    let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     if pre_dist > k {
         return pre_dist;
     }
-    let post_dist = bounded_string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k);
+    let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -71,11 +72,12 @@ fn string_edit_distance_with_structure(
     k: u32,
 ) -> usize {
     use std::cmp::min;
-    // assumes size of s2 is smaller or equal than s1
+    // assumes size of s2 is bigger or equal than s1
     let s2len = s2.len() as u32;
-    // let mut matrix = vec![];
 
     let mut cache: Vec<u32> = (1..s2len + 1).collect::<Vec<u32>>();
+
+    // let mut matrix = vec![];
     // matrix.push(cache.clone());
     // dbg!(&cache);
     let mut result = s2len as u32;
@@ -89,23 +91,15 @@ fn string_edit_distance_with_structure(
                 // TODO: If ca.info.abs_diff(cb.info) > k mark the cell as invalid, thus no computations
                 // can be done from that cell
                 insert_dist = *cache.get_unchecked(j);
-                // result = min(
-                //     replace_dist
-                //         + (u32::from(
-                //             (ca.preorder_following_postorder_preceding
-                //                 .abs_diff(cb.preorder_following_postorder_preceding)
-                //                 + ca.preorder_descendant_postorder_ancestor
-                //                     .abs_diff(cb.preorder_descendant_postorder_ancestor))
-                //                 > k,
-                //         ) << 1),
-                //     min(insert_dist + 1, result + 1),
-                // );
 
-                result = if ca
-                    .preorder_following_postorder_preceding
-                    .abs_diff(cb.preorder_following_postorder_preceding)
-                    + ca.preorder_descendant_postorder_ancestor
-                        .abs_diff(cb.preorder_descendant_postorder_ancestor)
+                // TODO: if replace_dist + struct_diff > k
+                // FIXME: This only works with preorder traversals
+                result = if replace_dist
+                    + (ca
+                        .preorder_following_postorder_preceding
+                        .abs_diff(cb.preorder_following_postorder_preceding)
+                        + ca.preorder_descendant_postorder_ancestor
+                            .abs_diff(cb.preorder_descendant_postorder_ancestor))
                     > k
                 {
                     min(insert_dist + 1, result + 1)
@@ -113,30 +107,47 @@ fn string_edit_distance_with_structure(
                     min(replace_dist, min(insert_dist + 1, result + 1))
                 };
 
+                // result = min(
+                //     min(insert_dist + 1, result + 1),
+                //     replace_dist
+                //         + ((ca
+                //             .preorder_descendant_postorder_ancestor
+                //             .abs_diff(cb.preorder_descendant_postorder_ancestor)
+                //             + ca.preorder_following_postorder_preceding
+                //                 .abs_diff(cb.preorder_following_postorder_preceding))
+                //             as u32),
+                // );
                 *cache.get_unchecked_mut(j) = result;
             }
         }
-        // dbg!(&cache);
+        // matrix.push(cache.clone());
+        // #[cfg(debug_assertions)]
+        // {
+        //     dbg!(&cache);
+        // }
     }
 
+    // #[cfg(debug_assertions)]
+    // {
+    //     println!("");
+    //     for j in 0..cache.len() {
+    //         // print!("Row  {:>3}: [", j);
+    //         for i in 0..matrix.len() {
+    //             if i > 0 {
+    //                 print!(",");
+    //             }
+    //             print!("{:>3}", matrix[i][j]);
+    //         }
+    //         println!("]");
+    //     }
+    //     dbg!(&matrix);
+    // }
     // Print matrix by columns
     // println!("Matrix by columns:");
     // print!("Row    S1   ");
     // for c in s1.iter() {
     //     print!("  {:>3}", c.char);
     // }
-    // println!("");
-    // for j in 0..cache.len() {
-    //     print!("Row  {:>3}: [", s2[j].char);
-    //     for i in 0..matrix.len() {
-    //         if i > 0 {
-    //             print!(",");
-    //         }
-    //         print!("{:>3}", matrix[i][j]);
-    //     }
-    //     println!("]");
-    // }
-    // dbg!(&matrix);
 
     result as usize
 }
@@ -267,7 +278,6 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 
             // max()
             t = max(max(current_cell + 1, previous_cell), next_cell + 1);
-
 
             unsafe {
                 while t < s1len
@@ -449,7 +459,6 @@ pub fn bounded_string_edit_distance_with_structure(
             }
             // let mut max_row_number = max_row_number as usize;
             unsafe {
-
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
                 // This is the diagonal extension from Ukkonen's algorithm
@@ -718,6 +727,72 @@ mod tests {
 
     #[test]
     fn test_bounded_sed_structure_simple_unmatched() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> a
+        // 2 -> b
+
+        let v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 5,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 2,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 3,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 1,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        let v2 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 3,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 1,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        let result = string_edit_distance_with_structure(&v1, &v2, 2);
+        assert_eq!(result, 2);
+        let result = bounded_string_edit_distance_with_structure(&v1, &v2, 2);
+        assert_eq!(result, 2);
+    }
+
+    #[test]
+    fn test_bounded_sed_structure_simple_test() {
         // i have simple alphabet mapping for testing purposes
         // 1 -> a
         // 2 -> b
@@ -1018,7 +1093,7 @@ mod tests {
     #[test]
     fn test_sed_query_and_tree() {
         let qstr = "{4{3{2 A}{3{2{3 rare}{2 and}}{3{2 lightly}{4 entertaining}}}}{3{2{2 look}{2{2 behind}{2{2{2 the}{2 curtain}}{2{2 that}{3{2{2 separates}{2 comics}}{3{2 from}{3{2{2 the}{2 people}}{3{4 laughing}{2{2 in}{2{2 the}{2 crowd}}}}}}}}}}}}}".to_owned();
-        let tstr = "{3{2 We}{2{3{2 're}{2{2 drawn}{2{2 in}{2{2 by}{2{2 the}{2{2 dark}{2 luster}}}}}}}{2 .}}}"
+        let tstr = "{3{2 Rehearsals}{2{2{2{2 are}{2 frequently}}{3{2 more}{3{3 fascinating}{2{2 than}{2{2 the}{2 results}}}}}}{2 .}}}"
             .to_owned();
         let mut ld = LabelDict::new();
         let qt = parse_single(qstr, &mut ld);
@@ -1041,7 +1116,7 @@ mod tests {
 
         let result = sed_struct_k(&qs, &ts, 30);
 
-        assert!(result > 30, "SED result is not as expected: {result} <= 30");
+        assert!(result <= 30, "SED result is not as expected: {result} > 29");
     }
 
     #[test]
@@ -1065,6 +1140,78 @@ mod tests {
 
     #[test]
     fn test_sed_struct_correctness() {
+        let qstr = "{a{a{a}{a}}{a{a}}}".to_owned();
+        let tstr = "{a{a}{a{a}}}".to_owned();
+        let mut ld = LabelDict::new();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+
+        let v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 5,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 2,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 3,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 1,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        let v2 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 3,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 2,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 1,
+            },
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        assert_eq!(qs.preorder, v1);
+        assert_eq!(ts.preorder, v2);
+
+        let result = sed_struct_k(&qs, &ts, 2);
+        dbg!(result);
+        assert_eq!(result, 2, "SED result is not as expected: {result} != 2");
+    }
+
+    #[test]
+    fn test_sed_struct_correctness_2() {
         let qstr = "{a{b}{a{a}}}".to_owned();
         let tstr = "{a{a{a}}}".to_owned();
         let mut ld = LabelDict::new();
@@ -1079,8 +1226,8 @@ mod tests {
 
     #[test]
     fn test_sed_struct_correctness_real_data() {
-        let qstr = "{0{1{1 Degenerates}{1{2 into}{0 hogwash}}}{2 .}}".to_owned();
-        let tstr = "{2{4 Wow}{2{2 ,}{2{2{2 a}{2 jump}}{2{2 cut}{2 !}}}}}".to_owned();
+        let qstr = "{S{S{NPSBJ{NNP{Mr.}}{NNP{Coleman}}}{VP{VBD{said}}{NPTMP{DT{this}}{NN{week}}}{SBAR{IN{that}}{S{NPSBJ{PRP{he}}}{VP{MD{would}}{VP{VB{devote}}{NP{NP{DT{the}}{NN{remainder}}}{PP{IN{of}}{NP{DT{the}}{JJ{political}}{NN{season}}}}}{PPCLR{TO{to}}{NP{JJ{positive}}{NN{campaigning}}}}}}}}}}{Interpunction{,}}{CC{but}}{S{NPSBJ{DT{the}}{NN{truce}}}{VP{VBD{lasted}}{NP{RB{only}}{NNS{hours}}}}}{Interpunction{.}}}".to_owned();
+        let tstr = "{S{NPSBJ{NP{VBG{Continuing}}{NN{demand}}}{PP{IN{for}}{NP{NNS{dollars}}}}{PP{IN{from}}{NP{JJ{Japanese}}{NNS{investors}}}}}{VP{VBD{boosted}}{NP{DT{the}}{NNP{U.S.}}{NN{currency}}}}{Interpunction{.}}}".to_owned();
         let mut ld = LabelDict::new();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
@@ -1090,8 +1237,8 @@ mod tests {
         dbg!(tree_to_string(&qt, TreeOutput::BracketNotation));
         dbg!(tree_to_string(&tt, TreeOutput::BracketNotation));
 
-        let result = sed_struct_k(&qs, &ts, 12);
-        assert!(result <= 12, "SED result is not as expected: {result} > 12");
+        let result = sed_struct_k(&qs, &ts, 58);
+        assert!(result <= 58, "SED result is not as expected: {result} > 58");
     }
 
     #[test]

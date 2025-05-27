@@ -176,6 +176,7 @@ pub fn parse_dataset(
         .filter(Result::is_ok)
         .collect::<Result<Vec<_>, _>>()?;
     // println!("Final number of trees: {}", trees.len());
+
     Ok(trees)
 }
 
@@ -393,6 +394,14 @@ mod tests {
 
     #[test]
     fn test_parses_into_tokens() {
+        let input = "{NP{NP{NNS{Fees}}}{QP{CD{1}}{CD{3\\}/4}}}{Interpunction{.}}}".to_owned();
+        let tokens = parse_tree_tokens(input, None);
+        assert!(tokens.is_err());
+        let tokens = tokens.unwrap();
+    }
+
+    #[test]
+    fn test_parses_into_tokens_2() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
         let tokens = parse_tree_tokens(input, None);
         assert!(tokens.is_ok());
