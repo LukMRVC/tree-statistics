@@ -49,7 +49,7 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    return string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
+    // return string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     if pre_dist > k {
         return pre_dist;
@@ -61,7 +61,7 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TraversalCharacter {
     pub char: i32,
-    pub preorder_following_postorder_preceding: i32,
+    pub following: i32,
     pub preorder_descendant_postorder_ancestor: i32,
 }
 
@@ -95,9 +95,7 @@ fn string_edit_distance_with_structure(
                 // TODO: if replace_dist + struct_diff > k
                 // FIXME: This only works with preorder traversals
                 result = if replace_dist
-                    + (ca
-                        .preorder_following_postorder_preceding
-                        .abs_diff(cb.preorder_following_postorder_preceding)
+                    + (ca.following.abs_diff(cb.following)
                         + ca.preorder_descendant_postorder_ancestor
                             .abs_diff(cb.preorder_descendant_postorder_ancestor))
                     > k
@@ -352,8 +350,7 @@ pub fn bounded_string_edit_distance_with_structure(
     // prepare a simple test function if characters are eligible for substitution
     #[inline]
     fn can_be_substituted(t1: &TraversalCharacter, t2: &TraversalCharacter, k: usize) -> bool {
-        (t1.preorder_following_postorder_preceding
-            .abs_diff(t2.preorder_following_postorder_preceding)
+        (t1.following.abs_diff(t2.following)
             + t1.preorder_descendant_postorder_ancestor
                 .abs_diff(t2.preorder_descendant_postorder_ancestor))
             <= k as u32
@@ -536,32 +533,32 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 5,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 6,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -569,27 +566,27 @@ mod tests {
         let v2 = vec![
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 5,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 5,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -617,37 +614,37 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 6,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 7,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -655,32 +652,32 @@ mod tests {
         let v2 = vec![
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 4,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 5,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 6,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -699,24 +696,24 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -734,54 +731,54 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 5,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 2,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 3,
+                following: 3,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 1,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 3,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 1,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -800,24 +797,24 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -835,34 +832,34 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 2,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 2,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -885,29 +882,29 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_descendant_postorder_ancestor: 0,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
                 preorder_descendant_postorder_ancestor: 0,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 3,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -922,54 +919,54 @@ mod tests {
         let v1: Vec<TraversalCharacter> = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 2,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
@@ -996,27 +993,27 @@ mod tests {
             vec![
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 4,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 3,
                 },
                 TraversalCharacter {
                     char: 2,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 2,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 1,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 0,
                 },
             ]
@@ -1027,27 +1024,27 @@ mod tests {
             vec![
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 4,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 3,
                 },
                 TraversalCharacter {
                     char: 2,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 2,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 1,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 0,
                 },
             ]
@@ -1058,32 +1055,32 @@ mod tests {
             vec![
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 5,
                 },
                 TraversalCharacter {
                     char: 2,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 4,
                 },
                 TraversalCharacter {
                     char: 2,
-                    preorder_following_postorder_preceding: 2,
+                    following: 2,
                     preorder_descendant_postorder_ancestor: 1,
                 },
                 TraversalCharacter {
                     char: 2,
-                    preorder_following_postorder_preceding: 2,
+                    following: 2,
                     preorder_descendant_postorder_ancestor: 0,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 1,
                 },
                 TraversalCharacter {
                     char: 1,
-                    preorder_following_postorder_preceding: 0,
+                    following: 0,
                     preorder_descendant_postorder_ancestor: 0,
                 },
             ]
@@ -1151,54 +1148,54 @@ mod tests {
         let v1 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 5,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 2,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 3,
+                following: 3,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 1,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
         let v2 = vec![
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 3,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 2,
+                following: 2,
                 preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 1,
             },
             TraversalCharacter {
                 char: 1,
-                preorder_following_postorder_preceding: 0,
+                following: 0,
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];

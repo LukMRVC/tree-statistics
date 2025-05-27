@@ -36,3 +36,7 @@ kolekce. Nasledne bude potreba overit a pustit sady dotazu nad celou kolekci a z
 Zkusit pridat do SEDIndexu k uzlu informaci o following nebo preceding mnozinach (staci vybrat jednu) a zkusit,
 jestli by se tim nedal SED trochu vylepsit, hlavne co se tyce precision
 
+# kveten
+
+- Reversed postorder pruchod - pruchod stromem zdola a zprava zaroven, tak abychom mohli skutecne pouzit
+ancestor a preceding
