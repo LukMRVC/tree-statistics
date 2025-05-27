@@ -7,5 +7,5 @@ rustflags = [
     "-C",
     "link-arg=-fuse-ld=lld",
     "-Z",
-    "threads=8",
+    "threads=16",
 ]

@@ -16,6 +16,8 @@ categories = ["command-line-utilities", "data-structures"]
 inherits = "release"
 opt-level = 1
 debug = true
+lto = "thin"
+strip = "none"
 
 [profile.release]
 codegen-units = 1

@@ -268,6 +268,7 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
             // max()
             t = max(max(current_cell + 1, previous_cell), next_cell + 1);
 
+
             unsafe {
                 while t < s1len
                     && (t + q) < s2len
@@ -446,7 +447,9 @@ pub fn bounded_string_edit_distance_with_structure(
                 //     max_row_number = max(max(previous_cell, next_cell + 1), current_cell);
                 // }
             }
+            // let mut max_row_number = max_row_number as usize;
             unsafe {
+
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
                 // This is the diagonal extension from Ukkonen's algorithm
@@ -467,7 +470,7 @@ pub fn bounded_string_edit_distance_with_structure(
             }
 
             unsafe {
-                *next_row.get_unchecked_mut(diagonal_index) = max_row_number;
+                *next_row.get_unchecked_mut(diagonal_index) = max_row_number as i32;
             }
             diagonal_index += 1;
         }
@@ -588,6 +591,94 @@ mod tests {
         let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
         dbg!(&result);
         assert_eq!(result, 2);
+    }
+
+    #[test]
+    fn test_bounded_sed_structure_2() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> s
+        // 2 -> k
+        // 3 -> i
+        // 4 -> t
+        // 5 -> e
+        // 6 -> n
+        // 7 -> g
+
+        // sitting
+        let v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 6,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 7,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+        // kitten
+        let v2 = vec![
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 5,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+            TraversalCharacter {
+                char: 6,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+            },
+        ];
+
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
+        dbg!(&result);
+        assert_eq!(result, 3);
     }
 
     #[test]
