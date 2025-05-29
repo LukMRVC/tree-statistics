@@ -49,12 +49,12 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    return string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     if pre_dist > k {
         return pre_dist;
     }
-    let post_dist = string_edit_distance_with_structure(&t1.postorder, &t2.postorder, k as u32);
+    let post_dist =
+        string_edit_distance_with_structure(&t1.reversed_preorder, &t2.reversed_preorder, k as u32);
     std::cmp::max(pre_dist, post_dist)
 }
 
