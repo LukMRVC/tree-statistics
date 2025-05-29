@@ -50,6 +50,7 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
         (t1, t2) = (t2, t1);
     }
     return string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
+
     let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
     if pre_dist > k {
         return pre_dist;
@@ -66,7 +67,7 @@ pub struct TraversalCharacter {
 }
 
 /// Implements fastest known way to compute exact string edit between two strings
-fn string_edit_distance_with_structure(
+pub fn string_edit_distance_with_structure(
     s1: &[TraversalCharacter],
     s2: &[TraversalCharacter],
     k: u32,

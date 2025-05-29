@@ -7,7 +7,10 @@ use indexing::SEDIndexWithStructure;
 use itertools::Itertools;
 use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
-use lb::sed::{sed_k, sed_struct_k};
+use lb::sed::{
+    bounded_string_edit_distance as ukkonen, sed_k, sed_struct_k,
+    string_edit_distance_with_structure as sed_struct,
+};
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use parsing::get_frequency_ordering;
 use rand::seq::index;
@@ -441,6 +444,66 @@ fn main() -> Result<(), anyhow::Error> {
                         //         .collect_vec(),
                         // )?;
 
+                        // write a simple test that iterates over the queries and trees
+                        let mut preorder = 0;
+                        let mut postorder = 0;
+                        let mut rev_pre = 0;
+                        let mut rev_post = 0;
+
+                        let mut pre_post = 0;
+                        let mut pre_rev_pre = 0;
+                        let mut pre_rev_post = 0;
+                        let mut post_rev_pre = 0;
+                        let mut post_rev_post = 0;
+
+                        for (qid, (t, query)) in sed_queries.iter().enumerate() {
+                            let start_idx = size_map
+                                .get(&query.c.tree_size.saturating_sub(*t))
+                                .unwrap_or(&0);
+                            let end_idx = size_map
+                                .get(&(query.c.tree_size + t + 1))
+                                .unwrap_or(&sed_indexes_len);
+                            let idx_diff = end_idx - start_idx;
+
+                            for (tid, tree) in sed_indexes
+                                .iter()
+                                .enumerate()
+                                .skip(*start_idx)
+                                .take(idx_diff)
+                            {
+                                let (mut t1, mut t2) = (query, tree);
+                                if t1.c.tree_size > t2.c.tree_size {
+                                    // swap t1 and t2 if t1 is larger
+                                    std::mem::swap(&mut t1, &mut t2);
+                                }
+
+                                let pre_fit = ukkonen(&t1.preorder, &t2.preorder, *t) <= *t;
+                                let post_fit = ukkonen(&t1.postorder, &t2.postorder, *t) <= *t;
+                                let rev_pre_fit =
+                                    ukkonen(&t1.reversed_preorder, &t2.reversed_preorder, *t) <= *t;
+                                let rev_post_fit =
+                                    ukkonen(&t1.reversed_postorder, &t2.reversed_postorder, *t)
+                                        <= *t;
+
+                                // i need to find which of the traversals in combination have the smallest intersection
+                                preorder += i32::from(pre_fit);
+                                postorder += i32::from(post_fit);
+                                rev_pre += i32::from(rev_pre_fit);
+                                rev_post += i32::from(rev_post_fit);
+
+                                pre_post += i32::from(pre_fit && post_fit);
+                                pre_rev_pre += i32::from(pre_fit && rev_pre_fit);
+                                pre_rev_post += i32::from(pre_fit && rev_post_fit);
+                                post_rev_pre += i32::from(post_fit && rev_pre_fit);
+                                post_rev_post += i32::from(post_fit && rev_post_fit);
+                            }
+                        }
+
+                        print!(
+                            "Preorder: {preorder:>6}\nPostorder: {postorder:>6}\nReversed Preorder: {rev_pre:>6}\nReversed Postorder: {rev_post:>6}\n\
+                            Preorder-Postorder: {pre_post:>6}\nPreorder-RevPre: {pre_rev_pre:>6}\nPreorder-RevPost: {pre_rev_post:>6}\nPostorder-RevPre: {post_rev_pre:>6}\nPostorder-RevPost: {post_rev_post:>6}\n"
+                        );
+
                         let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;
                         for _ in 0..runs {
@@ -456,11 +519,77 @@ fn main() -> Result<(), anyhow::Error> {
                             .par_iter()
                             .map(|t| SEDIndexWithStructure::index_tree(t, &label_dict))
                             .collect::<Vec<_>>();
-
+                        let sed_indexes_len = sed_indexes.len();
                         let sed_queries = queries
                             .iter()
                             .map(|(t, q)| (*t, SEDIndexWithStructure::index_tree(q, &label_dict)))
                             .collect_vec();
+
+                        let mut preorder = 0;
+                        let mut postorder = 0;
+                        let mut rev_pre = 0;
+                        let mut rev_post = 0;
+
+                        let mut pre_post = 0;
+                        let mut pre_rev_pre = 0;
+                        let mut pre_rev_post = 0;
+                        let mut post_rev_pre = 0;
+                        let mut post_rev_post = 0;
+
+                        for (qid, (t, query)) in sed_queries.iter().enumerate() {
+                            let start_idx = size_map
+                                .get(&query.c.tree_size.saturating_sub(*t))
+                                .unwrap_or(&0);
+                            let end_idx = size_map
+                                .get(&(query.c.tree_size + t + 1))
+                                .unwrap_or(&sed_indexes_len);
+                            let idx_diff = end_idx - start_idx;
+
+                            for (tid, tree) in sed_indexes
+                                .iter()
+                                .enumerate()
+                                .skip(*start_idx)
+                                .take(idx_diff)
+                            {
+                                let (mut t1, mut t2) = (query, tree);
+                                if t1.c.tree_size > t2.c.tree_size {
+                                    // swap t1 and t2 if t1 is larger
+                                    std::mem::swap(&mut t1, &mut t2);
+                                }
+
+                                let pre_fit =
+                                    sed_struct(&t1.preorder, &t2.preorder, *t as u32) <= *t;
+                                let post_fit =
+                                    sed_struct(&t1.postorder, &t2.postorder, *t as u32) <= *t;
+                                let rev_pre_fit = sed_struct(
+                                    &t1.reversed_preorder,
+                                    &t2.reversed_preorder,
+                                    *t as u32,
+                                ) <= *t;
+                                let rev_post_fit = sed_struct(
+                                    &t1.reversed_postorder,
+                                    &t2.reversed_postorder,
+                                    *t as u32,
+                                ) <= *t;
+
+                                // i need to find which of the traversals in combination have the smallest intersection
+                                preorder += i32::from(pre_fit);
+                                postorder += i32::from(post_fit);
+                                rev_pre += i32::from(rev_pre_fit);
+                                rev_post += i32::from(rev_post_fit);
+
+                                pre_post += i32::from(pre_fit && post_fit);
+                                pre_rev_pre += i32::from(pre_fit && rev_pre_fit);
+                                pre_rev_post += i32::from(pre_fit && rev_post_fit);
+                                post_rev_pre += i32::from(post_fit && rev_pre_fit);
+                                post_rev_post += i32::from(post_fit && rev_post_fit);
+                            }
+                        }
+
+                        print!(
+                            "Preorder: {preorder:>6}\nPostorder: {postorder:>6}\nReversed Preorder: {rev_pre:>6}\nReversed Postorder: {rev_post:>6}\n\
+                            Preorder-Postorder: {pre_post:>6}\nPreorder-RevPre: {pre_rev_pre:>6}\nPreorder-RevPost: {pre_rev_post:>6}\nPostorder-RevPre: {post_rev_pre:>6}\nPostorder-RevPost: {post_rev_post:>6}\n"
+                        );
 
                         let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;

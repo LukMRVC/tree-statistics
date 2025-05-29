@@ -24,6 +24,8 @@ pub struct ConstantsIndex {
 pub struct SEDIndex {
     pub preorder: Vec<i32>,
     pub postorder: Vec<i32>,
+    pub reversed_preorder: Vec<i32>,
+    pub reversed_postorder: Vec<i32>,
     pub c: ConstantsIndex,
 }
 
@@ -36,12 +38,24 @@ impl Indexer for SEDIndex {
 
         let mut pre = Vec::with_capacity(tree.count());
         let mut post = Vec::with_capacity(tree.count());
+        let mut reversed_preorder = Vec::with_capacity(tree.count());
+        let mut reversed_postorder = Vec::with_capacity(tree.count());
 
-        traverse(root_id, tree, &mut pre, &mut post);
-
+        traverse(
+            root_id,
+            tree,
+            &mut pre,
+            &mut post,
+            &mut reversed_preorder,
+            &mut reversed_postorder,
+        );
+        reversed_preorder.reverse();
+        reversed_postorder.reverse();
         Self {
             postorder: post,
             preorder: pre,
+            reversed_postorder,
+            reversed_preorder,
             c: ConstantsIndex {
                 tree_size: tree.count(),
             },
@@ -49,14 +63,25 @@ impl Indexer for SEDIndex {
     }
 }
 
-fn traverse(nid: NodeId, tree: &ParsedTree, pre: &mut Vec<i32>, post: &mut Vec<i32>) {
+fn traverse(
+    nid: NodeId,
+    tree: &ParsedTree,
+    pre: &mut Vec<i32>,
+    post: &mut Vec<i32>,
+    rev_pre: &mut Vec<i32>,
+    rev_post: &mut Vec<i32>,
+) {
     // i am here at the current root
     let label = tree.get(nid).unwrap().get();
     pre.push(*label);
+    // to get reversed postorder traversal we need to reverse the preorder traversal
+    rev_post.push(*label);
     for cnid in nid.children(tree) {
-        traverse(cnid, tree, pre, post);
+        traverse(cnid, tree, pre, post, rev_pre, rev_post);
     }
     post.push(*label);
+    // to get a reversed preorder traversal we need to reverse the postorder traversal
+    rev_pre.push(*label);
 }
 
 #[derive(Debug)]
@@ -131,7 +156,7 @@ impl SEDIndexWithStructure {
             preorder_following_postorder_preceding: 0,
             preorder_descendant_postorder_ancestor: 0,
         });
-        
+
         // to get reversed postorder traversal we need to reverse the preorder traversal
         rev_post.push(TraversalCharacter {
             char: *label,
