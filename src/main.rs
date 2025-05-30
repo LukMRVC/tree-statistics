@@ -12,6 +12,7 @@ use lb::sed::{
     string_edit_distance_with_structure as sed_struct,
 };
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
+use memchr::arch::all;
 use parsing::get_frequency_ordering;
 use rand::seq::index;
 use rayon::prelude::*;
@@ -449,6 +450,7 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut postorder = 0;
                         let mut rev_pre = 0;
                         let mut rev_post = 0;
+                        let mut all_traversals = 0;
 
                         let mut pre_post = 0;
                         let mut pre_rev_pre = 0;
@@ -496,12 +498,15 @@ fn main() -> Result<(), anyhow::Error> {
                                 pre_rev_post += i32::from(pre_fit && rev_post_fit);
                                 post_rev_pre += i32::from(post_fit && rev_pre_fit);
                                 post_rev_post += i32::from(post_fit && rev_post_fit);
+                                all_traversals +=
+                                    i32::from(pre_fit && post_fit && rev_pre_fit && rev_post_fit);
                             }
                         }
 
                         print!(
                             "Preorder: {preorder:>6}\nPostorder: {postorder:>6}\nReversed Preorder: {rev_pre:>6}\nReversed Postorder: {rev_post:>6}\n\
-                            Preorder-Postorder: {pre_post:>6}\nPreorder-RevPre: {pre_rev_pre:>6}\nPreorder-RevPost: {pre_rev_post:>6}\nPostorder-RevPre: {post_rev_pre:>6}\nPostorder-RevPost: {post_rev_post:>6}\n"
+                            Preorder-Postorder: {pre_post:>6}\nPreorder-RevPre: {pre_rev_pre:>6}\nPreorder-RevPost: {pre_rev_post:>6}\nPostorder-RevPre: {post_rev_pre:>6}\nPostorder-RevPost: {post_rev_post:>6}\n\
+                            All traversals: {all_traversals:>6}\n",
                         );
 
                         let mut candidates = vec![];
@@ -535,6 +540,7 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut pre_rev_post = 0;
                         let mut post_rev_pre = 0;
                         let mut post_rev_post = 0;
+                        let mut all_traversals = 0;
 
                         for (qid, (t, query)) in sed_queries.iter().enumerate() {
                             let start_idx = size_map
@@ -583,12 +589,15 @@ fn main() -> Result<(), anyhow::Error> {
                                 pre_rev_post += i32::from(pre_fit && rev_post_fit);
                                 post_rev_pre += i32::from(post_fit && rev_pre_fit);
                                 post_rev_post += i32::from(post_fit && rev_post_fit);
+                                all_traversals +=
+                                    i32::from(pre_fit && post_fit && rev_pre_fit && rev_post_fit);
                             }
                         }
 
                         print!(
                             "Preorder: {preorder:>6}\nPostorder: {postorder:>6}\nReversed Preorder: {rev_pre:>6}\nReversed Postorder: {rev_post:>6}\n\
-                            Preorder-Postorder: {pre_post:>6}\nPreorder-RevPre: {pre_rev_pre:>6}\nPreorder-RevPost: {pre_rev_post:>6}\nPostorder-RevPre: {post_rev_pre:>6}\nPostorder-RevPost: {post_rev_post:>6}\n"
+                            Preorder-Postorder: {pre_post:>6}\nPreorder-RevPre: {pre_rev_pre:>6}\nPreorder-RevPost: {pre_rev_post:>6}\nPostorder-RevPre: {post_rev_pre:>6}\nPostorder-RevPost: {post_rev_post:>6}\n\
+                            All traversals: {all_traversals:>6}\n",
                         );
 
                         let mut candidates = vec![];
