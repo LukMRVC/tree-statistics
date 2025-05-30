@@ -313,7 +313,7 @@ pub fn bounded_string_edit_distance_with_structure(
     // Per Berghel & Roach, the threshold is the min of s2 length and k
     let threshold = min(s2len, k as i32);
 
-    // zero_k represents the initial diagonal in the edit distance matrix
+    // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
     // The shift by 1 and addition of 2 ensures sufficient buffer space
     // as described in the Berghel & Roach paper
     let zero_k: i32 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
@@ -326,13 +326,14 @@ pub fn bounded_string_edit_distance_with_structure(
     let mut current_row = vec![(-1i32, true); arr_len as usize];
     let mut next_row = vec![(-1i32, true); arr_len as usize];
     let mut i = 0;
-    // Condition_row and end_max define the diagonal boundaries
-    let condition_row = size_diff + zero_k;
-    let end_max = condition_row << 1;
+    // condition_diagonal is the diaogonal on which the resulting SED lies.
+    // we will be checking this diagonal to determine if we can stop early
+    let condition_diagonal = size_diff + zero_k;
+    let end_max = condition_diagonal << 1;
 
     #[cfg(debug_assertions)]
     {
-        println!("Searching for first value: {s1len} on {condition_row} with max k={threshold} on ZERO_K={zero_k}");
+        println!("Searching for first value: {s1len} on {condition_diagonal} with max k={threshold} on ZERO_K={zero_k}");
         print!(" --   |");
         for i in 0..arr_len {
             print!(" {i:>4} |");
@@ -352,6 +353,7 @@ pub fn bounded_string_edit_distance_with_structure(
     let mut next_allowed_substitution = true;
     let mut can_substitute = true;
     loop {
+        // i here is the current allowed edit distance
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
 
@@ -376,7 +378,7 @@ pub fn bounded_string_edit_distance_with_structure(
 
         // Calculate the ending diagonal for this iteration
         let end: i32;
-        if i <= condition_row {
+        if i <= condition_diagonal {
             end = i;
             unsafe {
                 *next_row.get_unchecked_mut((zero_k + i) as usize) = (-1, true);
@@ -384,7 +386,7 @@ pub fn bounded_string_edit_distance_with_structure(
         } else {
             end = end_max - i;
         }
-
+        let current_edit_distance = (i - 1) as u32;
         let mut diagonal_index = (start + zero_k) as usize;
 
         let mut max_row_number;
@@ -392,6 +394,8 @@ pub fn bounded_string_edit_distance_with_structure(
 
         // Process each diagonal in the band for this iteration
         for diag_offset in start..end {
+            let mut can_substitute: bool;
+
             // Per Ukkonen's algorithm, we're tracking three values to compute each cell:
             // previous_cell, current_cell, and next_cell from the previous row
 
@@ -401,6 +405,7 @@ pub fn bounded_string_edit_distance_with_structure(
             current_cell = next_cell;
             can_substitute = next_allowed_substitution;
             unsafe {
+                can_substitute = current_row.get_unchecked(diagonal_index).1;
                 // f(d+1, p-1) - deletion - max row index adds by +1
                 (next_cell, next_allowed_substitution) =
                     *current_row.get_unchecked(diagonal_index + 1);
@@ -507,7 +512,7 @@ pub fn bounded_string_edit_distance_with_structure(
             for (v, sub) in next_row.iter() {
                 print!(" {v:>3}{s}|", s = if !sub { "x" } else { "" });
             }
-            println!(" -- cond: {condition_row}");
+            println!(" -- cond: {condition_diagonal}");
         }
 
         // Check termination condition: either we've computed enough rows
@@ -1223,6 +1228,7 @@ mod tests {
         ];
         assert_eq!(qs.preorder, v1);
         assert_eq!(ts.preorder, v2);
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 2);
 
         let result = sed_struct_k(&qs, &ts, 2);
         dbg!(result);
