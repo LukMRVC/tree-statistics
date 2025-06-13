@@ -49,12 +49,15 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let pre_dist = string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k as u32);
+    let pre_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
     if pre_dist > k {
         return pre_dist;
     }
-    let post_dist =
-        string_edit_distance_with_structure(&t1.reversed_preorder, &t2.reversed_preorder, k as u32);
+    let post_dist = bounded_string_edit_distance_with_structure(
+        &t1.reversed_preorder,
+        &t2.reversed_preorder,
+        k,
+    );
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -93,7 +96,6 @@ fn string_edit_distance_with_structure(
                 insert_dist = *cache.get_unchecked(j);
 
                 // TODO: if replace_dist + struct_diff > k
-                // FIXME: This only works with preorder traversals
                 result = if replace_dist
                     + (ca
                         .preorder_following_postorder_preceding
@@ -106,25 +108,14 @@ fn string_edit_distance_with_structure(
                 } else {
                     min(replace_dist, min(insert_dist + 1, result + 1))
                 };
-
-                // result = min(
-                //     min(insert_dist + 1, result + 1),
-                //     replace_dist
-                //         + ((ca
-                //             .preorder_descendant_postorder_ancestor
-                //             .abs_diff(cb.preorder_descendant_postorder_ancestor)
-                //             + ca.preorder_following_postorder_preceding
-                //                 .abs_diff(cb.preorder_following_postorder_preceding))
-                //             as u32),
-                // );
                 *cache.get_unchecked_mut(j) = result;
             }
         }
         // matrix.push(cache.clone());
-        // #[cfg(debug_assertions)]
-        // {
-        //     dbg!(&cache);
-        // }
+        #[cfg(debug_assertions)]
+        {
+            dbg!(&cache);
+        }
     }
 
     // #[cfg(debug_assertions)]
@@ -332,8 +323,8 @@ pub fn bounded_string_edit_distance_with_structure(
 
     // Instead of storing the full DP matrix, Ukkonen's algorithm only stores
     // the current and next row (optimization described in the paper)
-    let mut current_row = vec![-1i32; arr_len as usize];
-    let mut next_row = vec![-1i32; arr_len as usize];
+    let mut current_row = vec![(-1i32, true); arr_len as usize];
+    let mut next_row = vec![(-1i32, true); arr_len as usize];
     let mut i = 0;
     // Condition_row and end_max define the diagonal boundaries
     let condition_row = size_diff + zero_k;
@@ -344,21 +335,22 @@ pub fn bounded_string_edit_distance_with_structure(
         println!("Searching for first value: {s1len} on {condition_row} with max k={threshold} on ZERO_K={zero_k}");
         print!(" --   |");
         for i in 0..arr_len {
-            print!(" {i:>3} |");
+            print!(" {i:>4} |");
         }
         println!("");
     }
 
     // prepare a simple test function if characters are eligible for substitution
     #[inline]
-    fn can_be_substituted(t1: &TraversalCharacter, t2: &TraversalCharacter, k: usize) -> bool {
+    fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i32 {
         (t1.preorder_following_postorder_preceding
             .abs_diff(t2.preorder_following_postorder_preceding)
             + t1.preorder_descendant_postorder_ancestor
-                .abs_diff(t2.preorder_descendant_postorder_ancestor))
-            <= k as u32
+                .abs_diff(t2.preorder_descendant_postorder_ancestor)) as i32
     }
 
+    let mut next_allowed_substitution = true;
+    let mut can_substitute = true;
     loop {
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
@@ -377,7 +369,8 @@ pub fn bounded_string_edit_distance_with_structure(
             // 2 if i = 11 and zero_k = 10
             start = i - (zero_k << 1) + 1;
             unsafe {
-                next_cell = *current_row.get_unchecked((zero_k + start) as usize);
+                (next_cell, next_allowed_substitution) =
+                    *current_row.get_unchecked((zero_k + start) as usize);
             }
         }
 
@@ -386,7 +379,7 @@ pub fn bounded_string_edit_distance_with_structure(
         if i <= condition_row {
             end = i;
             unsafe {
-                *next_row.get_unchecked_mut((zero_k + i) as usize) = -1;
+                *next_row.get_unchecked_mut((zero_k + i) as usize) = (-1, true);
             }
         } else {
             end = end_max - i;
@@ -395,6 +388,7 @@ pub fn bounded_string_edit_distance_with_structure(
         let mut diagonal_index = (start + zero_k) as usize;
 
         let mut max_row_number;
+        let allowed_edits = i - 1;
 
         // Process each diagonal in the band for this iteration
         for diag_offset in start..end {
@@ -405,9 +399,11 @@ pub fn bounded_string_edit_distance_with_structure(
             previous_cell = current_cell;
             // f(d, p-1) - substitution of character
             current_cell = next_cell;
+            can_substitute = next_allowed_substitution;
             unsafe {
                 // f(d+1, p-1) - deletion - max row index adds by +1
-                next_cell = *current_row.get_unchecked(diagonal_index + 1);
+                (next_cell, next_allowed_substitution) =
+                    *current_row.get_unchecked(diagonal_index + 1);
             }
 
             // Calculate the max of three possible operations (delete, insert, replace)
@@ -418,21 +414,14 @@ pub fn bounded_string_edit_distance_with_structure(
             // current_cell is basically the row in the matrix
 
             unsafe {
+                // TODO: Maybe this is allowing substitution on the first ever step, when it is not allowed?
+
                 // TODO: checking if current_cell + 1 < s1len if not correct... I need to be able to
                 // do a current_cell + 1
                 max_row_number = max(current_cell + 1, max(previous_cell, next_cell + 1));
-                if !(current_cell + 1 < s1len && (current_cell + 1 + diag_offset) < s2len) {
-                    *next_row.get_unchecked_mut(diagonal_index) = max_row_number;
-                    diagonal_index += 1;
-                    continue;
-                }
 
                 // If substitution is not allowed, treat as insertion/deletion (not diagonal move)
-                if !can_be_substituted(
-                    s1.get_unchecked((current_cell + 1) as usize),
-                    s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
-                    k,
-                ) {
+                if !can_substitute {
                     max_row_number = max(previous_cell, next_cell + 1);
                 }
 
@@ -457,30 +446,57 @@ pub fn bounded_string_edit_distance_with_structure(
                 //     max_row_number = max(max(previous_cell, next_cell + 1), current_cell);
                 // }
             }
+            // can_substitute = true;
             // let mut max_row_number = max_row_number as usize;
             unsafe {
+                let k = k as i32;
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
                 // This is the diagonal extension from Ukkonen's algorithm
-                while max_row_number < s1len
-                    && (max_row_number + diag_offset) < s2len
-                    && s1.get_unchecked(max_row_number as usize).char
+
+                // Branchless optimization: Instead of breaking on structural constraint violation,
+                // we compute how many characters we can advance before hitting the constraint.
+                // This eliminates the inner branch and reduces pipeline stalls.
+
+                // First, find the maximum possible advance based on character equality
+
+                let mut struct_match_count = 0i32;
+                while max_row_number + struct_match_count < s1len
+                    && (max_row_number + struct_match_count + diag_offset) < s2len
+                    && s1
+                        .get_unchecked((max_row_number + struct_match_count) as usize)
+                        .char
                         == s2
-                            .get_unchecked((max_row_number + diag_offset) as usize)
+                            .get_unchecked(
+                                (max_row_number + struct_match_count + diag_offset) as usize,
+                            )
                             .char
-                    && can_be_substituted(
-                        s1.get_unchecked(max_row_number as usize),
-                        s2.get_unchecked((max_row_number + diag_offset) as usize),
-                        k,
-                    )
+                    && (allowed_edits
+                        + struct_diff(
+                            s1.get_unchecked((max_row_number + struct_match_count) as usize),
+                            s2.get_unchecked(
+                                (max_row_number + struct_match_count + diag_offset) as usize,
+                            ),
+                        ))
+                        <= k
                 {
-                    max_row_number += 1;
+                    struct_match_count += 1;
                 }
+
+                // Branchless update: advance by the minimum of character and structural constraints
+                max_row_number += struct_match_count;
+
+                // Update substitution flag without branching: can substitute if we matched all characters
+                // that were equal (no structural constraint violation occurred)
+                can_substitute = allowed_edits
+                    + struct_diff(
+                        s1.get_unchecked((max_row_number) as usize),
+                        s2.get_unchecked((max_row_number + diag_offset) as usize),
+                    )
+                    <= k;
+                *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, can_substitute);
             }
 
-            unsafe {
-                *next_row.get_unchecked_mut(diagonal_index) = max_row_number as i32;
-            }
             diagonal_index += 1;
         }
 
@@ -488,8 +504,8 @@ pub fn bounded_string_edit_distance_with_structure(
         #[cfg(debug_assertions)]
         {
             print!("p={:>3} |", i - 1);
-            for v in next_row.iter() {
-                print!(" {v:>3} |");
+            for (v, sub) in next_row.iter() {
+                print!(" {v:>3}{s}|", s = if !sub { "x" } else { "" });
             }
             println!(" -- cond: {condition_row}");
         }
@@ -498,8 +514,9 @@ pub fn bounded_string_edit_distance_with_structure(
         // to determine the distance is > threshold, or we've reached the
         // threshold itself - this follows the "cutoff" principle in the paper
         unsafe {
-            if !(*next_row.get_unchecked(condition_row as usize) < s1len as i32 && i <= threshold) {
-                if !(*next_row.get_unchecked(condition_row as usize) >= s1len as i32)
+            if !(next_row.get_unchecked(condition_row as usize).0 < s1len as i32 && i <= threshold)
+            {
+                if !(next_row.get_unchecked(condition_row as usize).0 >= s1len as i32)
                     && i > threshold
                 {
                     break usize::MAX;
@@ -700,7 +717,7 @@ mod tests {
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 0,
+                preorder_descendant_postorder_ancestor: 3,
             },
             TraversalCharacter {
                 char: 1,
@@ -712,7 +729,7 @@ mod tests {
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 0,
+                preorder_descendant_postorder_ancestor: 1,
             },
             TraversalCharacter {
                 char: 1,
@@ -720,9 +737,11 @@ mod tests {
                 preorder_descendant_postorder_ancestor: 0,
             },
         ];
+        let result = string_edit_distance_with_structure(&v2, &v1, 1);
+        assert_eq!(result, 4);
 
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 2);
-        assert_eq!(result, 0);
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
+        assert_eq!(result, 1);
     }
 
     #[test]
