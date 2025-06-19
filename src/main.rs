@@ -73,6 +73,15 @@ enum Commands {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Just output processed and parsed trees with labels as numbers instead of original strings
+    Output {
+        /// input path for queries in bracket notation
+        #[arg(long)]
+        queries: PathBuf,
+        /// output path for trees in bracket notation
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Calculates lower bound candidates
     LowerBound {
         /// Query file input, on each file <Threshold>,<Query tree>
@@ -143,8 +152,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     for ((idx, tree), (idxnext, treenext)) in trees.iter().enumerate().tuple_windows() {
         if tree.count() > treenext.count() {
-            eprintln!("Tree {idx} has more nodes than tree {idxnext}");
-            exit(1);
+            // eprintln!("Tree {idx} has more nodes than tree {idxnext}");
+            // exit(1);
         }
     }
 
@@ -607,6 +616,37 @@ fn main() -> Result<(), anyhow::Error> {
             threshold: _,
         } => {
             todo!();
+        }
+        Commands::Output {
+            queries: queries_file,
+            output,
+        } => {
+            if !output.is_dir() {
+                eprintln!("Output arg must be a directory, is: {output:#?}");
+                process::exit(1);
+            }
+            let queries = parsing::parse_dataset(&queries_file, &mut label_dict).unwrap();
+            let mut output_path = output.clone();
+            let mut output_q_path = output.clone();
+
+            output_q_path.push(queries_file.file_name().expect("No queries file given!"));
+            let query_strings = queries
+                .par_iter()
+                .map(|tree| tree_to_string(tree, TreeOutput::BracketNotation))
+                .collect::<Vec<_>>();
+            write_file(output_q_path, &query_strings)?;
+            drop(query_strings);
+
+            output_path.push(
+                cli.dataset_path
+                    .file_name()
+                    .expect("No dataset path given!"),
+            );
+            let tree_strings = trees
+                .par_iter()
+                .map(|tree| tree_to_string(tree, TreeOutput::BracketNotation))
+                .collect::<Vec<_>>();
+            write_file(output_path, &tree_strings)?;
         }
     }
 
