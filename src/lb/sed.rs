@@ -351,7 +351,6 @@ pub fn bounded_string_edit_distance_with_structure(
     }
 
     let mut next_allowed_substitution = true;
-    let mut can_substitute = true;
     loop {
         // i here is the current allowed edit distance
         i += 1;
@@ -427,7 +426,17 @@ pub fn bounded_string_edit_distance_with_structure(
 
                 // If substitution is not allowed, treat as insertion/deletion (not diagonal move)
                 if !can_substitute {
-                    max_row_number = max(previous_cell, next_cell + 1);
+                    // pokud nemuzu delat substituci a previous a next nedaji vetsi cislo, tak jen vezmu cislo
+                    // current_cell, rovnou zapisu a nemusim se ani pokouset delat extension - zda se mi to zvetsi
+
+                    max_row_number = max(max(previous_cell, current_cell), next_cell + 1);
+
+                    if max_row_number == current_cell {
+                        // TODO: jen zapsat a continue
+                        *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, false);
+                        diagonal_index += 1;
+                        continue;
+                    }
                 }
 
                 // if i32::from(
@@ -465,40 +474,43 @@ pub fn bounded_string_edit_distance_with_structure(
 
                 // First, find the maximum possible advance based on character equality
 
+                let mut char_eq = false;
+                let mut struct_ok = false;
                 let mut struct_match_count = 0i32;
                 while max_row_number + struct_match_count < s1len
                     && (max_row_number + struct_match_count + diag_offset) < s2len
-                    && s1
+                {
+                    char_eq = s1
                         .get_unchecked((max_row_number + struct_match_count) as usize)
                         .char
                         == s2
                             .get_unchecked(
                                 (max_row_number + struct_match_count + diag_offset) as usize,
                             )
-                            .char
-                    && (allowed_edits
+                            .char;
+                    struct_ok = (allowed_edits
                         + struct_diff(
                             s1.get_unchecked((max_row_number + struct_match_count) as usize),
                             s2.get_unchecked(
                                 (max_row_number + struct_match_count + diag_offset) as usize,
                             ),
                         ))
-                        <= k
-                {
+                        <= k as i32;
+
+                    if (!char_eq || !struct_ok) {
+                        break;
+                    }
+
                     struct_match_count += 1;
                 }
 
                 // Branchless update: advance by the minimum of character and structural constraints
                 max_row_number += struct_match_count;
 
+                // disable substitution if we hit the big sturctural diff. If the problem is only character mismatch, it should be true
                 // Update substitution flag without branching: can substitute if we matched all characters
                 // that were equal (no structural constraint violation occurred)
-                can_substitute = allowed_edits
-                    + struct_diff(
-                        s1.get_unchecked((max_row_number) as usize),
-                        s2.get_unchecked((max_row_number + diag_offset) as usize),
-                    )
-                    <= k;
+                can_substitute = struct_ok;
                 *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, can_substitute);
             }
 
@@ -519,9 +531,10 @@ pub fn bounded_string_edit_distance_with_structure(
         // to determine the distance is > threshold, or we've reached the
         // threshold itself - this follows the "cutoff" principle in the paper
         unsafe {
-            if !(next_row.get_unchecked(condition_row as usize).0 < s1len as i32 && i <= threshold)
+            if !(next_row.get_unchecked(condition_diagonal as usize).0 < s1len as i32
+                && i <= threshold)
             {
-                if !(next_row.get_unchecked(condition_row as usize).0 >= s1len as i32)
+                if !(next_row.get_unchecked(condition_diagonal as usize).0 >= s1len as i32)
                     && i > threshold
                 {
                     break usize::MAX;
@@ -759,12 +772,12 @@ mod tests {
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 5,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
-                preorder_descendant_postorder_ancestor: 2,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
@@ -779,7 +792,7 @@ mod tests {
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 1,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
@@ -791,7 +804,7 @@ mod tests {
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 3,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
@@ -801,7 +814,7 @@ mod tests {
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 1,
+                preorder_descendant_postorder_ancestor: 0,
             },
             TraversalCharacter {
                 char: 1,
@@ -811,7 +824,7 @@ mod tests {
         ];
         let result = string_edit_distance_with_structure(&v1, &v2, 2);
         assert_eq!(result, 2);
-        let result = bounded_string_edit_distance_with_structure(&v1, &v2, 2);
+        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 2);
         assert_eq!(result, 2);
     }
 
