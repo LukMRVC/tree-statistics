@@ -342,7 +342,7 @@ pub fn bounded_string_edit_distance_with_structure(
     }
 
     // prepare a simple test function if characters are eligible for substitution
-    #[inline]
+    #[inline(always)]
     fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i32 {
         (t1.preorder_following_postorder_preceding
             .abs_diff(t2.preorder_following_postorder_preceding)
@@ -386,15 +386,14 @@ pub fn bounded_string_edit_distance_with_structure(
             end = end_max - i;
         }
         let current_edit_distance = (i - 1) as u32;
-        let mut diagonal_index = (start + zero_k) as usize;
+        let mut diagonal_index: usize = (start + zero_k).try_into().unwrap();
 
         let mut max_row_number;
         let allowed_edits = i - 1;
 
         // Process each diagonal in the band for this iteration
+        let mut can_substitute: bool;
         for diag_offset in start..end {
-            let mut can_substitute: bool;
-
             // Per Ukkonen's algorithm, we're tracking three values to compute each cell:
             // previous_cell, current_cell, and next_cell from the previous row
 
@@ -404,7 +403,6 @@ pub fn bounded_string_edit_distance_with_structure(
             current_cell = next_cell;
             can_substitute = next_allowed_substitution;
             unsafe {
-                can_substitute = current_row.get_unchecked(diagonal_index).1;
                 // f(d+1, p-1) - deletion - max row index adds by +1
                 (next_cell, next_allowed_substitution) =
                     *current_row.get_unchecked(diagonal_index + 1);
@@ -418,9 +416,6 @@ pub fn bounded_string_edit_distance_with_structure(
             // current_cell is basically the row in the matrix
 
             unsafe {
-                // TODO: Maybe this is allowing substitution on the first ever step, when it is not allowed?
-
-                // TODO: checking if current_cell + 1 < s1len if not correct... I need to be able to
                 // do a current_cell + 1
                 max_row_number = max(current_cell + 1, max(previous_cell, next_cell + 1));
 
@@ -438,27 +433,6 @@ pub fn bounded_string_edit_distance_with_structure(
                         continue;
                     }
                 }
-
-                // if i32::from(
-                //     !(current_cell + 1 < s1len
-                //         && (current_cell + 1 + diag_offset) < s2len
-                //         && !can_be_substituted(
-                //             s1.get_unchecked((current_cell + 1) as usize),
-                //             s2.get_unchecked((current_cell + 1 + diag_offset) as usize),
-                //             k,
-                //         )),
-                // ) {
-                //     // well here's the problem
-                //     // if we are not allowing substitution due tue to structure, there is
-                //     // a possibility on when to actually allowed the substitution but at higher cost...
-                //     // which means that we need to check:
-                //     // 1. (diagonal + 1) cell, which got on the same row with I edits
-                //     // 2. (diagonal - 1) cell, which got on the same (row - 1) with I edits
-
-                //     // max(previous_cell, next_cell + 1)
-
-                //     max_row_number = max(max(previous_cell, next_cell + 1), current_cell);
-                // }
             }
             // can_substitute = true;
             // let mut max_row_number = max_row_number as usize;
@@ -476,42 +450,32 @@ pub fn bounded_string_edit_distance_with_structure(
 
                 let mut char_eq = false;
                 let mut struct_ok = false;
-                let mut struct_match_count = 0i32;
-                while max_row_number + struct_match_count < s1len
-                    && (max_row_number + struct_match_count + diag_offset) < s2len
-                {
-                    char_eq = s1
-                        .get_unchecked((max_row_number + struct_match_count) as usize)
-                        .char
+
+                while max_row_number < s1len && (max_row_number + diag_offset) < s2len {
+                    char_eq = s1.get_unchecked((max_row_number) as usize).char
                         == s2
-                            .get_unchecked(
-                                (max_row_number + struct_match_count + diag_offset) as usize,
-                            )
+                            .get_unchecked((max_row_number + diag_offset) as usize)
                             .char;
                     struct_ok = (allowed_edits
                         + struct_diff(
-                            s1.get_unchecked((max_row_number + struct_match_count) as usize),
-                            s2.get_unchecked(
-                                (max_row_number + struct_match_count + diag_offset) as usize,
-                            ),
+                            s1.get_unchecked((max_row_number) as usize),
+                            s2.get_unchecked((max_row_number + diag_offset) as usize),
                         ))
-                        <= k as i32;
+                        <= k;
 
-                    if (!char_eq || !struct_ok) {
+                    if !char_eq || !struct_ok {
                         break;
                     }
 
-                    struct_match_count += 1;
+                    max_row_number += 1;
                 }
 
                 // Branchless update: advance by the minimum of character and structural constraints
-                max_row_number += struct_match_count;
 
                 // disable substitution if we hit the big sturctural diff. If the problem is only character mismatch, it should be true
                 // Update substitution flag without branching: can substitute if we matched all characters
                 // that were equal (no structural constraint violation occurred)
-                can_substitute = struct_ok;
-                *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, can_substitute);
+                *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, struct_ok);
             }
 
             diagonal_index += 1;
