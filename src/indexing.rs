@@ -1,6 +1,9 @@
 use std::num::NonZeroUsize;
 
-use crate::parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree};
+use crate::{
+    lb::sed::TraversalCharacter,
+    parsing::{LabelDict, LabelFreqOrdering, LabelId, ParsedTree},
+};
 use indextree::NodeId;
 
 use itertools::Itertools;
@@ -54,6 +57,134 @@ fn traverse(nid: NodeId, tree: &ParsedTree, pre: &mut Vec<i32>, post: &mut Vec<i
         traverse(cnid, tree, pre, post);
     }
     post.push(*label);
+}
+
+#[derive(Debug)]
+pub struct SEDIndexWithStructure {
+    pub preorder: Vec<TraversalCharacter>,
+    pub postorder: Vec<TraversalCharacter>,
+
+    pub reversed_preorder: Vec<TraversalCharacter>,
+    pub reversed_postorder: Vec<TraversalCharacter>,
+    pub c: ConstantsIndex,
+}
+
+impl Indexer for SEDIndexWithStructure {
+    fn index_tree(tree: &ParsedTree, _label_dict: &LabelDict) -> Self {
+        let Some(root) = tree.iter().next() else {
+            panic!("Unable to get root but tree is not empty!");
+        };
+        let root_id = tree.get_node_id(root).unwrap();
+
+        let mut pre = Vec::with_capacity(tree.count());
+        let mut post = Vec::with_capacity(tree.count());
+        let mut reversed_preorder = Vec::with_capacity(tree.count());
+        let mut reversed_postorder = Vec::with_capacity(tree.count());
+
+        let mut postorder_id = 0usize;
+        let mut preorder_id = 0usize;
+        let mut depth = 0usize;
+        Self::traverse_with_info(
+            root_id,
+            tree,
+            &mut pre,
+            &mut post,
+            &mut reversed_preorder,
+            &mut reversed_postorder,
+            &mut postorder_id,
+            &mut preorder_id,
+            &mut depth,
+        );
+
+        reversed_preorder.reverse();
+        reversed_postorder.reverse();
+        Self {
+            postorder: post,
+            preorder: pre,
+            reversed_postorder,
+            reversed_preorder,
+            c: ConstantsIndex {
+                tree_size: tree.count(),
+            },
+        }
+    }
+}
+
+impl SEDIndexWithStructure {
+    fn traverse_with_info(
+        nid: NodeId,
+        tree: &ParsedTree,
+        pre: &mut Vec<TraversalCharacter>,
+        post: &mut Vec<TraversalCharacter>,
+        rev_pre: &mut Vec<TraversalCharacter>,
+        rev_post: &mut Vec<TraversalCharacter>,
+        postorder_id: &mut usize,
+        preorder_id: &mut usize,
+        depth: &mut usize,
+    ) -> usize {
+        let mut subtree_size = 1;
+        *depth += 1;
+        // i am here at the current root
+        let label = tree.get(nid).unwrap().get();
+        pre.push(TraversalCharacter {
+            char: *label,
+            preorder_following_postorder_preceding: 0,
+            preorder_descendant_postorder_ancestor: 0,
+        });
+        
+        // to get reversed postorder traversal we need to reverse the preorder traversal
+        rev_post.push(TraversalCharacter {
+            char: *label,
+            preorder_following_postorder_preceding: 0,
+            preorder_descendant_postorder_ancestor: 0,
+        });
+
+        let pre_idx = pre.len() - 1;
+        // let node_char = pre.last_mut().unwrap();
+        for cnid in nid.children(tree) {
+            subtree_size += Self::traverse_with_info(
+                cnid,
+                tree,
+                pre,
+                post,
+                rev_pre,
+                rev_post,
+                postorder_id,
+                preorder_id,
+                depth,
+            );
+        }
+
+        *depth -= 1;
+        *postorder_id += 1;
+        *preorder_id += 1;
+
+        // preceding
+        let preceding = *postorder_id - subtree_size;
+        let following = tree.count() - (*postorder_id + *depth);
+
+        post.push(TraversalCharacter {
+            char: *label,
+            preorder_following_postorder_preceding: following as i32,
+            preorder_descendant_postorder_ancestor: *depth as i32,
+        });
+
+        // to get a reversed preorder traversal we need to reverse the postorder traversal
+        rev_pre.push(TraversalCharacter {
+            char: *label,
+            preorder_following_postorder_preceding: preceding as i32,
+            preorder_descendant_postorder_ancestor: subtree_size as i32 - 1,
+        });
+
+        pre[pre_idx].preorder_following_postorder_preceding = following as i32;
+        pre[pre_idx].preorder_descendant_postorder_ancestor = subtree_size as i32 - 1;
+
+        rev_post[pre_idx].preorder_following_postorder_preceding = preceding as i32;
+        rev_post[pre_idx].preorder_descendant_postorder_ancestor = *depth as i32;
+        // node_char.info = following as i32;
+
+        subtree_size
+    }
 }
 
 pub type InvListLblPost = FxHashMap<LabelId, Vec<i32>>;
@@ -123,30 +254,19 @@ fn traverse_inverted(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::parsing::{parse_single, LabelDict};
 
-    /*
     #[test]
     fn test_pre_and_preorder() {
         use crate::parsing::parse_tree;
-        let tree_str = "{1{2{5}{6}}{3{7}}{4{8}{9}}}".to_owned();
-        // parsed labels will be
-        // 1 -> 0
-        // 2 -> 1
-        // 5 -> 2
-        // 6 -> 3
-        // 3 -> 4
-        // 7 -> 5
-        // 4 -> 6
-        // 8 -> 7
-        // 9 -> 8
+        let tree_str = "{1{2{3}{4}}{5{6}}{7{8}{9}}}".to_owned();
         let mut label_dict = LabelDict::new();
-        let parse_result = parse_tree(Ok(tree_str));
-        assert!(parse_result.is_ok(), "Tree parsing failed, which shouldn't");
-        let parsed_tree = parse_result.unwrap();
+        let parsed_tree = parse_single(tree_str, &mut label_dict);
 
         let sed_index = SEDIndex::index_tree(&parsed_tree, &label_dict);
-        assert_eq!(sed_index.preorder, vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
-        assert_eq!(sed_index.postorder, vec![2, 3, 1, 5, 4, 7, 8, 6, 0]);
+        assert_eq!(sed_index.preorder, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(sed_index.postorder, vec![3, 4, 2, 6, 5, 8, 9, 7, 1]);
     }
 
     #[test]
@@ -154,24 +274,22 @@ mod tests {
         let tree_str = "{a{a{f}{b}{x}}{b}{y}}".to_owned();
         /*
         Parsed labels will be:
-        a -> 0
-        f -> 1
-        b -> 2
-        x -> 3
-        y -> 4
+        a -> 1
+        f -> 2
+        b -> 3
+        x -> 4
+        y -> 5
          */
         let mut label_dict = LabelDict::new();
-        let parse_result = parse_tree(Ok(tree_str));
-        assert!(parse_result.is_ok(), "Tree parsing failed, which shouldn't");
-        let tree = parse_result.unwrap();
+        let tree = parse_single(tree_str, &mut label_dict);
         let idx = InvertedListLabelPostorderIndex::index_tree(&tree, &label_dict);
 
         let kvs = [
-            (0, vec![3, 6]),
-            (1, vec![0]),
-            (2, vec![1, 4]),
-            (3, vec![2]),
-            (4, vec![5]),
+            (1, vec![3, 6]),
+            (2, vec![0]),
+            (3, vec![1, 4]),
+            (4, vec![2]),
+            (5, vec![5]),
         ];
 
         let mut qh = InvListLblPost::default();
@@ -182,5 +300,88 @@ mod tests {
 
         assert_eq!(idx.inverted_list, qh);
     }
-    */
+
+    #[test]
+    fn test_sed_index_traversals() {
+        let tree_str = "{a{b}{c}{a{c}{b}}}".to_owned();
+        /*
+        Parsed labels will be:
+        a -> 1
+        b -> 2
+        c -> 3
+         */
+        let mut label_dict = LabelDict::new();
+        let tree = parse_single(tree_str, &mut label_dict);
+        let idx = SEDIndexWithStructure::index_tree(&tree, &label_dict);
+        assert_eq!(
+            idx.preorder,
+            vec![
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 5
+                },
+                TraversalCharacter {
+                    char: 2,
+                    preorder_following_postorder_preceding: 4,
+                    preorder_descendant_postorder_ancestor: 0
+                },
+                TraversalCharacter {
+                    char: 3,
+                    preorder_following_postorder_preceding: 3,
+                    preorder_descendant_postorder_ancestor: 0
+                },
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 2
+                },
+                TraversalCharacter {
+                    char: 3,
+                    preorder_following_postorder_preceding: 1,
+                    preorder_descendant_postorder_ancestor: 0
+                },
+                TraversalCharacter {
+                    char: 2,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 0
+                }
+            ]
+        );
+        assert_eq!(
+            idx.postorder,
+            vec![
+                TraversalCharacter {
+                    char: 2,
+                    preorder_following_postorder_preceding: 3,
+                    preorder_descendant_postorder_ancestor: 2
+                },
+                TraversalCharacter {
+                    char: 3,
+                    preorder_following_postorder_preceding: 2,
+                    preorder_descendant_postorder_ancestor: 2
+                },
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 2,
+                    preorder_descendant_postorder_ancestor: 1
+                },
+                TraversalCharacter {
+                    char: 3,
+                    preorder_following_postorder_preceding: 1,
+                    preorder_descendant_postorder_ancestor: 1
+                },
+                TraversalCharacter {
+                    char: 2,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 1
+                },
+                TraversalCharacter {
+                    char: 1,
+                    preorder_following_postorder_preceding: 0,
+                    preorder_descendant_postorder_ancestor: 0
+                },
+            ]
+        );
+    }
 }

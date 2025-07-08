@@ -27,7 +27,7 @@ pub struct StructuralVec {
     label_id: LabelId,
     /// Id of postorder tree traversal
     pub postorder_id: usize,
-    /// Vector of number of nodes to the left, ancestors, nodes to right and descendants
+    /// Vector of number of nodes to the left (preceding), ancestors, nodes to right (following) and descendants
     pub mapping_regions: [RegionNumType; 4],
 }
 
@@ -106,7 +106,7 @@ pub struct SplitStructuralFilterTuple(usize, SplitStructHashMap);
 #[derive(Debug, Default)]
 pub struct LabelSetConverter {
     actual_depth: [RegionNumType; Self::MAX_SPLIT],
-    actual_pre_order_number: [RegionNumType; Self::MAX_SPLIT],
+    actual_post_order_number: [RegionNumType; Self::MAX_SPLIT],
     tree_size_by_split_id: [RegionNumType; Self::MAX_SPLIT],
 }
 
@@ -153,7 +153,7 @@ impl LabelSetConverter {
 
             // reset state variables needed for positional evaluation
             self.actual_depth = [0; Self::MAX_SPLIT];
-            self.actual_pre_order_number = [0; Self::MAX_SPLIT];
+            self.actual_post_order_number = [0; Self::MAX_SPLIT];
             self.tree_size_by_split_id = [0; Self::MAX_SPLIT];
             sets_collection.push(SplitStructuralFilterTuple(tree.count(), record_labels));
         }
@@ -162,7 +162,7 @@ impl LabelSetConverter {
 
     fn reset(&mut self) {
         self.actual_depth[0] = 0;
-        self.actual_pre_order_number[0] = 0;
+        self.actual_post_order_number[0] = 0;
         self.tree_size_by_split_id[0] = 0;
     }
 
@@ -286,17 +286,17 @@ impl LabelSetConverter {
 
         *postorder_id += 1;
         self.actual_depth[split_id] -= 1;
-        self.actual_pre_order_number[split_id] += 1;
+        self.actual_post_order_number[split_id] += 1;
 
         let mut mapping_splits = [[0; Self::MAX_SPLIT]; 4];
         for i in 0..Self::MAX_SPLIT {
             // let follow = self.tree_size_by_split_id[i]
             //     - (self.actual_pre_order_number[i] + self.actual_depth[i]);
-            mapping_splits[REGION_LEFT_IDX][i] = self.actual_pre_order_number[i] - subtree_size[i];
+            mapping_splits[REGION_LEFT_IDX][i] = self.actual_post_order_number[i] - subtree_size[i];
             mapping_splits[REGION_ANC_IDX][i] = self.actual_depth[i];
 
             mapping_splits[REGION_RIGHT_IDX][i] = self.tree_size_by_split_id[i]
-                - (self.actual_pre_order_number[i] + self.actual_depth[i]);
+                - (self.actual_post_order_number[i] + self.actual_depth[i]);
 
             mapping_splits[REGION_DESC_IDX][i] = subtree_size[i];
         }
@@ -357,17 +357,17 @@ impl LabelSetConverter {
 
         *postorder_id += 1;
         self.actual_depth[0] -= 1;
-        self.actual_pre_order_number[0] += 1;
+        self.actual_post_order_number[0] += 1;
 
         let root_label = tree.get(*root_id).unwrap().get();
         let node_struct_vec = StructuralVec {
             postorder_id: *postorder_id,
             label_id: *root_label,
             mapping_regions: [
-                (self.actual_pre_order_number[0] - subtree_size),
+                (self.actual_post_order_number[0] - subtree_size),
                 self.actual_depth[0],
                 (self.tree_size_by_split_id[0]
-                    - (self.actual_pre_order_number[0] + self.actual_depth[0])),
+                    - (self.actual_post_order_number[0] + self.actual_depth[0])),
                 (subtree_size - 1),
             ],
         };
@@ -755,7 +755,84 @@ impl StructuralFilterIndex {
 
 #[cfg(test)]
 mod tests {
+    use crate::parsing::parse_single;
+
     use super::*;
+
+    #[test]
+    fn test_label_set_converting() {
+        let t1input = "{a{b{b{a}}{a}}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_single(t1input, &mut label_dict);
+        let mut sc = LabelSetConverter::default();
+        let set_tuple = sc.create_single(&t1);
+
+        let lse_for_a = LabelSetElement {
+            base: LabelSetElementBase {
+                id: 1,
+                weight: 3,
+                weigh_so_far: 3,
+            },
+            struct_vec: vec![
+                StructuralVec {
+                    label_id: 1,
+                    mapping_regions: [0, 3, 1, 0],
+                    postorder_id: 1,
+                },
+                StructuralVec {
+                    label_id: 1,
+                    mapping_regions: [2, 2, 0, 0],
+                    postorder_id: 3,
+                },
+                StructuralVec {
+                    label_id: 1,
+                    mapping_regions: [0, 0, 0, 4],
+                    postorder_id: 5,
+                },
+            ],
+        };
+
+        assert_eq!(set_tuple.1.get(&1).unwrap(), &lse_for_a);
+        // assert_eq!(set_tuple.1.get(&2).unwrap(), &lse_for_b);
+    }
+
+    #[test]
+    fn test_label_set_converting_2() {
+        let t1input = "{a{b{a}{b{a}}}}".to_owned();
+        let mut label_dict = LabelDict::new();
+        let t1 = parse_single(t1input, &mut label_dict);
+        let mut sc = LabelSetConverter::default();
+        let set_tuple = sc.create_single(&t1);
+
+        let lse_for_a = LabelSetElement {
+            base: LabelSetElementBase {
+                id: 1,
+                weight: 3,
+                weigh_so_far: 0,
+            },
+            struct_vec: vec![
+                StructuralVec {
+                    label_id: 1,
+                    mapping_regions: [0, 2, 2, 0],
+                    postorder_id: 1,
+                },
+                StructuralVec {
+                    label_id: 1,
+                    mapping_regions: [1, 3, 0, 0],
+                    postorder_id: 2,
+                },
+                StructuralVec {
+                    label_id: 1,
+                    mapping_regions: [0, 0, 0, 4],
+                    postorder_id: 5,
+                },
+            ],
+        };
+
+        assert_eq!(set_tuple.1.get(&1).unwrap(), &lse_for_a);
+        // assert_eq!(set_tuple.1.get(&2).unwrap(), &lse_for_b);
+    }
+
     /*
     #[test]
     fn test_axes_set_converting() {

@@ -4,6 +4,7 @@ use indextree::{Arena, NodeEdge, NodeId};
 use itertools::Itertools;
 use memchr::memchr2_iter;
 use rayon::prelude::*;
+use serde::de;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -148,7 +149,8 @@ pub fn parse_dataset(
 
         tree_lines
             .into_par_iter()
-            .map_with(sender, |s, tree_line| {
+            .enumerate()
+            .map_with(sender, |s, (_, tree_line)| {
                 if !tree_line.is_ascii() {
                     return Err(TreeParseError::IsNotAscii);
                 }
@@ -301,9 +303,8 @@ const ESCAPE_CHAR: u8 = b'\\';
 
 #[inline(always)]
 fn is_escaped(byte_string: &[u8], offset: usize) -> bool {
-    offset > 0
-        && byte_string[offset - 1] == ESCAPE_CHAR
-        && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
+    offset > 0 && byte_string[offset - 1] == ESCAPE_CHAR
+    // && !(offset > 1 && byte_string[offset - 2] == ESCAPE_CHAR)
 }
 
 #[derive(Error, Debug)]
@@ -393,6 +394,14 @@ mod tests {
 
     #[test]
     fn test_parses_into_tokens() {
+        let input = "{NP{NP{NNS{Fees}}}{QP{CD{1}}{CD{3\\}/4}}}{Interpunction{.}}}".to_owned();
+        let tokens = parse_tree_tokens(input, None);
+        assert!(tokens.is_err());
+        let tokens = tokens.unwrap();
+    }
+
+    #[test]
+    fn test_parses_into_tokens_2() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
         let tokens = parse_tree_tokens(input, None);
         assert!(tokens.is_ok());
