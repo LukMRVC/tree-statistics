@@ -21,6 +21,10 @@ pub struct TreeStatistics {
     pub distinct_labels: usize,
     /// collection wide unique labels in current tree
     pub collection_unique_labels: usize,
+    /// Sacking index
+    pub sacking_index: usize,
+    /// Node degree variance
+    pub degree_stddev: f64,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -37,19 +41,25 @@ pub struct CollectionStatistics {
     pub avg_unique_label_per_tree: f64,
     /// average distinct labels per each tree
     pub avg_tree_distinct_labels: f64,
+    /// average sacking index per tree
+    pub avg_sacking_index: f64,
+    /// avg degree stddev per tree
+    pub avg_degree_stddev: f64,
 }
 
 impl fmt::Display for CollectionStatistics {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{},{},{:.6},{},{:.6},{:.6}",
+            "{},{},{:.6},{},{:.6},{:.6},{:.6},{:.6}",
             self.min_tree_size,
             self.max_tree_size,
             self.avg_tree_size,
             self.trees,
             self.avg_unique_label_per_tree,
             self.avg_tree_distinct_labels,
+            self.avg_sacking_index,
+            self.avg_degree_stddev,
         )
     }
 }
@@ -109,12 +119,23 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         degrees.push(degree);
     }
 
+    let sacking_index = degrees.iter().sum();
+    let mean = mean(&degrees.iter().map(|&d| d as f64).collect::<Vec<_>>());
+    let variance = degrees
+        .iter()
+        .map(|&d| (d as f64 - mean).powi(2))
+        .sum::<f64>()
+        / degrees.len() as f64;
+    let degree_stddev = variance.sqrt();
+
     TreeStatistics {
         degrees,
         depths,
         size: tree.count(),
         distinct_labels: distinct_label_set.len(),
         collection_unique_labels: unique_labels,
+        sacking_index,
+        degree_stddev,
     }
 }
 
@@ -148,6 +169,16 @@ pub fn summarize(all_statistics: &[TreeStatistics]) -> CollectionStatistics {
         trees: all_statistics.len(),
         avg_tree_distinct_labels,
         avg_unique_label_per_tree,
+        avg_sacking_index: all_statistics
+            .par_iter()
+            .map(|s| s.sacking_index)
+            .sum::<usize>() as f64
+            / all_statistics.len() as f64,
+        avg_degree_stddev: all_statistics
+            .par_iter()
+            .map(|s| s.degree_stddev)
+            .sum::<f64>()
+            / all_statistics.len() as f64,
     }
 }
 

@@ -3,6 +3,7 @@ use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use cli::{Cli, Commands, LowerBoundMethods};
 use indexing::SEDIndexWithStructure;
 use itertools::Itertools;
 use lb::indexes;
@@ -21,118 +22,16 @@ use std::process::{self, exit};
 use std::time::{Duration, Instant};
 use std::u128;
 
+mod cli;
 mod indexing;
 mod lb;
 mod parsing;
 mod statistics;
 mod validation;
 
-/// Tree statistics utility
-#[derive(Parser, Debug)]
-#[command(author, version, about)]
-struct Cli {
-    /// Dataset file of trees in bracket notation
-    #[arg(short, long, value_name = "FILE")]
-    dataset_path: PathBuf,
-    /// outputs only collected statistics
-    #[arg(long, default_value_t = false)]
-    quiet: bool,
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum LowerBoundMethods {
-    /// Histogram lower bound
-    Hist,
-    /// Label intersection lower bound
-    Lblint,
-    /// String edit distance lower bound
-    Sed,
-    /// String edit distance with structure lower bound
-    SEDStruct,
-    /// Structural filter lower bound
-    Structural,
-    /// Structural variant filter lower bound
-    StructuralVariant,
-    /// Binary branch lower bound
-    Bib,
-}
-
-#[derive(Subcommand, Debug)]
-enum Commands {
-    /// outputs data for degree, leaf paths and labels histograms
-    Statistics {
-        /// outputs data for degree, leaf paths and labels histograms
-        #[arg(long)]
-        hists: Option<PathBuf>,
-    },
-    /// Gets pre- and post- order traversals of each tree
-    Traversals {
-        /// output path for traversals
-        #[arg(long)]
-        output: PathBuf,
-    },
-    /// Just output processed and parsed trees with labels as numbers instead of original strings
-    Output {
-        /// input path for queries in bracket notation
-        #[arg(long)]
-        queries: PathBuf,
-        /// output path for trees in bracket notation
-        #[arg(long)]
-        output: PathBuf,
-    },
-    /// Calculates lower bound candidates
-    LowerBound {
-        /// Query file input, on each file <Threshold>,<Query tree>
-        #[arg(long, short = 'q')]
-        query_file: PathBuf,
-        /// output path for lower bound candidates
-        #[arg(long, short = 'o')]
-        output: PathBuf,
-        /// Run only given lower bound method
-        #[arg(value_enum)]
-        method: Option<LowerBoundMethods>,
-        /// Optional real results path - will output precision and filter_times
-        #[arg(long)]
-        results_path: Option<PathBuf>,
-        /// Q size for QGrams for SED indexing
-        #[arg(long = "qgram-size")]
-        q: Option<usize>,
-        /// Total number of runs for each method
-        /// Then the lowest duration of all runs is taken as result
-        #[arg(long = "runs", short = 'r', default_value_t = 1)]
-        runs: usize,
-    },
-    /// Validates candidate results against real results
-    Validate {
-        /// Candidates path
-        #[arg(long)]
-        candidates_path: PathBuf,
-        /// Real results path
-        #[arg(long)]
-        results_path: PathBuf,
-        /// Threshold for validation
-        #[arg()]
-        threshold: usize,
-    },
-    /// Compares 2 candidate files TED execution time
-    TedTime {
-        /// First candidates path
-        #[arg(long = "cf")]
-        candidates_first: PathBuf,
-        /// Second candidates path
-        #[arg(long = "cs")]
-        candidates_second: PathBuf,
-        /// Threshold for validation
-        #[arg()]
-        threshold: usize,
-    },
-}
-
 fn main() -> Result<(), anyhow::Error> {
-    let cli = Cli::parse();
-    let mut cmd = Cli::command();
+    let cli = cli::Cli::parse();
+    let mut cmd = cli::Cli::command();
 
     if !cli.dataset_path.exists() || !cli.dataset_path.is_file() {
         cmd.error(
@@ -169,7 +68,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .map(|tree| statistics::gather(tree, &freq_ordering))
                 .collect();
             let summary = statistics::summarize(&stats);
-            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,avg_unique_labels_per_tree,avg_tree_distinct_labels,distinct_labels\n{summary},{}", label_dict.keys().len());
+            println!("Collection statistics\nmin_tree,max_tree,avg_tree,tree_count,avg_unique_labels_per_tree,avg_tree_distinct_labels,avg_sacking_index,avg_degree_stddev,distinct_labels\n{summary},{}", label_dict.keys().len());
             if hists.is_some() {
                 let mut output_path = hists.unwrap();
                 if output_path.exists() && !output_path.is_dir() {
@@ -228,9 +127,6 @@ fn main() -> Result<(), anyhow::Error> {
             }
             let q = q.unwrap_or(2);
 
-            // let mut times = vec![];
-            // let mut candidate_times = vec![];
-            // let mut selectivities = vec![];
             if !cli.quiet {
                 println!("Preparing dataset and running preprocessing for all methods");
             }
@@ -248,12 +144,6 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
 
-            // let _collection_histograms = create_collection_histograms(&trees);
-
-            // let split_distribution_map = structural_filter::best_split_distribution(&label_dict);
-            // let split_distribution =
-            // move |lbl: &LabelId| -> usize { *split_distribution_map.get(lbl).unwrap() };
-            // let _structural_split_sets = lc.create_split(&trees, split_distribution);
             let ordering = get_frequency_ordering(&label_dict);
 
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
@@ -272,8 +162,6 @@ fn main() -> Result<(), anyhow::Error> {
                             .par_iter()
                             .map(|t| InvertedListLabelPostorderIndex::index_tree(t, &label_dict))
                             .collect::<Vec<_>>();
-                        let lblint_index =
-                            label_intersection::LabelIntersectionIndex::new(&lblint_indexes);
 
                         let lblint_queries = queries
                             .iter()
@@ -285,41 +173,6 @@ fn main() -> Result<(), anyhow::Error> {
                             })
                             .collect_vec();
 
-                        let mut index_duration_millis = u128::MAX;
-                        let mut index_candidates_len = usize::MAX;
-                        for _ in 0..runs {
-                            let start = Instant::now();
-                            let mut index_candidates = vec![];
-                            for (qid, (t, query)) in lblint_queries.iter().enumerate() {
-                                index_candidates.append(&mut lblint_index.query_index_prefix(
-                                    query,
-                                    *t,
-                                    &ordering,
-                                    &lblint_indexes,
-                                    Some(qid),
-                                ));
-                            }
-                            index_candidates_len =
-                                std::cmp::min(index_candidates.len(), index_candidates_len);
-                            index_duration_millis =
-                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
-                        }
-
-                        println!(
-                            "Lblint index\ntime:{dur}ms\ncandidates:{canlen}",
-                            canlen = index_candidates_len,
-                            dur = index_duration_millis
-                        );
-                        // index_candidates.par_sort();
-                        // let mut output_file = output.clone();
-                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        // write_file(
-                        //     output_file,
-                        //     &index_candidates
-                        //         .iter()
-                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
-                        //         .collect_vec(),
-                        // )?;
                         let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;
                         for _ in 0..runs {
@@ -340,115 +193,10 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|t| SEDIndex::index_tree(t, &label_dict))
                             .collect::<Vec<_>>();
 
-                        let pre_only = sed_indexes
-                            .iter()
-                            .map(|si| si.preorder.clone())
-                            .collect::<Vec<Vec<i32>>>();
-                        let start = Instant::now();
-                        // TODO: Heuristic: Calculate the best Q for each dataset
-                        // TODO: DBLP with Q = 2 is missing 4 results, find out why!
-
-                        let pre_index = indexes::index_gram::IndexGram::new(&pre_only, q);
-                        // let post_index = indexes::index_gram::IndexGram::new(&post_only, q);
-                        if !cli.quiet {
-                            println!(
-                                "Building indexes took: {}ms with qgram-size={}",
-                                start.elapsed().as_millis(),
-                                q
-                            );
-                        }
                         let sed_queries = queries
                             .iter()
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
-
-                        // dbg!(&pre_only[])
-
-                        let mut index_used_cnt = 0;
-                        let mut index_candidates = Vec::with_capacity(15_000);
-                        let sed_indexes_len = sed_indexes.len();
-                        let mut total_lookup_duration = Duration::new(0, 0);
-                        let mut total_filter_duration = Duration::new(0, 0);
-                        let mut avg_precision = 0.0;
-
-                        let mut index_duration_millis = u128::MAX;
-                        let mut index_candidates_len = usize::MAX;
-
-                        for _ in 0..runs {
-                            let start = Instant::now();
-                            for (qid, (threshold, sed_query)) in sed_queries.iter().enumerate() {
-                                let c1 = pre_index.query(sed_query.preorder.clone(), *threshold);
-                                if let Ok((c1, lookup_duration, filter_duration)) = c1 {
-                                    index_used_cnt += 1;
-                                    total_lookup_duration += lookup_duration;
-                                    total_filter_duration += filter_duration;
-
-                                    let mut correct_results = 0;
-                                    for cid in c1.iter() {
-                                        if sed_k(sed_query, &sed_indexes[*cid], *threshold)
-                                            <= *threshold
-                                        {
-                                            correct_results += 1;
-                                            index_candidates.push((qid, *cid));
-                                        }
-                                    }
-                                    let precision =
-                                        correct_results as f64 / std::cmp::max(c1.len(), 1) as f64;
-                                    avg_precision = avg_precision
-                                        + (precision - avg_precision) / (index_used_cnt as f64);
-                                } else {
-                                    let start_idx = size_map
-                                        .get(&sed_query.c.tree_size.saturating_sub(*threshold))
-                                        .unwrap_or(&0);
-                                    let end_idx = size_map
-                                        .get(&(sed_query.c.tree_size + threshold + 1))
-                                        .unwrap_or(&sed_indexes_len);
-                                    let idx_diff = end_idx - start_idx + 1;
-                                    // println!("Starting from {start_idx} and taking at most {idx_diff} trees!");
-
-                                    for (tid, tree) in sed_indexes
-                                        .iter()
-                                        .enumerate()
-                                        .skip(*start_idx)
-                                        .take(idx_diff)
-                                    {
-                                        if sed_k(sed_query, tree, *threshold) <= *threshold {
-                                            index_candidates.push((qid, tid));
-                                        }
-                                    }
-                                }
-                            }
-                            index_candidates_len =
-                                std::cmp::min(index_candidates.len(), index_candidates_len);
-                            index_duration_millis =
-                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
-                        }
-                        println!(
-                            "Sed Index\ntime:{}ms\ncandidates:{}",
-                            index_duration_millis, index_candidates_len,
-                        );
-
-                        // println!(
-                        //     "Total lookup duration was: {}ms",
-                        //     total_lookup_duration.as_millis(),
-                        // );
-                        // println!(
-                        //     "Total count filter duration was: {}ms --- CNT:{}ms/TM:{}ms",
-                        //     total_filter_duration.as_millis(),
-                        //     pre_index.cnt.as_millis(),
-                        //     pre_index.true_matches.as_millis(),
-                        // );
-
-                        // index_candidates.par_sort();
-                        // let mut output_file = output.clone();
-                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        // write_file(
-                        //     output_file,
-                        //     &index_candidates
-                        //         .iter()
-                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
-                        //         .collect_vec(),
-                        // )?;
 
                         let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;
@@ -488,52 +236,10 @@ fn main() -> Result<(), anyhow::Error> {
                     LBM::Structural => {
                         let mut lc = LabelSetConverter::default();
                         let structural_sets = lc.create(&trees);
-                        let struct_index =
-                            structural_filter::StructuralFilterIndex::new(&structural_sets);
                         let structural_queries = queries
                             .iter()
                             .map(|(t, q)| (*t, lc.create_single(q)))
                             .collect_vec();
-
-                        let mut index_duration_millis = u128::MAX;
-                        let mut candidates_len = usize::MAX;
-
-                        for _ in 0..runs {
-                            let start = Instant::now();
-                            let index_candidates = structural_queries
-                                .par_iter()
-                                .enumerate()
-                                .flat_map(|(qid, (t, query))| {
-                                    struct_index.query_index_prefix(
-                                        query,
-                                        &ordering,
-                                        *t,
-                                        &structural_sets,
-                                        Some(qid),
-                                    )
-                                })
-                                .collect::<Vec<(usize, usize)>>();
-
-                            candidates_len = std::cmp::min(candidates_len, index_candidates.len());
-                            index_duration_millis =
-                                std::cmp::min(index_duration_millis, start.elapsed().as_millis());
-                        }
-
-                        println!(
-                            "Structural Index\ntime:{dur}ms\ncandidates:{canlen}",
-                            canlen = candidates_len,
-                            dur = index_duration_millis
-                        );
-                        // index_candidates.par_sort();
-                        // let mut output_file = output.clone();
-                        // output_file.push(format!("{current_method:#?}_index_candidates.csv"));
-                        // write_file(
-                        //     output_file,
-                        //     &index_candidates
-                        //         .iter()
-                        //         .map(|(c1, c2)| format!("{c1},{c2}"))
-                        //         .collect_vec(),
-                        // )?;
 
                         let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;
@@ -746,10 +452,24 @@ fn write_files(
     )?;
 
     write_file(
-        [&out, &PathBuf::from("tree_sizesp.csv")]
+        [&out, &PathBuf::from("tree_sizes.csv")]
             .iter()
             .collect::<PathBuf>(),
         &stats.iter().map(|s| s.size).collect::<Vec<_>>(),
+    )?;
+
+    write_file(
+        [&out, &PathBuf::from("sackins.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats.iter().map(|s| s.sacking_index).collect::<Vec<_>>(),
+    )?;
+
+    write_file(
+        [&out, &PathBuf::from("degree_stddev.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats.iter().map(|s| s.degree_stddev).collect::<Vec<_>>(),
     )?;
 
     Ok(())

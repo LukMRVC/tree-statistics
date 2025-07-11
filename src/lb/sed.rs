@@ -167,48 +167,48 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
 pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     use std::cmp::{max, min};
     // assumes size of s2 is bigger or equal than s1
-    let mut s1len = s1.len();
-    let mut s2len = s2.len();
-    // perform suffix trimming
-    for _ in s1
-        .iter()
-        .rev()
-        .zip(s2.iter().rev())
-        .take_while(|(s1c, s2c)| s1c == s2c)
-    {
-        s1len -= 1;
-        s2len -= 1;
-        if s1len == 0 {
-            break;
-        }
-    }
+    // let mut s1len = s1.len();
+    // let mut s2len = s2.len();
+    // // perform suffix trimming
+    // for _ in s1
+    //     .iter()
+    //     .rev()
+    //     .zip(s2.iter().rev())
+    //     .take_while(|(s1c, s2c)| s1c == s2c)
+    // {
+    //     s1len -= 1;
+    //     s2len -= 1;
+    //     if s1len == 0 {
+    //         break;
+    //     }
+    // }
 
-    let mut common_prefix = 0;
+    // let mut common_prefix = 0;
 
-    // now prefix trimming
-    for _ in s1.iter().zip(s2.iter()).take_while(|(s1c, s2c)| s1c == s2c) {
-        common_prefix += 1;
-        if common_prefix >= s1len {
-            break;
-        }
-    }
+    // // now prefix trimming
+    // for _ in s1.iter().zip(s2.iter()).take_while(|(s1c, s2c)| s1c == s2c) {
+    //     common_prefix += 1;
+    //     if common_prefix >= s1len {
+    //         break;
+    //     }
+    // }
 
-    if s1len == 0 {
-        return s2len;
-    }
+    // if s1len == 0 {
+    //     return s2len;
+    // }
 
-    // prefix trimming done
-    let s1 = &s1[common_prefix..s1len];
-    let s2 = &s2[common_prefix..s2len];
+    // // prefix trimming done
+    // let s1 = &s1[common_prefix..s1len];
+    // let s2 = &s2[common_prefix..s2len];
 
-    s1len -= common_prefix;
-    s2len -= common_prefix;
-    // one string is gone by suffix and prefix trimming, so just return the remaining size
-    if s1len == 0 {
-        return s2len;
-    }
-    let s1len = s1len as i64;
-    let s2len = s2len as i64;
+    // s1len -= common_prefix;
+    // s2len -= common_prefix;
+    // // one string is gone by suffix and prefix trimming, so just return the remaining size
+    // if s1len == 0 {
+    //     return s2len;
+    // }
+    let s1len = s1.len() as i64;
+    let s2len = s2.len() as i64;
 
     let threshold = min(s2len, k as i64);
     let size_diff = s2len - s1len;
@@ -456,6 +456,9 @@ pub fn bounded_string_edit_distance_with_structure(
                         == s2
                             .get_unchecked((max_row_number + diag_offset) as usize)
                             .char;
+
+                    // Check structural constraints
+                    // this must always be evaluated because struct_ok is initialized to false
                     struct_ok = (allowed_edits
                         + struct_diff(
                             s1.get_unchecked((max_row_number) as usize),
