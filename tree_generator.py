@@ -385,5 +385,236 @@ def cli(
         )
 
 
+# --- CLI REFACTOR ---
+import sys
+
+
+@click.group()
+def cli():
+    """Tree generator CLI with subcommands for schema, random base, and generational trees."""
+    pass
+
+
+@cli.command("unbalanced-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+def unbalanced_tree(
+    tree_count: int, distinct_labels: int, min_max_tree_size: tuple[int, int]
+):
+    """Generate trees with a fixed schema that is unbalanced."""
+    labels = [i for i in range(1, distinct_labels + 1)]
+    min_size, max_size = min_max_tree_size
+
+    trees = list()
+
+    for _ in range(tree_count):
+        # generate a random size for the tree
+        size = random.randint(min_size, max_size)
+        # create root node with a random label
+        root = TreeNode(random.choice(labels), 0, size=size)
+        trees.append(root)
+        # create at most 3 random children
+        tree_nodes_created = 1
+        while tree_nodes_created < size:
+            # create 3 random children
+            c1 = TreeNode(random.choice(labels), 0, parent=root)
+            c2 = TreeNode(random.choice(labels), 0, parent=root)
+            c3 = TreeNode(random.choice(labels), 0, parent=root)
+
+            if random.random() < 0.25:
+                # randomly add another child to some of the already created nodes
+                random_winner = random.choice([c1, c2])
+                random_winner.add_child(
+                    TreeNode(random.choice(labels), 0, parent=random_winner)
+                )
+                tree_nodes_created += 1
+
+            root.add_child(c1)
+            root.add_child(c2)
+            root.add_child(c3)
+            root = c3
+            tree_nodes_created += 3
+
+    for tree in sorted(trees, key=lambda t: t.get_size()):
+        print(tree)
+
+
+@cli.command("random-base-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-S",
+    "--shape_modifier",
+    required=True,
+    type=float,
+    help="Shape for each tree >0.5 for more width, <0.5 for more depth",
+    callback=validate_shape_modifier,
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+@click.option(
+    "-B",
+    "--base_trees",
+    required=False,
+    type=int,
+    help="Number of base trees from which to permute",
+)
+@click.option(
+    "-E",
+    "--max_edits",
+    required=False,
+    type=int,
+    help="Number of maximum edits in each tree",
+)
+@click.option(
+    "-X",
+    "--similarity",
+    required=False,
+    type=float,
+    help="Similarity for edits",
+    default=0.5,
+)
+@click.option(
+    "-A",
+    "--distinct_labels_per_tree",
+    required=False,
+    type=str,
+    help="Distinct labels range per tree, delimited by comma",
+    callback=validate_distinct_labels,
+)
+def random_base_tree(
+    tree_count,
+    distinct_labels,
+    shape_modifier,
+    min_max_tree_size,
+    base_trees,
+    max_edits,
+    similarity,
+    distinct_labels_per_tree,
+):
+    random_base_tree_generator(
+        tree_count,
+        distinct_labels,
+        shape_modifier,
+        min_max_tree_size,
+        base_trees,
+        max_edits,
+        similarity,
+        distinct_labels_per_tree,
+    )
+
+
+@cli.command("generational-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-G",
+    "--max_new_nodes",
+    required=True,
+    type=int,
+    help="Maximum number of new nodes to add in each new generation of trees",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-S",
+    "--shape_modifier",
+    required=True,
+    type=float,
+    help="Shape for each tree >0.5 for more width, <0.5 for more depth",
+    callback=validate_shape_modifier,
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+@click.option(
+    "-X",
+    "--similarity",
+    required=False,
+    type=float,
+    help="Similarity for edits",
+    default=0.5,
+)
+@click.option(
+    "-A",
+    "--distinct_labels_per_tree",
+    required=False,
+    type=str,
+    help="Distinct labels range per tree, delimited by comma",
+    callback=validate_distinct_labels,
+)
+def generational_tree(
+    tree_count,
+    max_new_nodes,
+    distinct_labels,
+    shape_modifier,
+    min_max_tree_size,
+    similarity,
+    distinct_labels_per_tree,
+):
+    generational_random_generator(
+        tree_count,
+        max_new_nodes,
+        distinct_labels,
+        shape_modifier,
+        similarity,
+        min_max_tree_size,
+        distinct_labels_per_tree,
+    )
+
+
 if __name__ == "__main__":
     cli()

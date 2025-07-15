@@ -305,6 +305,7 @@ pub fn bounded_string_edit_distance_with_structure(
     s2: &[TraversalCharacter],
     k: usize,
 ) -> usize {
+    // TODO: Handle cases, where the threshold k is bigger than both s1 and s2 lengths
     use std::cmp::{max, min};
     // assumes size of s2 is bigger or equal than s1
     let s1len = s1.len() as i32;
@@ -501,6 +502,10 @@ pub fn bounded_string_edit_distance_with_structure(
             if !(next_row.get_unchecked(condition_diagonal as usize).0 < s1len as i32
                 && i <= threshold)
             {
+                if threshold < k as i32 {
+                    break ((i - 1) + k as i32 - threshold) as usize;
+                }
+
                 if !(next_row.get_unchecked(condition_diagonal as usize).0 >= s1len as i32)
                     && i > threshold
                 {
@@ -1140,6 +1145,30 @@ mod tests {
             sed > bsed,
             "SED is not worse than bounded SED: {sed} <= {bsed}"
         );
+    }
+
+    #[test]
+    fn test_bounded_unbalanced_tree() {
+        let mut ld = LabelDict::new();
+        // 15
+        let qstr =
+            "{4143{4335}{1291{265}}{2630{1481}{3285}{1220{3926}{2331{26}}{4656{4119}{1492}{2612}}}}}"
+                .to_owned();
+        // 15
+        let tstr =
+            "{3631{463}{4470}{1614{1308}{2094{77}}{3756{2713{2645}}{4227}{1086{2948}{4641}{3713}}}}}"
+                .to_owned();
+        let qt = parse_single(qstr, &mut ld);
+        let tt = parse_single(tstr, &mut ld);
+        let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
+        let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
+
+        let sed = string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 17);
+        // s2 is bigger
+        let bsed = bounded_string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 17);
+
+        assert_eq!(sed, 17, "SED result is not as expected: {sed} != 17");
+        assert_eq!(bsed, 17, "SED result is not as expected: {bsed} != 17");
     }
 
     #[test]

@@ -51,8 +51,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     for ((idx, tree), (idxnext, treenext)) in trees.iter().enumerate().tuple_windows() {
         if tree.count() > treenext.count() {
-            // eprintln!("Tree {idx} has more nodes than tree {idxnext}");
-            // exit(1);
+            eprintln!("Tree {idx} has more nodes than tree {idxnext}");
+            exit(1);
         }
     }
 
