@@ -5,6 +5,7 @@ import copy
 from concurrent.futures import ProcessPoolExecutor
 import functools
 import bisect
+import math
 
 
 class TreeNode:
@@ -418,42 +419,197 @@ def cli():
     help="Min and max tree size, delimited by comma",
     callback=validate_min_max_tree_size,
 )
+@click.option(
+    "-S",
+    "--shape_modifier",
+    required=False,
+    type=float,
+    default=0.2,
+    help="Imbalance factor: lower for more unbalanced, higher for less unbalanced (0 < S < 1)",
+    callback=validate_shape_modifier,
+)
 def unbalanced_tree(
-    tree_count: int, distinct_labels: int, min_max_tree_size: tuple[int, int]
+    tree_count: int,
+    distinct_labels: int,
+    min_max_tree_size: tuple[int, int],
+    shape_modifier: float,
 ):
-    """Generate trees with a fixed schema that is unbalanced."""
+    """Generate trees with a fixed schema that is unbalanced. Control imbalance with shape_modifier."""
     labels = [i for i in range(1, distinct_labels + 1)]
     min_size, max_size = min_max_tree_size
+    trees = []
 
-    trees = list()
+    # Weights for choosing children in the tree, increasing to chained trees
+    children_choice_weight = [
+        1 - shape_modifier,  # First child
+        shape_modifier,  # Second child
+        shape_modifier + (shape_modifier / 2),  # Third child
+        shape_modifier * 2,  # Fourth child
+        shape_modifier * 2 + (shape_modifier / 2),  # Fifth child
+    ]
 
     for _ in range(tree_count):
-        # generate a random size for the tree
         size = random.randint(min_size, max_size)
-        # create root node with a random label
         root = TreeNode(random.choice(labels), 0, size=size)
         trees.append(root)
-        # create at most 3 random children
         tree_nodes_created = 1
+
+        current = root
         while tree_nodes_created < size:
-            # create 3 random children
-            c1 = TreeNode(random.choice(labels), 0, parent=root)
-            c2 = TreeNode(random.choice(labels), 0, parent=root)
-            c3 = TreeNode(random.choice(labels), 0, parent=root)
+            # Number of children is determined by shape_modifier
+            # Lower shape_modifier -> fewer children (more unbalanced/deep)
+            # Higher shape_modifier -> more children (less unbalanced/wider)
+            max_children = max(1, int(1 + 3 * shape_modifier))
+            num_children = random.randint(1, max_children)
+            children = [
+                TreeNode(random.choice(labels), 0, parent=current)
+                for _ in range(num_children)
+            ]
+            for child in children:
+                current.add_child(child)
+            tree_nodes_created += len(children)
+            # Pick the last child to continue the chain (makes it unbalanced)
+            [current] = random.choices(
+                children, children_choice_weight[: len(children)], k=1
+            )
+    for tree in sorted(trees, key=lambda t: t.get_size()):
+        print(tree)
 
-            if random.random() < 0.25:
-                # randomly add another child to some of the already created nodes
-                random_winner = random.choice([c1, c2])
-                random_winner.add_child(
-                    TreeNode(random.choice(labels), 0, parent=random_winner)
-                )
-                tree_nodes_created += 1
 
-            root.add_child(c1)
-            root.add_child(c2)
-            root.add_child(c3)
-            root = c3
-            tree_nodes_created += 3
+@cli.command("balanced-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+def balanced_tree(
+    tree_count: int, distinct_labels: int, min_max_tree_size: tuple[int, int]
+):
+    """Generate trees with a fixed schema that is balanced."""
+    labels = [i for i in range(1, distinct_labels + 1)]
+    min_size, max_size = min_max_tree_size
+    trees = []
+
+    def build_balanced_tree(size, label_idx=0, parent=None):
+        if size <= 0:
+            return None
+        node = TreeNode(labels[label_idx % len(labels)], 0, size=size, parent=parent)
+        if size == 1:
+            return node
+        # Calculate number of children (N) for perfect balance
+        # For simplicity, use 2 children (binary tree), but you can change N as needed
+        N = 3
+        child_size = (size - 1) // N
+        remainder = (size - 1) % N
+        for i in range(N):
+            cs = child_size + (1 if i < remainder else 0)
+            if cs > 0:
+                child = build_balanced_tree(cs, label_idx + i + 1, parent=node)
+                node.add_child(child)
+        return node
+
+    for _ in range(tree_count):
+        size = random.randint(min_size, max_size)
+        tree = build_balanced_tree(size)
+        trees.append(tree)
+
+    for tree in sorted(trees, key=lambda t: t.get_size()):
+        print(tree)
+
+
+@cli.command("binary-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+@click.option(
+    "-O",
+    "--option",
+    required=True,
+    type=str,
+    help="type: LeftBinary, ZigZag, FullBinary",
+)
+def binary_tree(
+    tree_count: int, distinct_labels: int, min_max_tree_size: tuple[int, int], option: str
+):
+    """Generate binary trees with a fixed schema."""
+    """Generate trees with a fixed schema that is balanced."""
+    labels = [i for i in range(1, distinct_labels + 1)]
+    min_size, max_size = min_max_tree_size
+    trees = []
+
+    def generate_full_binary_tree(depth, parent=None):
+        """Recursively generate a full binary tree of given depth."""
+        if depth == 0:
+            return None
+        node = TreeNode(random.choice(labels), 0, parent=parent)
+        if depth > 1:
+            left_child = generate_full_binary_tree(depth - 1, node)
+            right_child = generate_full_binary_tree(depth - 1, node)
+            node.add_child(left_child)
+            node.add_child(right_child)
+        return node
+
+    for _ in range(tree_count):
+        size = random.randint(min_size, max_size)
+        root = TreeNode(random.choice(labels), 0)
+        tree_size = 0
+
+        if option == "FullBinary":
+            max_depth = math.ceil(math.log2(size + 1))
+            trees.append(generate_full_binary_tree(max_depth))
+            continue
+
+        current = root
+        while tree_size + 1 < size:
+            # Choose a random node to add a child to
+            c1 = TreeNode(random.choice(labels), 0, parent=current)
+            c2 = TreeNode(random.choice(labels), 0, parent=current)
+            current.add_child(c1)
+            current.add_child(c2)
+            tree_size += 2
+            match option:
+                case "LeftBinary":
+                    current = c1  # Always go left
+                case "ZigZag":
+                    # alternate between left and right
+                    current = c1 if tree_size % 4 == 0 else c2
+        trees.append(root)
 
     for tree in sorted(trees, key=lambda t: t.get_size()):
         print(tree)
