@@ -420,33 +420,35 @@ def cli():
     callback=validate_min_max_tree_size,
 )
 @click.option(
-    "-S",
-    "--shape_modifier",
+    "-P",
+    "--probability_factor",
     required=False,
     type=float,
-    default=0.2,
-    help="Imbalance factor: lower for more unbalanced, higher for less unbalanced (0 < S < 1)",
+    default=0,
+    help="Probability factor of each child having additional 3 children",
     callback=validate_shape_modifier,
 )
 def unbalanced_tree(
     tree_count: int,
     distinct_labels: int,
     min_max_tree_size: tuple[int, int],
-    shape_modifier: float,
+    probability_factor: float = 0.0,
+    # shape_modifier: float,
 ):
     """Generate trees with a fixed schema that is unbalanced. Control imbalance with shape_modifier."""
+    Nchildren = 3
     labels = [i for i in range(1, distinct_labels + 1)]
     min_size, max_size = min_max_tree_size
     trees = []
 
     # Weights for choosing children in the tree, increasing to chained trees
-    children_choice_weight = [
-        1 - shape_modifier,  # First child
-        shape_modifier,  # Second child
-        shape_modifier + (shape_modifier / 2),  # Third child
-        shape_modifier * 2,  # Fourth child
-        shape_modifier * 2 + (shape_modifier / 2),  # Fifth child
-    ]
+    # children_choice_weight = [
+    #     1 - shape_modifier,  # First child
+    #     shape_modifier,  # Second child
+    #     shape_modifier + (shape_modifier / 2),  # Third child
+    #     shape_modifier * 2,  # Fourth child
+    #     shape_modifier * 2 + (shape_modifier / 2),  # Fifth child
+    # ]
 
     for _ in range(tree_count):
         size = random.randint(min_size, max_size)
@@ -459,7 +461,8 @@ def unbalanced_tree(
             # Number of children is determined by shape_modifier
             # Lower shape_modifier -> fewer children (more unbalanced/deep)
             # Higher shape_modifier -> more children (less unbalanced/wider)
-            max_children = max(1, int(1 + 3 * shape_modifier))
+            # max_children = max(1, int(1 + 3 * shape_modifier))
+            max_children = Nchildren
             num_children = random.randint(1, max_children)
             children = [
                 TreeNode(random.choice(labels), 0, parent=current)
@@ -467,11 +470,19 @@ def unbalanced_tree(
             ]
             for child in children:
                 current.add_child(child)
+
+            for c in children[:-1]:
+                if random.random() < probability_factor:
+                    # add 3 more children to this child
+                    for _ in range(Nchildren):
+                        new_child = TreeNode(random.choice(labels), 0, parent=c)
+                        c.add_child(new_child)
+                        tree_nodes_created += 1
+            
+                
             tree_nodes_created += len(children)
             # Pick the last child to continue the chain (makes it unbalanced)
-            [current] = random.choices(
-                children, children_choice_weight[: len(children)], k=1
-            )
+            current = children[-1]
     for tree in sorted(trees, key=lambda t: t.get_size()):
         print(tree)
 
@@ -510,7 +521,7 @@ def balanced_tree(
     def build_balanced_tree(size, label_idx=0, parent=None):
         if size <= 0:
             return None
-        node = TreeNode(labels[label_idx % len(labels)], 0, size=size, parent=parent)
+        node = TreeNode(random.choice(labels), 0, size=size, parent=parent)
         if size == 1:
             return node
         # Calculate number of children (N) for perfect balance
