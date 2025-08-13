@@ -420,33 +420,23 @@ def cli():
     callback=validate_min_max_tree_size,
 )
 @click.option(
-    "-S",
-    "--shape_modifier",
+    "-P",
+    "--probability",
     required=False,
     type=float,
-    default=0.2,
-    help="Imbalance factor: lower for more unbalanced, higher for less unbalanced (0 < S < 1)",
-    callback=validate_shape_modifier,
+    default=0,
+    help="Probability of children having the another children",
 )
 def unbalanced_tree(
     tree_count: int,
     distinct_labels: int,
     min_max_tree_size: tuple[int, int],
-    shape_modifier: float,
+    probability: float,
 ):
     """Generate trees with a fixed schema that is unbalanced. Control imbalance with shape_modifier."""
     labels = [i for i in range(1, distinct_labels + 1)]
     min_size, max_size = min_max_tree_size
     trees = []
-
-    # Weights for choosing children in the tree, increasing to chained trees
-    children_choice_weight = [
-        1 - shape_modifier,  # First child
-        shape_modifier,  # Second child
-        shape_modifier + (shape_modifier / 2),  # Third child
-        shape_modifier * 2,  # Fourth child
-        shape_modifier * 2 + (shape_modifier / 2),  # Fifth child
-    ]
 
     for _ in range(tree_count):
         size = random.randint(min_size, max_size)
@@ -455,23 +445,42 @@ def unbalanced_tree(
         tree_nodes_created = 1
 
         current = root
+        level = 1
+        num_children = 3
+
+        # tree_label_set = set([root.label])
         while tree_nodes_created < size:
             # Number of children is determined by shape_modifier
             # Lower shape_modifier -> fewer children (more unbalanced/deep)
             # Higher shape_modifier -> more children (less unbalanced/wider)
-            max_children = max(1, int(1 + 3 * shape_modifier))
-            num_children = random.randint(1, max_children)
-            children = [
-                TreeNode(random.choice(labels), 0, parent=current)
-                for _ in range(num_children)
-            ]
+            children: list[TreeNode] = list()
+            for _ in range(num_children):
+                # if same_labels is 4, then for 4 levels I want the middle child to have the same label
+                label = random.choice(labels)
+
+                # while label in tree_label_set:
+                # label = (
+                #     random.choice(labels)
+                # )
+                # tree_label_set.add(label)
+
+                c = TreeNode(label, 0, parent=current)
+                children.append(c)
             for child in children:
                 current.add_child(child)
+
+            for c in children[:-1]:
+                if tree_nodes_created > size:
+                    break
+                if random.random() < probability:
+                    for _ in range(num_children):
+                        c.add_child(TreeNode(random.choice(labels), 0, parent=c))
+                        tree_nodes_created += 1
+
             tree_nodes_created += len(children)
             # Pick the last child to continue the chain (makes it unbalanced)
-            [current] = random.choices(
-                children, children_choice_weight[: len(children)], k=1
-            )
+            current = children[-1]
+            level += 1
     for tree in sorted(trees, key=lambda t: t.get_size()):
         print(tree)
 
@@ -565,7 +574,10 @@ def balanced_tree(
     help="type: LeftBinary, ZigZag, FullBinary",
 )
 def binary_tree(
-    tree_count: int, distinct_labels: int, min_max_tree_size: tuple[int, int], option: str
+    tree_count: int,
+    distinct_labels: int,
+    min_max_tree_size: tuple[int, int],
+    option: str,
 ):
     """Generate binary trees with a fixed schema."""
     """Generate trees with a fixed schema that is balanced."""
