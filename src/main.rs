@@ -93,19 +93,19 @@ fn main() -> Result<(), anyhow::Error> {
                 .map(|tree| SEDIndex::index_tree(tree, &label_dict))
                 .map(|index| {
                     format!(
-                        "{pre}\n{post}",
+                        "{pre}",
                         pre = index
                             .preorder
                             .iter()
                             .map(|x| x.to_string())
                             .collect::<Vec<_>>()
                             .join(";"),
-                        post = index
-                            .postorder
-                            .iter()
-                            .map(|x| x.to_string())
-                            .collect::<Vec<_>>()
-                            .join(";")
+                        // post = index
+                        //     .postorder
+                        //     .iter()
+                        //     .map(|x| x.to_string())
+                        //     .collect::<Vec<_>>()
+                        //     .join(";")
                     )
                 })
                 .collect::<Vec<_>>();

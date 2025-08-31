@@ -39,7 +39,7 @@ def pick_queries(datasets: list[str]):
         single_percent_len = math.ceil(total_trees / 100)
         if single_percent_len <= 10:
             min_results = single_percent_len - 2
-            max_results = single_percent_len + 2
+            max_results = single_percent_len * 2
         elif single_percent_len <= 100:
             min_results = single_percent_len - (single_percent_len / 2)
             max_results = single_percent_len + (single_percent_len / 2)
@@ -47,7 +47,7 @@ def pick_queries(datasets: list[str]):
             min_results = single_percent_len - (single_percent_len / 4)
             max_results = single_percent_len + (single_percent_len / 4)
 
-        print("Min results: ", min_results, "Max results: ", max_results)
+        print("Min results: ", min_results, "Max results: ", max_results, 'single_percent_len', single_percent_len)
 
         # Now I have tree_ids of the most frequent trees by their tree size
         # Now pick 100 random trees as queries by having 1% selectivity
@@ -64,7 +64,6 @@ def pick_queries(datasets: list[str]):
         pickable_tids = set([tid for tid in trees.keys()])
         # print("Pickable tids: ", pickable_tids)
         print("Max distance: ", mx)
-        print("Min results: ", min_results, "Max results: ", max_results)
 
         for tau in range(1, mx + 1):
 

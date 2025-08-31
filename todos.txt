@@ -40,3 +40,18 @@ jestli by se tim nedal SED trochu vylepsit, hlavne co se tyce precision
 
 - Reversed postorder pruchod - pruchod stromem zdola a zprava zaroven, tak abychom mohli skutecne pouzit
 ancestor a preceding
+
+
+
+
+# srpen
+
+3 datove kolekce - vyvazeny, nevyvazeny a silne nevyvazeny strom - generovat pomoci max. poctu editaci transformacemi stromu
+
+
+
+hypoteza:
+SED nezabira ve chvili kdy je hodne ruznych labelu a struktura se meni => precision zacina klesat
+Pokud je pouze jeden z těchto parametrů variabilní - tak 
+
+Zkusit ovlivnit kdy zabirá SED - ovlivnit presnost hlavne SED na kolekcich - pokud se to podaří, přesnost SEDStruct by neměla výrazně klesat.
