@@ -901,8 +901,8 @@ def fanout_tree(
     # generate a base tree to use as a template
     base_tree = generate_fanout_tree(random.randint(min_size, max_size), labels, fanout, labels_adj)
     
-    for _ in range(tree_count // 2):
-        trees.append(generate_fanout_tree(random.randint(min_size, max_size), labels, fanout, labels_adj))
+    # for _ in range(tree_count // 2):
+    #     trees.append(generate_fanout_tree(random.randint(min_size, max_size), labels, fanout, labels_adj))
     # for _ in range(tree_count - 1):
     #     size = random.randint(min_size, max_size)
     #     tree = generate_fanout_tree(size, labels, fanout, labels_adj)
@@ -917,12 +917,12 @@ def fanout_tree(
     # 4. Subtree Prune and Re-attach - Randomly select a small subtree and reattach it at a different position
     
     
-    # while len(trees) < tree_count:
-    for base_tree in trees[:tree_count // 2]:
+    while len(trees) < tree_count:
+    # for base_tree in trees[:tree_count // 2]:
         # copy the base tree and make some random edits
         new_tree = copy.deepcopy(base_tree)
         # get the number of edits to make
-        num_edits = random.randint(5, max_size // 2)
+        num_edits = random.randint(3, max_size // 4)
         all_nodes = new_tree.get_all_nodes()
         # remove root node from the list of nodes to edit
         all_nodes.remove(new_tree)
@@ -984,9 +984,15 @@ def fanout_tree(
                 case 'subtree-move':
                     # TODO: Ensure we don't create cycles or invalid structures - the trees are actually reduced
                     node_to_edit = random.choice(all_nodes)
+                    all_subtree_nodes = node_to_edit.get_all_nodes()
+                    all_subtree_nodes.append(node_to_edit.parent)
+                    new_possible_parents = [n for n in all_nodes if n not in all_subtree_nodes]
                     # move a subtree to a different position
-                    while len(node_to_edit.children) < 1:
+                    while len(node_to_edit.children) < 1 or not new_possible_parents:
                         node_to_edit = random.choice(all_nodes)
+                        all_subtree_nodes = node_to_edit.get_all_nodes()
+                        all_subtree_nodes.append(node_to_edit.parent)
+                        new_possible_parents = [n for n in all_nodes if n not in all_subtree_nodes]
                         if tries > 10:
                             break
                     if tries > 10:
@@ -995,8 +1001,10 @@ def fanout_tree(
                     # the current node_to_edit is the one to move
                     # remove the current subtree from its parent
                     node_to_edit.parent.children.remove(node_to_edit)
-                    # select a new parent for the subtree
-                    new_parent = random.choice([n for n in all_nodes if n != node_to_edit.parent])
+                    # select a new parent for the subtree from parent and siblings nodes
+
+                    
+                    new_parent = random.choice(new_possible_parents)
                     new_parent.add_child(node_to_edit)
                     node_to_edit.parent = new_parent
                 case "swap":
