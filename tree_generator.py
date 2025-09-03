@@ -936,8 +936,7 @@ def fanout_tree(
             # To preserve fanout, we primarily change labels.
             # For structural changes, we swap nodes or subtrees.
             # [op] = random.choices(["label", "swap"], weights=[2, 1])
-            # op = random.choice(['delete-leaf', 'insert-leaf', 'sibling-swap', 'subtree-move'])
-            op = random.choice(['subtree-move'])
+            op = random.choice(['delete-leaf', 'insert-leaf', 'sibling-swap', 'subtree-move', 'label'])
             
             match op:
                 case "label":

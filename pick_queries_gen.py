@@ -68,13 +68,15 @@ def pick_queries(datasets: list[str]):
         for tau in range(1, mx + 1):
 
             g = df.filter((df["K"] < tau)).group_by("T1").agg(pl.len().alias("cnt"))
+            print("Tau = ", tau, " usable = ", g.shape[0], g.head(5))
+            
             g = g.filter(
                 (g["cnt"] >= min_results)
                 & (g["cnt"] < max_results)
                 & (g["T1"].is_in(pickable_tids))
             )
 
-            print("Tau = ", tau, " usable = ", g.shape[0], g.head(5))
+            # print("Tau = ", tau, " usable = ", g.shape[0], g.head(5))
             for tid in g["T1"].shuffle():
                 if tid not in qs:
                     qs[tid] = tau
