@@ -472,6 +472,13 @@ fn write_files(
         &stats.iter().map(|s| s.degree_stddev).collect::<Vec<_>>(),
     )?;
 
+        write_file(
+        [&out, &PathBuf::from("tree_leafs.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats.iter().map(|s| s.leaf_count).collect::<Vec<_>>(),
+    )?;
+
     Ok(())
 }
 

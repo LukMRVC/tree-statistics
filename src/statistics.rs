@@ -25,6 +25,8 @@ pub struct TreeStatistics {
     pub sacking_index: usize,
     /// Node degree variance
     pub degree_stddev: f64,
+    /// Tree leafs
+    pub leaf_count: usize,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -93,6 +95,8 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         *children == 0
     }
 
+    let mut leaf_count = 0;
+
     for nid in root_id.descendants(tree) {
         let n = tree.get(nid).unwrap();
         let mut degree = nid.children(tree).count();
@@ -111,6 +115,7 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
 
         if is_leaf(&degree) {
             depths.push(node_stack.len());
+            leaf_count += 1;
         } else {
             node_stack.push(nid);
         }
@@ -136,6 +141,7 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         collection_unique_labels: unique_labels,
         sacking_index,
         degree_stddev,
+        leaf_count,
     }
 }
 
