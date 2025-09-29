@@ -55,3 +55,16 @@ SED nezabira ve chvili kdy je hodne ruznych labelu a struktura se meni => precis
 Pokud je pouze jeden z těchto parametrů variabilní - tak 
 
 Zkusit ovlivnit kdy zabirá SED - ovlivnit presnost hlavne SED na kolekcich - pokud se to podaří, přesnost SEDStruct by neměla výrazně klesat.
+
+
+Připravit repozitář experimentů kde budou podstatné části implementace a experimentů:
+
+Datasety + Dotazy + Generátor stromů + Výběr dotazů
+Přiložit notebook pro vykreslení výsledků s postupem.
+
+Dodělat porovnání s BiB
+
+
+
+Vytáhnout procento průměru a medián listových uzlů v datasetech.
+

@@ -997,8 +997,6 @@ mod tests {
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
         let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
 
-        dbg!(&qs);
-        dbg!(&ts);
 
         assert_eq!(
             qs.preorder,
