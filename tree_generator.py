@@ -1078,5 +1078,290 @@ def fanout_tree(
         print(tree)
 
 
+
+@cli.command("fanout-percentage-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+@click.option(
+    "-F",
+    "--fanout",
+    required=True,
+    type=click.FloatRange(0.0, 1.0, clamp=True),
+    help="Fanout factor as percentage of leaf to total nodes. Close to 1.0 is bushy, close to 0.0 is skinny.",
+)
+@click.option(
+    "-E",
+    "--epsilon",
+    required=False,
+    type=float,
+    default=0.1,
+    help="Acceptable deviation from target fanout ratio.",
+)
+def fanout_percentage_tree(
+    tree_count: int,
+    distinct_labels: int,
+    min_max_tree_size: tuple[int, int],
+    fanout: float,
+    epsilon: float,
+):
+    """Generate random trees based on a fanout parameter."""
+    labels = list(range(1, distinct_labels + 1))
+    min_size, max_size = min_max_tree_size
+    trees = []
+    adj_sizes = 4 + np.random.exponential(scale=4, size=len(labels)).astype(int)
+
+    labels_adj = {
+        lbl: random.choices(labels, k=adj_sizes[i]) for i, lbl in enumerate(labels)
+    }
+
+    def get_leaf_to_total_ratio(tree: TreeNode) -> float:
+        all_nodes = tree.get_all_nodes()
+        leaf_nodes = [n for n in all_nodes if not n.children]
+        return len(leaf_nodes) / len(all_nodes)
+
+    # generate a base tree to use as a template
+    base_tree = generate_fanout_tree(
+        random.randint(min_size, max_size), labels, fanout, labels_adj
+    )
+    
+    while fanout + epsilon < get_leaf_to_total_ratio(base_tree) < fanout - epsilon:
+        base_tree = generate_fanout_tree(
+            random.randint(min_size, max_size), labels, fanout, labels_adj
+        )
+
+    # for _ in range(tree_count // 2):
+    #     trees.append(generate_fanout_tree(random.randint(min_size, max_size), labels, fanout, labels_adj))
+    # for _ in range(tree_count - 1):
+    #     size = random.randint(min_size, max_size)
+    #     tree = generate_fanout_tree(size, labels, fanout, labels_adj)
+    #     trees.append(tree)
+
+    # TODO: Adjust changes to preserve fanout and sizes
+
+    # TODO: Do a better set of edit operations
+    # 1. Delete a random leaf
+    # 2. Insert a new leaf at a random position
+    # 3. Siblings swap - a node that has at least 2 siblings - swap 2 siblings
+    # 4. Subtree Prune and Re-attach - Randomly select a small subtree and reattach it at a different position
+
+
+    
+
+
+    while len(trees) < tree_count:
+        # for base_tree in trees[:tree_count // 2]:
+        # copy the base tree and make some random edits
+        new_tree = copy.deepcopy(base_tree)
+        # get the number of edits to make
+        num_edits = random.randint(2, max_size // 5)
+        all_nodes = new_tree.get_all_nodes()
+        # remove root node from the list of nodes to edit
+        all_nodes.remove(new_tree)
+        for _ in range(num_edits):
+            if not all_nodes:
+                break
+
+            tries = 0
+            # To preserve fanout, we primarily change labels.
+            # For structural changes, we swap nodes or subtrees.
+            # [op] = random.choices(["label", "swap"], weights=[2, 1])
+            
+            # Lower fanout means more delete/insert leaf operations
+            leaf_weight = max(1, int(8 * (1 - fanout)))
+            other_weight = max(1, int(4 * fanout))
+            
+            op = random.choices(
+                ["delete-leaf", "insert-leaf", "sibling-swap", "subtree-move"],
+                weights=[leaf_weight, leaf_weight, other_weight, other_weight],
+            )
+
+            match op:
+                case "label":
+                    node_to_edit = random.choice(all_nodes)
+                    node_to_edit.label = random.choice(
+                        [l for l in labels if l != node_to_edit.label]
+                    )
+                case "delete-leaf":
+                    # get random leaf node to delete
+                    node_to_edit = random.choice(
+                        [n for n in all_nodes if not n.children]
+                    )
+                    # remove the node from its parent
+                    node_to_edit.parent.children.remove(node_to_edit)
+                    # remove the node from the list of all nodes
+                    all_nodes.remove(node_to_edit)
+                    # if new_tree.get_size() < min_size:
+                        # re-add the node if we went below min size
+                    # select random leaf, to which parent we will reattach the a new node
+                    rnd_leaf = random.choice(
+                        [n for n in all_nodes if not n.children]
+                    )
+                    new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
+                    rnd_leaf.add_child(new_node)
+                    all_nodes.append(new_node)
+                case "insert-leaf":
+                    # select random leaf, to which parent we will reattach the a new node
+                    rnd_leaf = random.choice([n for n in all_nodes if not n.children])
+                    new_node = TreeNode(
+                        random.choice(labels), -1, parent=rnd_leaf
+                    )
+                    rnd_leaf.add_child(new_node)
+                    all_nodes.append(new_node)
+                    if new_tree.get_size() > max_size:
+                        # remove a random leaf if we went above max size
+                        leaf_to_remove = random.choice(
+                            [n for n in all_nodes if not n.children and n != new_node]
+                        )
+                        leaf_to_remove.parent.children.remove(leaf_to_remove)
+                        all_nodes.remove(leaf_to_remove)
+                case "sibling-swap":
+                    node_to_edit = random.choice(all_nodes)
+                    while len(node_to_edit.children) < 2:
+                        node_to_edit = random.choice(all_nodes)
+                        tries += 1
+                        if tries > 10:
+                            break
+                    if tries > 10:
+                        num_edits += 1
+                        continue
+
+                    c1, c2 = random.sample(node_to_edit.children, 2)
+                    # swap positions in node_to_edit's children list
+                    idx1 = node_to_edit.children.index(c1)
+                    idx2 = node_to_edit.children.index(c2)
+                    node_to_edit.children[idx1], node_to_edit.children[idx2] = c2, c1
+
+                case "subtree-move":
+                    # TODO: Ensure we don't create cycles or invalid structures - the trees are actually reduced
+                    node_to_edit = random.choice(all_nodes)
+                    all_subtree_nodes = node_to_edit.get_all_nodes()
+                    all_subtree_nodes.append(node_to_edit.parent)
+                    new_possible_parents = [
+                        n for n in all_nodes if n not in all_subtree_nodes
+                    ]
+                    # move a subtree to a different position
+                    while len(node_to_edit.children) < 1 or not new_possible_parents:
+                        node_to_edit = random.choice(all_nodes)
+                        all_subtree_nodes = node_to_edit.get_all_nodes()
+                        all_subtree_nodes.append(node_to_edit.parent)
+                        new_possible_parents = [
+                            n for n in all_nodes if n not in all_subtree_nodes
+                        ]
+                        if tries > 10:
+                            break
+                    if tries > 10:
+                        num_edits += 1
+                        continue
+                    # the current node_to_edit is the one to move
+                    # remove the current subtree from its parent
+                    node_to_edit.parent.children.remove(node_to_edit)
+                    # select a new parent for the subtree from parent and siblings nodes
+
+                    new_parent = random.choice(new_possible_parents)
+                    new_parent.add_child(node_to_edit)
+                    node_to_edit.parent = new_parent
+                case "swap":
+                    # Swap two random non-root nodes
+                    if len(all_nodes) < 2:
+                        continue
+
+                    node1 = node_to_edit
+
+                    nodes_for_swap = all_nodes[:]
+                    nodes_for_swap.remove(node1)
+
+                    # Avoid swapping with a direct ancestor or descendant
+                    ancestors = set()
+                    p = node1.parent
+                    while p:
+                        ancestors.add(p)
+                        if p in nodes_for_swap:
+                            nodes_for_swap.remove(p)
+                        p = p.parent
+
+                    descendants = set(node1.get_all_nodes())
+                    descendants.remove(node1)
+                    for d in descendants:
+                        if d in nodes_for_swap:
+                            nodes_for_swap.remove(d)
+
+                    if not nodes_for_swap:
+                        continue
+
+                    node2 = random.choice(nodes_for_swap)
+
+                    # Swap parents
+                    p1, p2 = node1.parent, node2.parent
+                    if p1 and node1 in p1.children and p2 and node2 in p2.children:
+                        idx1 = p1.children.index(node1)
+                        idx2 = p2.children.index(node2)
+                        p1.children[idx1], p2.children[idx2] = node2, node1
+                        node1.parent, node2.parent = p2, p1
+
+        while fanout + epsilon < get_leaf_to_total_ratio(new_tree):
+            # the number of leaves is too we need to reduce leaf count
+            rnd_leaf = random.choice(
+                [n for n in all_nodes if not n.children]
+            )
+            attach_leaf = random.choice(
+                [n for n in all_nodes if n != rnd_leaf and not n.children]
+            )
+            rnd_leaf.parent.children.remove(rnd_leaf)
+            rnd_leaf.parent = attach_leaf
+            attach_leaf.add_child(rnd_leaf)
+            
+        while get_leaf_to_total_ratio(new_tree) < fanout - epsilon:
+            # the number of leaves is too few we need to increase leaf count
+            # by not inserting any new nodes but by change of structure
+            for i in range(0, 15):
+              nodes_seq = [n for n in all_nodes if not n.children and len(n.parent.children) >= i and len(n.parent.children) < i + 1 and n.parent.parent]
+              if not nodes_seq:
+                continue
+              random_leaf = random.choice(
+                nodes_seq
+              )
+              if random_leaf:
+                break
+              
+            old_parent = random_leaf.parent
+            # I have a leaf that has a parent and a grandparent so I can make the parent a leaf
+            # by reattaching all its children to the grandparent
+            new_parent = random_leaf.parent.parent
+            # remove all leaf parent's children from old parent and reattach to grandparent
+            for c in old_parent.children:
+                new_parent.add_child(c)
+                c.parent = new_parent
+            old_parent.children = []
+            
+        
+        trees.append(new_tree)
+
+    # for _ in range(tree_count):
+    #     trees.append(tree)
+
+    for tree in sorted(trees, key=lambda t: t.get_size()):
+        print(tree)
+
+
 if __name__ == "__main__":
     cli()
