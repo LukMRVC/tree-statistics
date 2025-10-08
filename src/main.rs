@@ -427,6 +427,12 @@ fn write_files(
             .collect::<Vec<&usize>>(),
     )?;
     write_file(
+        [&out, &PathBuf::from("avg_degrees.csv")]
+            .iter()
+            .collect::<PathBuf>(),
+        &stats.iter().map(|s| &s.avg_degree).collect::<Vec<_>>(),
+    )?;
+    write_file(
         [&out, &PathBuf::from("depths.csv")]
             .iter()
             .collect::<PathBuf>(),
@@ -472,7 +478,7 @@ fn write_files(
         &stats.iter().map(|s| s.degree_stddev).collect::<Vec<_>>(),
     )?;
 
-        write_file(
+    write_file(
         [&out, &PathBuf::from("tree_leafs.csv")]
             .iter()
             .collect::<PathBuf>(),

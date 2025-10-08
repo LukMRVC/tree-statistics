@@ -924,7 +924,7 @@ def fanout_tree(
         # copy the base tree and make some random edits
         new_tree = copy.deepcopy(base_tree)
         # get the number of edits to make
-        num_edits = random.randint(2, max_size // 5)
+        num_edits = random.randint(7, max_size // 5)
         all_nodes = new_tree.get_all_nodes()
         # remove root node from the list of nodes to edit
         all_nodes.remove(new_tree)
@@ -936,14 +936,14 @@ def fanout_tree(
             # To preserve fanout, we primarily change labels.
             # For structural changes, we swap nodes or subtrees.
             # [op] = random.choices(["label", "swap"], weights=[2, 1])
-            
+
             # Lower fanout means more delete/insert leaf operations
             leaf_weight = max(1, int(8 * (1 - fanout)))
             other_weight = max(1, int(4 * fanout))
-            
-            op = random.choices(
+
+            op = random.choice(
                 ["delete-leaf", "insert-leaf", "sibling-swap", "subtree-move"],
-                weights=[leaf_weight, leaf_weight, other_weight, other_weight],
+                # weights=[leaf_weight, leaf_weight, other_weight, other_weight],
             )
 
             match op:
@@ -961,21 +961,19 @@ def fanout_tree(
                     node_to_edit.parent.children.remove(node_to_edit)
                     # remove the node from the list of all nodes
                     all_nodes.remove(node_to_edit)
-                    # if new_tree.get_size() < min_size:
+                    if new_tree.get_size() < min_size:
                         # re-add the node if we went below min size
-                    # select random leaf, to which parent we will reattach the a new node
-                    rnd_leaf = random.choice(
-                        [n for n in all_nodes if not n.children]
-                    )
-                    new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
-                    rnd_leaf.add_child(new_node)
-                    all_nodes.append(new_node)
+                        # select random leaf, to which parent we will reattach the a new node
+                        rnd_leaf = random.choice(
+                            [n for n in all_nodes if not n.children]
+                        )
+                        new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
+                        rnd_leaf.add_child(new_node)
+                        all_nodes.append(new_node)
                 case "insert-leaf":
                     # select random leaf, to which parent we will reattach the a new node
                     rnd_leaf = random.choice([n for n in all_nodes if not n.children])
-                    new_node = TreeNode(
-                        random.choice(labels), -1, parent=rnd_leaf
-                    )
+                    new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
                     rnd_leaf.add_child(new_node)
                     all_nodes.append(new_node)
                     if new_tree.get_size() > max_size:
@@ -1078,7 +1076,6 @@ def fanout_tree(
         print(tree)
 
 
-
 @cli.command("fanout-percentage-tree")
 @click.option(
     "-T",
@@ -1143,7 +1140,7 @@ def fanout_percentage_tree(
     base_tree = generate_fanout_tree(
         random.randint(min_size, max_size), labels, fanout, labels_adj
     )
-    
+
     while fanout + epsilon < get_leaf_to_total_ratio(base_tree) < fanout - epsilon:
         base_tree = generate_fanout_tree(
             random.randint(min_size, max_size), labels, fanout, labels_adj
@@ -1164,10 +1161,6 @@ def fanout_percentage_tree(
     # 3. Siblings swap - a node that has at least 2 siblings - swap 2 siblings
     # 4. Subtree Prune and Re-attach - Randomly select a small subtree and reattach it at a different position
 
-
-    
-
-
     while len(trees) < tree_count:
         # for base_tree in trees[:tree_count // 2]:
         # copy the base tree and make some random edits
@@ -1185,11 +1178,11 @@ def fanout_percentage_tree(
             # To preserve fanout, we primarily change labels.
             # For structural changes, we swap nodes or subtrees.
             # [op] = random.choices(["label", "swap"], weights=[2, 1])
-            
+
             # Lower fanout means more delete/insert leaf operations
             leaf_weight = max(1, int(8 * (1 - fanout)))
             other_weight = max(1, int(4 * fanout))
-            
+
             op = random.choices(
                 ["delete-leaf", "insert-leaf", "sibling-swap", "subtree-move"],
                 weights=[leaf_weight, leaf_weight, other_weight, other_weight],
@@ -1211,20 +1204,16 @@ def fanout_percentage_tree(
                     # remove the node from the list of all nodes
                     all_nodes.remove(node_to_edit)
                     # if new_tree.get_size() < min_size:
-                        # re-add the node if we went below min size
+                    # re-add the node if we went below min size
                     # select random leaf, to which parent we will reattach the a new node
-                    rnd_leaf = random.choice(
-                        [n for n in all_nodes if not n.children]
-                    )
+                    rnd_leaf = random.choice([n for n in all_nodes if not n.children])
                     new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
                     rnd_leaf.add_child(new_node)
                     all_nodes.append(new_node)
                 case "insert-leaf":
                     # select random leaf, to which parent we will reattach the a new node
                     rnd_leaf = random.choice([n for n in all_nodes if not n.children])
-                    new_node = TreeNode(
-                        random.choice(labels), -1, parent=rnd_leaf
-                    )
+                    new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
                     rnd_leaf.add_child(new_node)
                     all_nodes.append(new_node)
                     if new_tree.get_size() > max_size:
@@ -1320,29 +1309,32 @@ def fanout_percentage_tree(
 
         while fanout + epsilon < get_leaf_to_total_ratio(new_tree):
             # the number of leaves is too we need to reduce leaf count
-            rnd_leaf = random.choice(
-                [n for n in all_nodes if not n.children]
-            )
+            rnd_leaf = random.choice([n for n in all_nodes if not n.children])
             attach_leaf = random.choice(
                 [n for n in all_nodes if n != rnd_leaf and not n.children]
             )
             rnd_leaf.parent.children.remove(rnd_leaf)
             rnd_leaf.parent = attach_leaf
             attach_leaf.add_child(rnd_leaf)
-            
+
         while get_leaf_to_total_ratio(new_tree) < fanout - epsilon:
             # the number of leaves is too few we need to increase leaf count
             # by not inserting any new nodes but by change of structure
             for i in range(0, 15):
-              nodes_seq = [n for n in all_nodes if not n.children and len(n.parent.children) >= i and len(n.parent.children) < i + 1 and n.parent.parent]
-              if not nodes_seq:
-                continue
-              random_leaf = random.choice(
-                nodes_seq
-              )
-              if random_leaf:
-                break
-              
+                nodes_seq = [
+                    n
+                    for n in all_nodes
+                    if not n.children
+                    and len(n.parent.children) >= i
+                    and len(n.parent.children) < i + 1
+                    and n.parent.parent
+                ]
+                if not nodes_seq:
+                    continue
+                random_leaf = random.choice(nodes_seq)
+                if random_leaf:
+                    break
+
             old_parent = random_leaf.parent
             # I have a leaf that has a parent and a grandparent so I can make the parent a leaf
             # by reattaching all its children to the grandparent
@@ -1352,8 +1344,7 @@ def fanout_percentage_tree(
                 new_parent.add_child(c)
                 c.parent = new_parent
             old_parent.children = []
-            
-        
+
         trees.append(new_tree)
 
     # for _ in range(tree_count):

@@ -27,6 +27,8 @@ pub struct TreeStatistics {
     pub degree_stddev: f64,
     /// Tree leafs
     pub leaf_count: usize,
+    /// avg node degree
+    pub avg_degree: f64,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -118,10 +120,8 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
             leaf_count += 1;
         } else {
             node_stack.push(nid);
+            degrees.push(degree);
         }
-
-        degree += if n.parent().is_some() { 1 } else { 0 };
-        degrees.push(degree);
     }
 
     let sacking_index = degrees.iter().sum();
@@ -132,6 +132,7 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         .sum::<f64>()
         / degrees.len() as f64;
     let degree_stddev = variance.sqrt();
+    let avg_degree = degrees.iter().sum::<usize>() as f64 / degrees.len() as f64;
 
     TreeStatistics {
         degrees,
@@ -142,6 +143,7 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         sacking_index,
         degree_stddev,
         leaf_count,
+        avg_degree: avg_degree,
     }
 }
 

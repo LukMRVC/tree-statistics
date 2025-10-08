@@ -47,7 +47,14 @@ def pick_queries(datasets: list[str]):
             min_results = single_percent_len - (single_percent_len / 4)
             max_results = single_percent_len + (single_percent_len / 4)
 
-        print("Min results: ", min_results, "Max results: ", max_results, 'single_percent_len', single_percent_len)
+        print(
+            "Min results: ",
+            min_results,
+            "Max results: ",
+            max_results,
+            "single_percent_len",
+            single_percent_len,
+        )
 
         # Now I have tree_ids of the most frequent trees by their tree size
         # Now pick 100 random trees as queries by having 1% selectivity
@@ -69,7 +76,7 @@ def pick_queries(datasets: list[str]):
 
             g = df.filter((df["K"] < tau)).group_by("T1").agg(pl.len().alias("cnt"))
             print("Tau = ", tau, " usable = ", g.shape[0], g.head(5))
-            
+
             g = g.filter(
                 (g["cnt"] >= min_results)
                 & (g["cnt"] < max_results)

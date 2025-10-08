@@ -131,6 +131,10 @@ pub fn parse_dataset(
             let mut ld = copy_ld.lock().unwrap();
             let mut max_node_id = ld.values().len() as LabelId;
             while let Ok(label) = receiver.recv() {
+                if label == r"}" || label == r"{" {
+                    continue;
+                }
+
                 ld.entry(label)
                     .and_modify(|(_, lblcnt)| *lblcnt += 1)
                     .or_insert_with(|| {
@@ -330,12 +334,12 @@ fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseE
 }
 
 fn parse_tree_tokens(
-    tree_bytes: String,
+    tree_line: String,
     sender_channel: Option<&mut Sender<String>>,
 ) -> Result<Vec<String>, TreeParseError> {
     use TreeParseError as TPE;
 
-    let tree_bytes = tree_bytes.as_bytes();
+    let tree_bytes = tree_line.as_bytes();
     let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
         .filter(|char_pos| !is_escaped(tree_bytes, *char_pos))
         .collect();
@@ -500,6 +504,17 @@ mod tests {
         });
 
         assert_eq!(values, vec![3, 2, 0, 0, 4]);
+    }
+
+    #[test]
+    fn test_parses_deep_tree() {
+        let input = "{1{5{1}{5{5{5{5}}}}{3{3{5}}}}{3{3{3}}{3{3{3{3{3}}}{5{3}}}}{3{1{3{5{1}}}}{3{3}}}}{5{2{1}}}}".to_owned();
+        let tokens = parse_tree_tokens(input, None);
+        assert!(tokens.is_ok());
+        let tokens = tokens.unwrap();
+        let mut ld = LabelDict::new();
+        update_label_dict(&[tokens.iter().map(|t| t.as_str()).collect()], &mut ld);
+        assert!(ld.get(r"}").is_none());
     }
 
     /*
