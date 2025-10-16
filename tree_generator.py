@@ -903,6 +903,7 @@ def fanout_tree(
     base_tree = generate_fanout_tree(
         random.randint(min_size, max_size), labels, fanout, labels_adj
     )
+    print("Base tree generated", file=sys.stderr)
 
     # for _ in range(tree_count // 2):
     #     trees.append(generate_fanout_tree(random.randint(min_size, max_size), labels, fanout, labels_adj))
@@ -924,7 +925,8 @@ def fanout_tree(
         # copy the base tree and make some random edits
         new_tree = copy.deepcopy(base_tree)
         # get the number of edits to make
-        num_edits = random.randint(7, max_size // 5)
+        num_edits = random.randint(2
+                                   , 5)
         all_nodes = new_tree.get_all_nodes()
         # remove root node from the list of nodes to edit
         all_nodes.remove(new_tree)
@@ -942,7 +944,8 @@ def fanout_tree(
             other_weight = max(1, int(4 * fanout))
 
             op = random.choice(
-                ["delete-leaf", "insert-leaf", "sibling-swap", "subtree-move"],
+                ["sibling-swap", "subtree-move"],
+                # ["delete-leaf", "insert-leaf", "sibling-swap", "subtree-move"],
                 # weights=[leaf_weight, leaf_weight, other_weight, other_weight],
             )
 
@@ -1074,6 +1077,250 @@ def fanout_tree(
 
     for tree in sorted(trees, key=lambda t: t.get_size()):
         print(tree)
+
+
+
+def generate_average_fanout_tree(
+    size: int,
+    labels: list[int],
+    avg_fanout: float,
+    labels_adj: dict[int, list[int]],
+    epsilon: float = 0.5,
+) -> TreeNode:
+    """
+    Generate a tree with a target average fanout (average number of children per internal node).
+
+    Args:
+      size: Total number of nodes in the tree
+      labels: List of possible node labels
+      avg_fanout: Target average fanout (children per internal node)
+      labels_adj: Dictionary mapping labels to their possible child labels
+      epsilon: Acceptable deviation from target average fanout
+
+    Returns:
+      TreeNode: Root of the generated tree
+    """
+    if size <= 0:
+        raise ValueError("Size must be positive")
+    if avg_fanout <= 0:
+        raise ValueError("Average fanout must be positive")
+
+    root = TreeNode(labels[0], 0, size)
+    nodes = [root]
+    nodes_to_expand = [root]
+    created_count = 1
+
+    while created_count < size and nodes_to_expand:
+        # Select parent to expand
+        parent = nodes_to_expand.pop(0)
+
+        # Calculate how many children to add
+        remaining = size - created_count
+        remaining_parents = len(nodes_to_expand) + 1
+
+        # Determine number of children based on avg_fanout with some randomness
+        if remaining_parents > 0:
+            target_children = max(
+                1,
+                int(
+                    avg_fanout
+                    + random.uniform(-epsilon * avg_fanout, epsilon * avg_fanout)
+                ),
+            )
+        else:
+            target_children = remaining
+
+        num_children = min(target_children, remaining)
+
+        # Add children
+        for _ in range(num_children):
+            if created_count >= size:
+                break
+
+            label = random.choice(labels_adj.get(parent.label, labels))
+            child = TreeNode(label, created_count, parent=parent)
+            parent.add_child(child)
+            nodes.append(child)
+            nodes_to_expand.append(child)
+            created_count += 1
+
+    return root
+
+
+def calculate_average_fanout(tree: TreeNode) -> float:
+    """Calculate the average fanout of a tree (avg children per internal node)."""
+    all_nodes = tree.get_all_nodes()
+    internal_nodes = [n for n in all_nodes if n.children]
+
+    if not internal_nodes:
+        return 0.0
+
+    total_children = sum(len(n.children) for n in internal_nodes)
+    return total_children / len(internal_nodes)
+
+
+@cli.command("average-fanout-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+@click.option(
+    "-F",
+    "--avg_fanout",
+    required=True,
+    type=float,
+    help="Target average fanout (average number of children per internal node)",
+)
+@click.option(
+    "-E",
+    "--epsilon",
+    required=False,
+    type=float,
+    default=0.5,
+    help="Acceptable deviation from target average fanout.",
+)
+def average_fanout_tree(
+    tree_count: int,
+    distinct_labels: int,
+    min_max_tree_size: tuple[int, int],
+    avg_fanout: float,
+    epsilon: float,
+):
+    """Generate random trees based on average fanout parameter."""
+    labels = list(range(1, distinct_labels + 1))
+    min_size, max_size = min_max_tree_size
+    trees = []
+
+    adj_sizes = 4 + np.random.exponential(scale=4, size=len(labels)).astype(int)
+    labels_adj = {
+        lbl: random.choices(labels, k=adj_sizes[i]) for i, lbl in enumerate(labels)
+    }
+
+    # Generate base tree
+    base_tree = generate_average_fanout_tree(
+        random.randint(min_size, max_size), labels, avg_fanout, labels_adj, epsilon
+    )
+
+    # Regenerate base tree if it doesn't meet fanout target
+    attempts = 0
+    while (
+        abs(calculate_average_fanout(base_tree) - avg_fanout) > epsilon
+        and attempts < 10
+    ):
+        base_tree = generate_average_fanout_tree(
+            random.randint(min_size, max_size), labels, avg_fanout, labels_adj, epsilon
+        )
+        attempts += 1
+
+    trees.append(base_tree)
+
+    # Generate variations
+    while len(trees) < tree_count:
+        new_tree = copy.deepcopy(base_tree)
+        num_edits = random.randint(3, max_size // 5)
+        all_nodes = new_tree.get_all_nodes()
+        all_nodes.remove(new_tree)  # Don't edit root
+
+        print(len(trees), file=sys.stderr)
+
+        for _ in range(num_edits):
+
+            op = random.choice(
+                ["sibling-swap", "subtree-move", "insert-leaf", "delete-leaf"]
+            )
+
+            if op == "label":
+                node = random.choice(all_nodes)
+                node.label = random.choice([l for l in labels if l != node.label])
+            elif op == "insert-leaf":
+                # select random leaf, to which parent we will reattach the a new node
+                leaves = [n for n in all_nodes if not n.children]
+                if not leaves:
+                    num_edits += 1
+                    continue
+
+                rnd_leaf = random.choice(leaves)
+                new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
+
+                rnd_leaf.add_child(new_node)
+                all_nodes.append(new_node)
+                if new_tree.get_size() > max_size:
+                    # remove a random leaf if we went above max size
+                    removable_leaves = [
+                        n for n in all_nodes if not n.children and n != new_node
+                    ]
+                    if not removable_leaves:
+                        num_edits += 1
+                        continue
+                    leaf_to_remove = random.choice(removable_leaves)
+                    leaf_to_remove.parent.children.remove(leaf_to_remove)
+                    all_nodes.remove(leaf_to_remove)
+            elif op == "delete-leaf":
+                # get random leaf node to delete
+                node_to_edit = random.choice([n for n in all_nodes if not n.children])
+                # remove the node from its parent
+                node_to_edit.parent.children.remove(node_to_edit)
+                # remove the node from the list of all nodes
+                all_nodes.remove(node_to_edit)
+                if new_tree.get_size() < min_size:
+                    # re-add the node if we went below min size
+                    # select random leaf, to which parent we will reattach the a new node
+                    rnd_leaf = random.choice([n for n in all_nodes if not n.children])
+                    new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
+                    rnd_leaf.add_child(new_node)
+                    all_nodes.append(new_node)
+            elif op == "sibling-swap":
+                nodes_with_siblings = [
+                    n for n in all_nodes if n.parent and len(n.parent.children) >= 2
+                ]
+                if nodes_with_siblings:
+                    node = random.choice(nodes_with_siblings)
+                    siblings = node.parent.children
+                    if len(siblings) >= 2:
+                        idx1, idx2 = random.sample(range(len(siblings)), 2)
+                        siblings[idx1], siblings[idx2] = siblings[idx2], siblings[idx1]
+            elif op == "subtree-move":
+                node_to_move = random.choice(all_nodes)
+                all_subtree_nodes = node_to_move.get_all_nodes()
+                all_subtree_nodes.append(node_to_move.parent)
+                new_possible_parents = [
+                    n for n in all_nodes if n not in all_subtree_nodes
+                ]
+                if new_possible_parents:
+                    # Remove from old parent
+                    node_to_move.parent.children.remove(node_to_move)
+                    # Attach to new parent
+                    new_parent = random.choice(new_possible_parents)
+                    new_parent.add_child(node_to_move)
+                    node_to_move.parent = new_parent
+
+        # Check if average fanout is still within acceptable range
+        new_avg_fanout = calculate_average_fanout(new_tree)
+        if abs(new_avg_fanout - avg_fanout) <= epsilon:
+            trees.append(new_tree)
+
+    for tree in sorted(trees, key=lambda t: t.get_size()):
+        print(tree)
+
+
 
 
 @cli.command("fanout-percentage-tree")

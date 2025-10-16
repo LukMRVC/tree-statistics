@@ -108,21 +108,21 @@ def pick_queries(datasets: list[str]):
         print("Total queries for ", dataset, ": ", len(qs))
         # write the queries to a file
 
-        for tid, tau in qs.items():
-            print("tree id", tid, "tau", tau, "treesize", trees[tid][1])
+        # for tid, tau in qs.items():
+        #     print("tree id", tid, "tau", tau, "treesize", trees[tid][1])
 
-        print("Chosen TID", qs.keys())
+        print("Chosen Queries", len(qs.keys()))
         with open(join(BASEPATH, dataset, "query.csv"), "w") as f:
             for tid, tau in qs.items():
                 # write the tree and tau
                 f.write(f"{tau};{trees[tid][0]}\n")
 
-        with open(join(BASEPATH, dataset, "queries_to_original_id_map.csv"), "w") as f:
-            f.write(f"qid;tid;{tau}\n")
+        # with open(join(BASEPATH, dataset, "queries_to_original_id_map.csv"), "w") as f:
+        #     f.write(f"qid;tid;{tau}\n")
 
-            for qid, (tid, tau) in enumerate(qs.items()):
-                # write the tree and tau
-                f.write(f"{qid};{tid};{tau}\n")
+        #     for qid, (tid, tau) in enumerate(qs.items()):
+        #         # write the tree and tau
+        #         f.write(f"{qid};{tid};{tau}\n")
 
 
 @click.command()
