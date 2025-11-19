@@ -160,7 +160,7 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     if post_dist > k {
         return post_dist;
     }
-    let pre_dist = bounded_string_edit_distance(&t1.reversed_preorder, &t2.reversed_preorder, k);
+    let pre_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -223,7 +223,7 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 
     let mut current_row = vec![-1i64; arr_len as usize];
     let mut next_row = vec![-1i64; arr_len as usize];
-    let mut i = 0;
+    let mut i: i64 = 0;
     let condition_row = size_diff + zero_k;
     let end_max = condition_row << 1;
 

@@ -41,7 +41,6 @@ class TreeNode:
         for child in self.children:
             ret += child.__repr__(level + 1)
         return ret + r"}"
-
     def __str__(self):
         return self.__repr__()
 
@@ -84,8 +83,7 @@ def generate_random_tree_from_base(
         # random_ops = random.randint(1, 2)
         random_ops = 1
         for _ in range(random_ops):
-            [op] = random.choices(["label", "append"], weights=[4, 1])
-            # [op] = random.choices(["label"], weights=[2])
+            [op] = random.choices(["label", "append"], weights=[2, 1])
             match op:
                 case "label":
                     tree.label = random.choice(labels)
@@ -899,6 +897,7 @@ def fanout_tree(
         lbl: random.choices(labels, k=adj_sizes[i]) for i, lbl in enumerate(labels)
     }
 
+
     # generate a base tree to use as a template
     base_tree = generate_fanout_tree(
         random.randint(min_size, max_size), labels, fanout, labels_adj
@@ -1157,6 +1156,251 @@ def calculate_average_fanout(tree: TreeNode) -> float:
 
     total_children = sum(len(n.children) for n in internal_nodes)
     return total_children / len(internal_nodes)
+
+
+def calculate_node_depth(node: TreeNode) -> int:
+    """Calculate the depth of a node from the root (root has depth 1)."""
+    depth = 1
+    current = node
+    while current.parent:
+        depth += 1
+        current = current.parent
+    return depth
+
+
+def calculate_weighted_branching_factor(tree: TreeNode) -> float:
+    """
+    Calculate the weighted branching factor of a tree.
+    Formula: sum(degree / depth²) / num_internal_nodes for all internal nodes.
+    Normalized by the number of internal nodes.
+    Shallow nodes contribute more weight than deep nodes.
+    """
+    all_nodes = tree.get_all_nodes()
+    internal_nodes = [n for n in all_nodes if n.children]
+
+    if not internal_nodes:
+        return 0.0
+
+    total_weighted_branching = 0.0
+    for node in internal_nodes:
+        degree = len(node.children)
+        depth = calculate_node_depth(node)
+        total_weighted_branching += degree / (depth ** 2)
+
+    return total_weighted_branching / len(internal_nodes)
+
+
+def generate_weighted_branching_tree(
+    size: int,
+    labels: list[int],
+    target_weighted_branching: float,
+    labels_adj: dict[int, list[int]],
+    epsilon: float = 0.5,
+    max_attempts: int = 100,
+) -> TreeNode:
+    """
+    Generate a tree with a target weighted branching factor.
+    
+    The weighted branching factor is: sum(degree / depth²) / num_internal_nodes.
+    This metric is normalized by the number of internal nodes and prioritizes 
+    wide, shallow trees over deep, narrow ones.
+    
+    Typical range: 0.1 - 3.0+
+    - Low values (0.1-0.3): Deep, chain-like trees
+    - Medium values (0.4-0.6): Balanced trees
+    - High values (0.7-1.5): Wide, shallow trees
+    - Very high values (1.5+): Extremely wide, very shallow trees
+    
+    Args:
+      size: Total number of nodes in the tree
+      labels: List of possible node labels
+      target_weighted_branching: Target weighted branching factor (typically 0.1-3.0)
+      labels_adj: Dictionary mapping labels to their possible child labels
+      epsilon: Acceptable deviation from target weighted branching factor
+      max_attempts: Maximum iterations to try to achieve target
+      
+    Returns:
+      TreeNode: Root of the generated tree
+    """
+    if size <= 0:
+        raise ValueError("Size must be positive")
+    if target_weighted_branching <= 0:
+        raise ValueError("Target weighted branching factor must be positive")
+
+    root = TreeNode(labels[0], 0, size)
+    nodes = [root]
+    nodes_to_expand = [root]
+    created_count = 1
+
+    # Determine generation strategy based on target (typical range 0.1-3.0+)
+    # High target means wide+shallow, low target means deep+linear
+    
+    # Build initial tree structure using BFS with controlled branching
+    while created_count < size and nodes_to_expand:
+        parent = nodes_to_expand.pop(0)
+        parent_depth = calculate_node_depth(parent)
+        
+        remaining = size - created_count
+        
+        # Calculate desired number of children for this node
+        # The contribution of this node to the metric will be: degree / depth²
+        # We want the average contribution across all internal nodes to equal target
+        
+        if parent_depth == 1:
+            # Root node: its contribution is degree/1² = degree
+            # Root heavily influences the final metric
+            if target_weighted_branching >= 1.5:
+                # Very high target (1.5+): extremely wide shallow tree
+                # Root needs very many children
+                num_children = min(remaining, random.randint(8, 15))
+            elif target_weighted_branching >= 0.7:
+                # High target (0.7-1.5): very wide shallow tree
+                # Root needs many children to boost metric
+                num_children = min(remaining, random.randint(5, 8))
+            elif target_weighted_branching >= 0.5:
+                # Medium-high target (0.5-0.7): moderately wide
+                num_children = min(remaining, random.randint(3, 5))
+            elif target_weighted_branching >= 0.3:
+                # Medium target (0.3-0.5): balanced
+                num_children = min(remaining, random.randint(2, 4))
+            else:
+                # Low target (0.1-0.3): deep narrow tree
+                num_children = min(remaining, random.randint(1, 3))
+        else:
+            # For deeper nodes, their contribution decreases with depth²
+            # Adjust branching based on depth and target
+            
+            if target_weighted_branching >= 1.5:
+                # Very high target: extremely shallow tree (depth ≤ 2)
+                if parent_depth >= 2:
+                    num_children = 0  # Stop expanding at depth 2
+                else:
+                    num_children = min(remaining, random.randint(4, 8))
+                    
+            elif target_weighted_branching >= 0.7:
+                # High target: keep tree very shallow (depth ≤ 2-3)
+                if parent_depth >= 3:
+                    num_children = 0  # Stop expanding at depth 3
+                elif parent_depth == 2:
+                    num_children = min(remaining, random.randint(1, 4))
+                else:
+                    num_children = min(remaining, random.randint(2, 5))
+                    
+            elif target_weighted_branching >= 0.5:
+                # Medium-high: moderate depth (depth ≤ 4-5)
+                if parent_depth >= 5:
+                    num_children = 0
+                elif parent_depth >= 3:
+                    num_children = min(remaining, random.randint(0, 2))
+                else:
+                    num_children = min(remaining, random.randint(1, 3))
+                    
+            elif target_weighted_branching >= 0.3:
+                # Medium: balanced branching
+                base = max(1, int(3.0 / parent_depth))
+                num_children = min(remaining, random.randint(max(0, base - 1), base + 1))
+                
+            else:
+                # Low target: create deep chains
+                # Mostly continue with single child (chain)
+                if random.random() < 0.6:
+                    num_children = min(remaining, 1)
+                else:
+                    num_children = min(remaining, random.randint(1, 2))
+        
+        # Add children
+        for _ in range(num_children):
+            if created_count >= size:
+                break
+
+            label = random.choice(labels_adj.get(parent.label, labels))
+            child = TreeNode(label, created_count, parent=parent)
+            parent.add_child(child)
+            nodes.append(child)
+            nodes_to_expand.append(child)
+            created_count += 1
+
+    # Fine-tune the tree to match target weighted branching factor
+    for attempt in range(max_attempts):
+        current_weighted_branching = calculate_weighted_branching_factor(root)
+        
+        if abs(current_weighted_branching - target_weighted_branching) <= epsilon:
+            break
+
+        all_nodes = root.get_all_nodes()
+        internal_nodes = [n for n in all_nodes if n.children and n != root]
+        
+        if not internal_nodes:
+            break
+
+        diff = current_weighted_branching - target_weighted_branching
+        
+        if diff < 0:
+            # Current metric too low - need to increase weighted branching
+            # Strategy: Move children from deep nodes to shallow nodes
+            # This increases the metric because shallow nodes have higher weight (1/depth²)
+            
+            # Find shallow nodes (depth 1-2) and deep nodes (depth 3+)
+            shallow_nodes = [n for n in internal_nodes if calculate_node_depth(n) <= 2]
+            deep_nodes = [n for n in internal_nodes if calculate_node_depth(n) >= 3 and len(n.children) > 1]
+            
+            if shallow_nodes and deep_nodes:
+                # Move a child from a deep node to a shallow node
+                donor_node = random.choice(deep_nodes)
+                target_node = random.choice(shallow_nodes)
+                
+                child_to_move = random.choice(donor_node.children)
+                donor_node.children.remove(child_to_move)
+                target_node.add_child(child_to_move)
+                child_to_move.parent = target_node
+            elif shallow_nodes:
+                # If no deep nodes, try to add depth to make room for redistribution
+                # Pick a leaf at shallow depth and make it internal
+                leaves_at_shallow = [n for n in all_nodes 
+                                    if not n.children 
+                                    and n.parent 
+                                    and calculate_node_depth(n) <= 2]
+                if leaves_at_shallow and len(internal_nodes) > 0:
+                    # Convert a leaf to internal by stealing a child from somewhere
+                    new_parent = random.choice(leaves_at_shallow)
+                    donor_candidates = [n for n in internal_nodes if len(n.children) > 2]
+                    if donor_candidates:
+                        donor = random.choice(donor_candidates)
+                        child = random.choice(donor.children)
+                        donor.children.remove(child)
+                        new_parent.add_child(child)
+                        child.parent = new_parent
+        else:
+            # Current metric too high - need to decrease weighted branching
+            # Strategy: Move children from shallow nodes to deeper nodes
+            # This decreases the metric because deep nodes have lower weight
+            
+            shallow_nodes = [n for n in internal_nodes if calculate_node_depth(n) <= 2 and len(n.children) > 1]
+            deep_nodes = [n for n in internal_nodes if calculate_node_depth(n) >= 3]
+            
+            if shallow_nodes and deep_nodes:
+                # Move a child from shallow to deep
+                donor_node = random.choice(shallow_nodes)
+                target_node = random.choice(deep_nodes)
+                
+                child_to_move = random.choice(donor_node.children)
+                donor_node.children.remove(child_to_move)
+                target_node.add_child(child_to_move)
+                child_to_move.parent = target_node
+            elif shallow_nodes:
+                # If no deep nodes exist, create depth by extending a chain
+                # Take a child from shallow node and move it to one of its own children
+                donor_node = random.choice(shallow_nodes)
+                if len(donor_node.children) > 1:
+                    children_with_children = [c for c in donor_node.children if c.children]
+                    if children_with_children:
+                        child_to_extend = random.choice(children_with_children)
+                        sibling = random.choice([c for c in donor_node.children if c != child_to_extend])
+                        donor_node.children.remove(sibling)
+                        child_to_extend.add_child(sibling)
+                        sibling.parent = child_to_extend
+
+    return root
 
 
 @cli.command("average-fanout-tree")
@@ -1593,6 +1837,261 @@ def fanout_percentage_tree(
             old_parent.children = []
 
         trees.append(new_tree)
+
+    # for _ in range(tree_count):
+    #     trees.append(tree)
+
+    for tree in sorted(trees, key=lambda t: t.get_size()):
+        print(tree)
+
+
+@cli.command("weighted-branching-tree")
+@click.option(
+    "-T",
+    "--tree_count",
+    required=True,
+    type=int,
+    help="Tree count in resulting dataset",
+)
+@click.option(
+    "-D",
+    "--distinct_labels",
+    required=True,
+    type=int,
+    help="Number of distinct labels in collection",
+)
+@click.option(
+    "-M",
+    "--min_max_tree_size",
+    required=True,
+    type=str,
+    help="Min and max tree size, delimited by comma",
+    callback=validate_min_max_tree_size,
+)
+@click.option(
+    "-F",
+    "--fanout",
+    required=True,
+    type=click.FloatRange(0.0, 1.0, clamp=True),
+    help="Fanout factor as percentage of leaf to total nodes. Close to 1.0 is bushy, close to 0.0 is skinny.",
+)
+@click.option(
+    "-W",
+    "--target_weighted_branching",
+    required=True,
+    type=float,
+    help="Target weighted branching factor: avg(degree/depth² for internal nodes)",
+)
+@click.option(
+    "-E",
+    "--epsilon",
+    required=False,
+    type=float,
+    default=0.1,
+    help="Acceptable deviation from target weighted branching factor.",
+)
+def weighted_branching_tree(
+    tree_count: int,
+    distinct_labels: int,
+    min_max_tree_size: tuple[int, int],
+    fanout: float,
+    target_weighted_branching: float,
+    epsilon: float,
+):
+    """Same as fanout generation, but it checks for weighted branching factor first."""
+    labels = list(range(1, distinct_labels + 1))
+    min_size, max_size = min_max_tree_size
+    trees = []
+    # adj_sizes = 4 + np.random.exponential(scale=4, size=len(labels)).astype(int)
+
+    # labels_adj = {
+    #     lbl: random.choices(labels, k=adj_sizes[i]) for i, lbl in enumerate(labels)
+    # }
+
+    labels_adj = {
+        lbl: labels for lbl in labels
+    }
+
+
+    # generate a base tree to use as a template
+    base_tree = generate_fanout_tree(
+        random.randint(min_size, max_size), labels, fanout, labels_adj
+    )
+    while abs(calculate_weighted_branching_factor(base_tree) - target_weighted_branching) > epsilon:
+        base_tree = generate_fanout_tree(
+            random.randint(min_size, max_size), labels, fanout, labels_adj
+        )
+        print("Regenerated base tree, the weighted_branching_factor was=", calculate_weighted_branching_factor(base_tree), file=sys.stderr)
+        
+    print("Base tree generated", file=sys.stderr)
+
+    # for _ in range(tree_count // 2):
+    #     trees.append(generate_fanout_tree(random.randint(min_size, max_size), labels, fanout, labels_adj))
+    # for _ in range(tree_count - 1):
+    #     size = random.randint(min_size, max_size)
+    #     tree = generate_fanout_tree(size, labels, fanout, labels_adj)
+    #     trees.append(tree)
+
+    # TODO: Adjust changes to preserve fanout and sizes
+
+    # TODO: Do a better set of edit operations
+    # 1. Delete a random leaf
+    # 2. Insert a new leaf at a random position
+    # 3. Siblings swap - a node that has at least 2 siblings - swap 2 siblings
+    # 4. Subtree Prune and Re-attach - Randomly select a small subtree and reattach it at a different position
+
+    while len(trees) < tree_count:
+        # for base_tree in trees[:tree_count // 2]:
+        # copy the base tree and make some random edits
+        new_tree = copy.deepcopy(base_tree)
+        # get the number of edits to make
+        num_edits = random.randint(4, 8)
+        all_nodes = new_tree.get_all_nodes()
+        # remove root node from the list of nodes to edit
+        all_nodes.remove(new_tree)
+        for _ in range(num_edits):
+            if not all_nodes:
+                break
+
+            tries = 0
+            # To preserve fanout, we primarily change labels.
+            # For structural changes, we swap nodes or subtrees.
+            # [op] = random.choices(["label", "swap"], weights=[2, 1])
+
+            # Lower fanout means more delete/insert leaf operations
+            leaf_weight = max(1, int(8 * (1 - fanout)))
+            other_weight = max(1, int(4 * fanout))
+
+            op = random.choice(
+                ["sibling-swap", "subtree-move"],
+                # ["delete-leaf", "insert-leaf", "sibling-swap", "subtree-move"],
+                # weights=[leaf_weight, leaf_weight, other_weight, other_weight],
+            )
+
+            match op:
+                case "label":
+                    node_to_edit = random.choice(all_nodes)
+                    node_to_edit.label = random.choice(
+                        [l for l in labels if l != node_to_edit.label]
+                    )
+                case "delete-leaf":
+                    # get random leaf node to delete
+                    node_to_edit = random.choice(
+                        [n for n in all_nodes if not n.children]
+                    )
+                    # remove the node from its parent
+                    node_to_edit.parent.children.remove(node_to_edit)
+                    # remove the node from the list of all nodes
+                    all_nodes.remove(node_to_edit)
+                    if new_tree.get_size() < min_size:
+                        # re-add the node if we went below min size
+                        # select random leaf, to which parent we will reattach the a new node
+                        rnd_leaf = random.choice(
+                            [n for n in all_nodes if not n.children]
+                        )
+                        new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
+                        rnd_leaf.add_child(new_node)
+                        all_nodes.append(new_node)
+                case "insert-leaf":
+                    # select random leaf, to which parent we will reattach the a new node
+                    rnd_leaf = random.choice([n for n in all_nodes if not n.children])
+                    new_node = TreeNode(random.choice(labels), -1, parent=rnd_leaf)
+                    rnd_leaf.add_child(new_node)
+                    all_nodes.append(new_node)
+                    if new_tree.get_size() > max_size:
+                        # remove a random leaf if we went above max size
+                        leaf_to_remove = random.choice(
+                            [n for n in all_nodes if not n.children and n != new_node]
+                        )
+                        leaf_to_remove.parent.children.remove(leaf_to_remove)
+                        all_nodes.remove(leaf_to_remove)
+                case "sibling-swap":
+                    node_to_edit = random.choice(all_nodes)
+                    while len(node_to_edit.children) < 2:
+                        node_to_edit = random.choice(all_nodes)
+                        tries += 1
+                        if tries > 10:
+                            break
+                    if tries > 10:
+                        num_edits += 1
+                        continue
+
+                    c1, c2 = random.sample(node_to_edit.children, 2)
+                    # swap positions in node_to_edit's children list
+                    idx1 = node_to_edit.children.index(c1)
+                    idx2 = node_to_edit.children.index(c2)
+                    node_to_edit.children[idx1], node_to_edit.children[idx2] = c2, c1
+
+                case "subtree-move":
+                    # TODO: Ensure we don't create cycles or invalid structures - the trees are actually reduced
+                    node_to_edit = random.choice(all_nodes)
+                    all_subtree_nodes = node_to_edit.get_all_nodes()
+                    all_subtree_nodes.append(node_to_edit.parent)
+                    new_possible_parents = [
+                        n for n in all_nodes if n not in all_subtree_nodes
+                    ]
+                    # move a subtree to a different position
+                    while len(node_to_edit.children) < 1 or not new_possible_parents:
+                        node_to_edit = random.choice(all_nodes)
+                        all_subtree_nodes = node_to_edit.get_all_nodes()
+                        all_subtree_nodes.append(node_to_edit.parent)
+                        new_possible_parents = [
+                            n for n in all_nodes if n not in all_subtree_nodes
+                        ]
+                        if tries > 10:
+                            break
+                    if tries > 10:
+                        num_edits += 1
+                        continue
+                    # the current node_to_edit is the one to move
+                    # remove the current subtree from its parent
+                    node_to_edit.parent.children.remove(node_to_edit)
+                    # select a new parent for the subtree from parent and siblings nodes
+
+                    new_parent = random.choice(new_possible_parents)
+                    new_parent.add_child(node_to_edit)
+                    node_to_edit.parent = new_parent
+                case "swap":
+                    # Swap two random non-root nodes
+                    if len(all_nodes) < 2:
+                        continue
+
+                    node1 = node_to_edit
+
+                    nodes_for_swap = all_nodes[:]
+                    nodes_for_swap.remove(node1)
+
+                    # Avoid swapping with a direct ancestor or descendant
+                    ancestors = set()
+                    p = node1.parent
+                    while p:
+                        ancestors.add(p)
+                        if p in nodes_for_swap:
+                            nodes_for_swap.remove(p)
+                        p = p.parent
+
+                    descendants = set(node1.get_all_nodes())
+                    descendants.remove(node1)
+                    for d in descendants:
+                        if d in nodes_for_swap:
+                            nodes_for_swap.remove(d)
+
+                    if not nodes_for_swap:
+                        continue
+
+                    node2 = random.choice(nodes_for_swap)
+
+                    # Swap parents
+                    p1, p2 = node1.parent, node2.parent
+                    if p1 and node1 in p1.children and p2 and node2 in p2.children:
+                        idx1 = p1.children.index(node1)
+                        idx2 = p2.children.index(node2)
+                        p1.children[idx1], p2.children[idx2] = node2, node1
+                        node1.parent, node2.parent = p2, p1
+
+        
+        if abs(calculate_weighted_branching_factor(new_tree) - target_weighted_branching) <= epsilon:
+          trees.append(new_tree)
 
     # for _ in range(tree_count):
     #     trees.append(tree)
