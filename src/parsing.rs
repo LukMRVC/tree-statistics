@@ -136,14 +136,9 @@ pub fn parse_dataset(
     }
 
     let reader = BufReader::new(File::open(dataset_file).unwrap());
-    // let tree_lines = reader
-    //     .lines()
-    //     .collect::<Result<Vec<String>, _>>()
-    //     .expect("Unable to read input file");
-    // println!("Consumed {} lines of trees", tree_lines.len());
 
-    // Parse tokens and update label dictionary concurrently
-    let collection_tree_tokens: Vec<Vec<String>> = reader
+    // Parse directly into trees - eliminates intermediate Vec<Vec<String>>
+    let mut trees: Vec<ParsedTree> = reader
         .lines()
         .par_bridge()
         .filter_map(|tree_line| {
@@ -152,38 +147,18 @@ pub fn parse_dataset(
                 return None;
             }
 
-            match parse_tree_tokens_concurrent(&tree_line, &scc_label_dict, &max_node_id) {
-                Ok(tokens) => Some(tokens),
-                Err(_) => None,
-            }
+            parse_tree_directly(&tree_line, &scc_label_dict, &max_node_id).ok()
         })
         .collect();
 
-    // Print memory usage after parsing tree tokens
-    // let memory_usage = collection_tree_tokens
-    //     .iter()
-    //     .map(|tokens| tokens.iter().map(|s| s.capacity()).sum::<usize>())
-    //     .sum::<usize>();
-    // println!("Memory used by tree tokens: {} bytes", memory_usage);
-
-    // println!(
-    //     "Parsed {} lines of tree tokens",
-    //     collection_tree_tokens.len()
-    // );
-
-    // Convert scc::HashMap to FxHashMap
+    // Convert scc::HashMap to FxHashMap using scan_sync
+    label_dict.clear();
     scc_label_dict.retain_sync(|label, (id, count)| {
         label_dict.insert(label.clone(), (*id, *count));
-        true
+        false
     });
 
-    // println!("Parsing tokens into trees");
-    let mut trees = collection_tree_tokens
-        .par_iter()
-        .filter_map(|tokens| parse_tree(tokens, label_dict).ok())
-        .collect::<Vec<_>>();
     trees.sort_by(|a, b| a.count().cmp(&b.count()));
-    // println!("Final number of trees: {}", trees.len());
 
     Ok(trees)
 }
@@ -390,12 +365,13 @@ fn parse_tree_tokens(
     Ok(str_tokens)
 }
 
-// New concurrent version without channel - updates scc::HashMap directly
-fn parse_tree_tokens_concurrent(
+// Fused parsing: tokenize and build tree directly without intermediate Vec<String>
+// Eliminates brace tokens entirely - only stores label IDs in the Arena
+fn parse_tree_directly(
     tree_line: &str,
     label_dict: &scc::HashMap<String, (LabelId, usize)>,
     max_node_id: &AtomicI32,
-) -> Result<Vec<String>, TreeParseError> {
+) -> Result<ParsedTree, TreeParseError> {
     use TreeParseError as TPE;
 
     let tree_bytes = tree_line.as_bytes();
@@ -409,7 +385,10 @@ fn parse_tree_tokens_concurrent(
         ));
     }
 
-    let mut str_tokens = vec![];
+    // Estimate tree size: roughly half of tokens are labels (the other half are braces)
+    let estimated_nodes = token_positions.len() / 2;
+    let mut tree_arena = ParsedTree::with_capacity(estimated_nodes);
+    let mut node_stack: Vec<NodeId> = Vec::with_capacity(32); // typical tree depth
     let mut parity_check = 0;
 
     let mut token_iterator = token_positions.iter().peekable();
@@ -418,48 +397,66 @@ fn parse_tree_tokens_concurrent(
         match tree_bytes[*token_pos] {
             TOKEN_START => {
                 braces_parity_check(&mut parity_check, 1)?;
-                unsafe {
-                    str_tokens.push(String::from_utf8_unchecked(
-                        tree_bytes[*token_pos..(token_pos + 1)].to_vec(),
-                    ));
-                }
+
                 let Some(token_end) = token_iterator.peek() else {
                     let err_msg = format!("Label has no ending token near col {token_pos}");
                     return Err(TPE::IncorrectFormat(err_msg));
                 };
-                let label = unsafe {
-                    String::from_utf8_unchecked(tree_bytes[(token_pos + 1)..**token_end].to_vec())
-                };
 
-                // Skip braces
-                if label != "{" && label != "}" {
-                    // Try to read existing entry first
-                    label_dict
-                        .entry_sync(label.clone())
-                        .and_modify(|(id, count)| {
-                            // Entry exists, use update_async to increment count
-                            (id, *count + 1);
-                        })
-                        .or_insert_with(|| {
-                            // Insert new entry
-                            let new_id = max_node_id.fetch_add(1, Ordering::Relaxed);
-                            (new_id, 1)
-                        });
+                // Extract label bytes without allocating String for braces
+                let label_bytes = &tree_bytes[(token_pos + 1)..**token_end];
+
+                // Skip empty labels or escaped braces that result in brace-only labels
+                if label_bytes.is_empty() || label_bytes == b"{" || label_bytes == b"}" {
+                    continue;
                 }
 
-                str_tokens.push(label);
+                // Convert to string only for the label lookup/insert
+                let label = unsafe { String::from_utf8_unchecked(label_bytes.to_vec()) };
+
+                // Get or insert label ID from concurrent hashmap
+                let label_id = {
+                    let entry = label_dict.entry_sync(label);
+                    match entry {
+                        scc::hash_map::Entry::Occupied(mut occ) => {
+                            let (id, count) = occ.get_mut();
+                            *count += 1;
+                            *id
+                        }
+                        scc::hash_map::Entry::Vacant(vac) => {
+                            let new_id = max_node_id.fetch_add(1, Ordering::Relaxed) + 1;
+                            vac.insert_entry((new_id, 1));
+                            new_id
+                        }
+                    }
+                };
+
+                // Create node and append to tree
+                let node = tree_arena.new_node(label_id);
+                if let Some(parent) = node_stack.last() {
+                    parent.append(node, &mut tree_arena);
+                } else if tree_arena.count() > 1 {
+                    return Err(TPE::IncorrectFormat(
+                        "Multiple root nodes detected".to_owned(),
+                    ));
+                }
+                node_stack.push(node);
             }
             TOKEN_END => {
                 braces_parity_check(&mut parity_check, -1)?;
-                let label = unsafe {
-                    String::from_utf8_unchecked(tree_bytes[*token_pos..(token_pos + 1)].to_vec())
-                };
-                str_tokens.push(label);
+                if node_stack.pop().is_none() {
+                    return Err(TPE::IncorrectFormat("Wrong bracket pairing".to_owned()));
+                }
             }
             _ => return Err(TPE::TokenizerError),
         }
     }
-    Ok(str_tokens)
+
+    if parity_check != 0 {
+        return Err(TPE::IncorrectFormat("Unbalanced brackets".to_owned()));
+    }
+
+    Ok(tree_arena)
 }
 
 #[cfg(test)]
