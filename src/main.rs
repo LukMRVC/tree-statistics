@@ -1,4 +1,5 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
+use crate::lb::binary_branch::{self, ted as bib_ted, ted_l1 as bib_l1, BinaryBranchConverter};
 use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
@@ -9,6 +10,7 @@ use itertools::Itertools;
 use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
 use lb::sed::{sed_k, sed_struct_k};
+
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use parsing::get_frequency_ordering;
 use rand::seq::index;
@@ -147,7 +149,13 @@ fn main() -> Result<(), anyhow::Error> {
             let ordering = get_frequency_ordering(&label_dict);
 
             let queries = parsing::parse_queries(&query_file, &mut label_dict).unwrap();
-            let lbms: [LBM; 4] = [LBM::Lblint, LBM::Sed, LBM::Structural, LBM::SEDStruct];
+            let lbms: [LBM; 5] = [
+                LBM::Lblint,
+                LBM::Sed,
+                LBM::Structural,
+                LBM::Bib,
+                LBM::SEDStruct,
+            ];
             // let label_dict = dbg!(label_dict);
 
             for current_method in lbms.iter().filter(|method| {
@@ -180,8 +188,7 @@ fn main() -> Result<(), anyhow::Error> {
                             (candidates, elapsed_run) = lb::iterate_queries!(
                                 lblint_queries,
                                 lblint_indexes,
-                                label_intersection_k,
-                                size_map
+                                label_intersection_k
                             );
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
@@ -203,7 +210,7 @@ fn main() -> Result<(), anyhow::Error> {
                         for _ in 0..runs {
                             let elapsed_run: Duration;
                             (candidates, elapsed_run) =
-                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k, size_map);
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k);
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
                         (candidates, elapsed)
@@ -223,12 +230,8 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut elapsed: Duration = Duration::MAX;
                         for _ in 0..runs {
                             let elapsed_run: Duration;
-                            (candidates, elapsed_run) = lb::iterate_queries!(
-                                sed_queries,
-                                sed_indexes,
-                                sed_struct_k,
-                                size_map
-                            );
+                            (candidates, elapsed_run) =
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_struct_k);
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
                         (candidates, elapsed)
@@ -252,6 +255,38 @@ fn main() -> Result<(), anyhow::Error> {
                             );
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
+                        (candidates, elapsed)
+                    }
+                    LBM::Bib => {
+                        let mut lbm_converter = BinaryBranchConverter::default();
+                        let bib_indexes = lbm_converter.create(&trees);
+
+                        let bib_queries = queries
+                            .iter()
+                            .map(|(t, q)| (*t, lbm_converter.create_single(q)))
+                            .collect_vec();
+
+                        let mut candidates = vec![];
+                        let mut elapsed = Duration::MAX;
+                        for _ in 0..runs {
+                            let elapsed_run;
+                            (candidates, elapsed_run) = {
+                                let __start_time = std::time::Instant::now();
+                                let mut candidates = vec![];
+                                for (qid, (t, query)) in bib_queries.iter().enumerate() {
+                                    let t5 = *t * 5;
+                                    for (tid, tree) in bib_indexes.iter().enumerate() {
+                                        if bib_ted(query, tree, *t) <= t5 {
+                                            candidates.push((qid, tid));
+                                        }
+                                    }
+                                }
+
+                                (candidates, __start_time.elapsed())
+                            };
+                            elapsed = std::cmp::min(elapsed, elapsed_run)
+                        }
+
                         (candidates, elapsed)
                     }
                     _ => todo!(),

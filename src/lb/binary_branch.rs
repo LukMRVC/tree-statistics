@@ -36,6 +36,16 @@ impl BinaryBranchConverter {
             .collect_vec()
     }
 
+    pub fn create_single(&mut self, tree: &ParsedTree) -> BinaryBranchTuple {
+        let Some(root) = tree.iter().next() else {
+            panic!("tree is empty");
+        };
+        let root_id = tree.get_node_id(root).unwrap();
+        let mut branch_vector = BinaryBranchVector::default();
+        self.create_vector(&root_id, tree, None, &mut branch_vector);
+        BinaryBranchTuple(tree.count(), branch_vector)
+    }
+
     fn create_vector(
         &mut self,
         root_id: &NodeId,
@@ -93,7 +103,50 @@ pub fn ted(t1: &BinaryBranchTuple, t2: &BinaryBranchTuple, k: usize) -> usize {
         intersection_size += min(*t2postings, *postings) as usize;
     }
 
-    // l1_diff / 5
-    ((t1s + t2s) - (2 * intersection_size)) / 5
-    // ((t1s + t2s) - (l1_diff)) / 5
+    ((t1s + t2s) - (2 * intersection_size))
+}
+
+pub fn ted_l1(t1: &BinaryBranchTuple, t2: &BinaryBranchTuple, k: usize) -> usize {
+    let (t1s, t2s) = (t1.0, t2.0);
+    if t1s.abs_diff(t2s) > k {
+        return k + 1;
+    }
+    let mut bib_dist = 0i32;
+
+    for (label, postings) in t1.1.iter() {
+        let t2postings = t2.1.get(label).unwrap_or(&0);
+        bib_dist += (postings - t2postings).abs();
+    }
+
+    for (label, postings) in t2.1.iter() {
+        if !t1.1.contains_key(label) {
+            bib_dist += *postings;
+        }
+    }
+
+    bib_dist as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parsing::{parse_dataset, parse_queries, parse_single, parse_tree, LabelDict};
+    #[test]
+    fn test_binary_branch_converter() {
+        let mut lb_dict = LabelDict::default();
+
+        let a = parse_single("{a{b{c}{d}}{b{c}{d}}{e}}".to_owned(), &mut lb_dict);
+        let b = parse_single("{a{b{c}{d}{b{e}}}{c}{d}{e}}".to_owned(), &mut lb_dict);
+        let mut converter = BinaryBranchConverter::default();
+        let a = converter.create_single(&a);
+        let b = converter.create_single(&b);
+
+        let sym_dist = ted(&a, &b, usize::MAX);
+        assert!(sym_dist <= 15, "Distance is less than 15");
+        let dist_l1 = ted_l1(&a, &b, usize::MAX);
+        assert!(dist_l1 <= 15, "Distance is less than 15");
+        assert_eq!(sym_dist, dist_l1, "Distances are equal");
+
+        // Further assertions can be added here to verify the contents of bb_tuples
+    }
 }
