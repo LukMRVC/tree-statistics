@@ -1,9 +1,10 @@
-use crossbeam_channel::Sender;
+// use crossbeam_channel::Sender; // Removed: no longer using crossbeam channel
 // use gxhash::{HashMap, HashMapExt};
 use indextree::{Arena, NodeEdge, NodeId};
 use itertools::Itertools;
 use memchr::memchr2_iter;
 use rayon::prelude::*;
+use rustc_hash::FxHashMap;
 use serde::de;
 use std::collections::HashMap;
 use std::fs::File;
@@ -12,6 +13,7 @@ use std::io::{BufRead, BufReader};
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::string::String;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
@@ -25,7 +27,7 @@ pub enum DatasetParseError {
 
 pub type LabelId = i32;
 
-pub type LabelDict = HashMap<String, (LabelId, usize)>;
+pub type LabelDict = FxHashMap<String, (LabelId, usize)>;
 
 // the index is the labelId, and the value on that index is the frequency of it
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -123,62 +125,64 @@ pub fn parse_dataset(
     dataset_file: &impl AsRef<Path>,
     label_dict: &mut LabelDict,
 ) -> Result<Vec<ParsedTree>, DatasetParseError> {
-    let (sender, receiver) = crossbeam_channel::unbounded::<String>();
-    let ld = Arc::new(Mutex::new(label_dict));
-    let copy_ld = Arc::clone(&ld);
-    let collection_tree_tokens = std::thread::scope(|s| {
-        s.spawn(move || {
-            let mut ld = copy_ld.lock().unwrap();
-            let mut max_node_id = ld.values().len() as LabelId;
-            while let Ok(label) = receiver.recv() {
-                if label == r"}" || label == r"{" {
-                    continue;
-                }
+    // Use scc::HashMap for lock-free concurrent label dictionary during parsing
+    let scc_label_dict = scc::HashMap::new();
 
-                ld.entry(label)
-                    .and_modify(|(_, lblcnt)| *lblcnt += 1)
-                    .or_insert_with(|| {
-                        max_node_id += 1;
-                        (max_node_id, 1)
-                    });
+    // Initialize scc::HashMap with existing label_dict entries and find max ID
+    let max_node_id = AtomicI32::new(label_dict.values().map(|(id, _)| *id).max().unwrap_or(0));
+
+    for (label, (id, count)) in label_dict.iter() {
+        let _ = scc_label_dict.insert_sync(label.clone(), (*id, *count));
+    }
+
+    let reader = BufReader::new(File::open(dataset_file).unwrap());
+    // let tree_lines = reader
+    //     .lines()
+    //     .collect::<Result<Vec<String>, _>>()
+    //     .expect("Unable to read input file");
+    // println!("Consumed {} lines of trees", tree_lines.len());
+
+    // Parse tokens and update label dictionary concurrently
+    let collection_tree_tokens: Vec<Vec<String>> = reader
+        .lines()
+        .par_bridge()
+        .filter_map(|tree_line| {
+            let tree_line = tree_line.expect("line reading failed!");
+            if !tree_line.is_ascii() {
+                return None;
             }
-        });
 
-        let reader = BufReader::new(File::open(dataset_file).unwrap());
-        let tree_lines = reader
-            .lines()
-            .collect::<Result<Vec<String>, _>>()
-            .expect("Unable to read input file");
-        // println!("Consumed {} lines of trees", tree_lines.len());
+            match parse_tree_tokens_concurrent(&tree_line, &scc_label_dict, &max_node_id) {
+                Ok(tokens) => Some(tokens),
+                Err(_) => None,
+            }
+        })
+        .collect();
 
-        tree_lines
-            .into_par_iter()
-            .enumerate()
-            .map_with(sender, |s, (_, tree_line)| {
-                if !tree_line.is_ascii() {
-                    return Err(TreeParseError::IsNotAscii);
-                }
-                parse_tree_tokens(tree_line, Some(s))
-            })
-            .filter(Result::is_ok)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap()
-    });
+    // Print memory usage after parsing tree tokens
+    // let memory_usage = collection_tree_tokens
+    //     .iter()
+    //     .map(|tokens| tokens.iter().map(|s| s.capacity()).sum::<usize>())
+    //     .sum::<usize>();
+    // println!("Memory used by tree tokens: {} bytes", memory_usage);
 
     // println!(
     //     "Parsed {} lines of tree tokens",
     //     collection_tree_tokens.len()
     // );
+
+    // Convert scc::HashMap to FxHashMap
+    scc_label_dict.retain_sync(|label, (id, count)| {
+        label_dict.insert(label.clone(), (*id, *count));
+        true
+    });
+
     // println!("Parsing tokens into trees");
-    let label_dict = Arc::try_unwrap(ld)
-        .expect("Arc has references")
-        .into_inner()
-        .unwrap();
-    let trees = collection_tree_tokens
+    let mut trees = collection_tree_tokens
         .par_iter()
-        .map(|tokens| parse_tree(tokens, label_dict))
-        .filter(Result::is_ok)
-        .collect::<Result<Vec<_>, _>>()?;
+        .filter_map(|tokens| parse_tree(tokens, label_dict).ok())
+        .collect::<Vec<_>>();
+    trees.sort_by(|a, b| a.count().cmp(&b.count()));
     // println!("Final number of trees: {}", trees.len());
 
     Ok(trees)
@@ -268,7 +272,7 @@ pub fn update_label_dict(tokens_collection: &[Vec<&str>], ld: &mut LabelDict) {
 }
 
 pub fn parse_tree(tokens: &[String], ld: &LabelDict) -> Result<ParsedTree, TreeParseError> {
-    let mut tree_arena = ParsedTree::with_capacity(tokens.len() / 2);
+    let mut tree_arena = ParsedTree::with_capacity(tokens.len() / 4);
     let mut node_stack: Vec<NodeId> = vec![];
 
     for t in tokens.iter().skip(1) {
@@ -335,7 +339,7 @@ fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseE
 
 fn parse_tree_tokens(
     tree_line: String,
-    sender_channel: Option<&mut Sender<String>>,
+    _sender_channel: Option<&mut ()>, // Deprecated parameter, kept for compatibility
 ) -> Result<Vec<String>, TreeParseError> {
     use TreeParseError as TPE;
 
@@ -371,20 +375,86 @@ fn parse_tree_tokens(
                 let label = unsafe {
                     String::from_utf8_unchecked(tree_bytes[(token_pos + 1)..**token_end].to_vec())
                 };
-                str_tokens.push(label.clone());
-                if let Some(ref s) = sender_channel {
-                    s.send(label).expect("Failed sending label");
-                }
+                str_tokens.push(label);
             }
             TOKEN_END => {
                 braces_parity_check(&mut parity_check, -1)?;
                 let label = unsafe {
                     String::from_utf8_unchecked(tree_bytes[*token_pos..(token_pos + 1)].to_vec())
                 };
-                str_tokens.push(label.clone());
-                if let Some(ref s) = sender_channel {
-                    s.send(label).expect("Failed sending label");
+                str_tokens.push(label);
+            }
+            _ => return Err(TPE::TokenizerError),
+        }
+    }
+    Ok(str_tokens)
+}
+
+// New concurrent version without channel - updates scc::HashMap directly
+fn parse_tree_tokens_concurrent(
+    tree_line: &str,
+    label_dict: &scc::HashMap<String, (LabelId, usize)>,
+    max_node_id: &AtomicI32,
+) -> Result<Vec<String>, TreeParseError> {
+    use TreeParseError as TPE;
+
+    let tree_bytes = tree_line.as_bytes();
+    let token_positions: Vec<usize> = memchr2_iter(TOKEN_START, TOKEN_END, tree_bytes)
+        .filter(|char_pos| !is_escaped(tree_bytes, *char_pos))
+        .collect();
+
+    if token_positions.len() < 2 {
+        return Err(TPE::IncorrectFormat(
+            "Minimal of 2 brackets not found!".to_owned(),
+        ));
+    }
+
+    let mut str_tokens = vec![];
+    let mut parity_check = 0;
+
+    let mut token_iterator = token_positions.iter().peekable();
+
+    while let Some(token_pos) = token_iterator.next() {
+        match tree_bytes[*token_pos] {
+            TOKEN_START => {
+                braces_parity_check(&mut parity_check, 1)?;
+                unsafe {
+                    str_tokens.push(String::from_utf8_unchecked(
+                        tree_bytes[*token_pos..(token_pos + 1)].to_vec(),
+                    ));
                 }
+                let Some(token_end) = token_iterator.peek() else {
+                    let err_msg = format!("Label has no ending token near col {token_pos}");
+                    return Err(TPE::IncorrectFormat(err_msg));
+                };
+                let label = unsafe {
+                    String::from_utf8_unchecked(tree_bytes[(token_pos + 1)..**token_end].to_vec())
+                };
+
+                // Skip braces
+                if label != "{" && label != "}" {
+                    // Try to read existing entry first
+                    label_dict
+                        .entry_sync(label.clone())
+                        .and_modify(|(id, count)| {
+                            // Entry exists, use update_async to increment count
+                            (id, *count + 1);
+                        })
+                        .or_insert_with(|| {
+                            // Insert new entry
+                            let new_id = max_node_id.fetch_add(1, Ordering::Relaxed);
+                            (new_id, 1)
+                        });
+                }
+
+                str_tokens.push(label);
+            }
+            TOKEN_END => {
+                braces_parity_check(&mut parity_check, -1)?;
+                let label = unsafe {
+                    String::from_utf8_unchecked(tree_bytes[*token_pos..(token_pos + 1)].to_vec())
+                };
+                str_tokens.push(label);
             }
             _ => return Err(TPE::TokenizerError),
         }
@@ -444,7 +514,7 @@ mod tests {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
         let tokens = parse_tree_tokens(input, None);
         let tokens = tokens.unwrap();
-        let ld = LabelDict::from([
+        let ld = LabelDict::from_iter([
             ("einsteinstrasse".to_owned(), (1, 1)),
             ("1".to_owned(), (2, 1)),
             ("3".to_owned(), (3, 1)),
@@ -473,7 +543,7 @@ mod tests {
         let token_col = vec![tokens, tokens2];
         // update_label_dict(&token_col, &mut ld);
 
-        let tld = LabelDict::from([
+        let tld = LabelDict::from_iter([
             ("einsteinstrasse".to_owned(), (1, 1)),
             ("1".to_owned(), (2, 1)),
             ("3".to_owned(), (3, 2)),
@@ -485,12 +555,12 @@ mod tests {
 
     #[test]
     fn test_frequency_ordering_build() {
-        let ld: LabelDict = LabelDict::from([
-            ("A".to_owned(), (0, 5)),
-            ("B".to_owned(), (1, 2)),
-            ("C".to_owned(), (2, 3)),
-            ("D".to_owned(), (3, 1)),
-            ("F".to_owned(), (4, 5)),
+        let ld: LabelDict = LabelDict::from_iter([
+            ("A".to_string(), (0i32, 5usize)),
+            ("B".to_string(), (1i32, 2usize)),
+            ("C".to_string(), (2i32, 3usize)),
+            ("D".to_string(), (3i32, 1usize)),
+            ("F".to_string(), (4i32, 5usize)),
         ]);
 
         let freq_ordering = get_frequency_ordering(&ld);
@@ -512,7 +582,7 @@ mod tests {
         let tokens = parse_tree_tokens(input, None);
         assert!(tokens.is_ok());
         let tokens = tokens.unwrap();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         update_label_dict(&[tokens.iter().map(|t| t.as_str()).collect()], &mut ld);
         assert!(ld.get(r"}").is_none());
     }

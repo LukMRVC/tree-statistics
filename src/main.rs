@@ -42,6 +42,7 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .exit();
     }
+    let parsing_time = Instant::now();
     let mut label_dict = LabelDict::default();
     let trees = match parsing::parse_dataset(&cli.dataset_path, &mut label_dict) {
         Ok(trees) => trees,
@@ -50,6 +51,7 @@ fn main() -> Result<(), anyhow::Error> {
             exit(1);
         }
     };
+    let parsing_duration = parsing_time.elapsed();
 
     for ((idx, tree), (idxnext, treenext)) in trees.iter().enumerate().tuple_windows() {
         if tree.count() > treenext.count() {
@@ -59,7 +61,11 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     if !cli.quiet {
-        println!("Parsed {} trees", trees.len());
+        println!(
+            "Parsed {} trees in {}ms",
+            trees.len(),
+            parsing_duration.as_millis()
+        );
     }
 
     match cli.command {

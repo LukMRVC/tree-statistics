@@ -49,15 +49,15 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let pre_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
-    if pre_dist > k {
-        return pre_dist;
-    }
-    let post_dist = bounded_string_edit_distance_with_structure(
+    let pre_dist = bounded_string_edit_distance_with_structure(
         &t1.reversed_preorder,
         &t2.reversed_preorder,
         k,
     );
+    if pre_dist > k {
+        return pre_dist;
+    }
+    let post_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -991,7 +991,7 @@ mod tests {
     fn test_sed_preorder_structure() {
         let t1str = "{a{a{b{a{a}}}}}".to_owned();
         let t2str = "{a{b{b{b}}{a{a}}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qt = parse_single(t1str, &mut ld);
         let tt = parse_single(t2str, &mut ld);
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
@@ -1101,7 +1101,7 @@ mod tests {
         let qstr = "{4{3{2 A}{3{2{3 rare}{2 and}}{3{2 lightly}{4 entertaining}}}}{3{2{2 look}{2{2 behind}{2{2{2 the}{2 curtain}}{2{2 that}{3{2{2 separates}{2 comics}}{3{2 from}{3{2{2 the}{2 people}}{3{4 laughing}{2{2 in}{2{2 the}{2 crowd}}}}}}}}}}}}}".to_owned();
         let tstr = "{3{2 Rehearsals}{2{2{2{2 are}{2 frequently}}{3{2 more}{3{3 fascinating}{2{2 than}{2{2 the}{2 results}}}}}}{2 .}}}"
             .to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
         dbg!(tree_to_string(&qt, TreeOutput::BracketNotation));
@@ -1127,7 +1127,7 @@ mod tests {
 
     #[test]
     fn test_bounded_is_worse_than_normal() {
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qstr = "{a{b}{a{a}}}".to_owned();
         let tstr = "{b{b{a}}}".to_owned();
         let qt = parse_single(qstr, &mut ld);
@@ -1146,7 +1146,7 @@ mod tests {
 
     #[test]
     fn test_bounded_unbalanced_tree() {
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         // 15
         let qstr =
             "{4143{4335}{1291{265}}{2630{1481}{3285}{1220{3926}{2331{26}}{4656{4119}{1492}{2612}}}}}"
@@ -1172,7 +1172,7 @@ mod tests {
     fn test_sed_struct_correctness() {
         let qstr = "{a{a{a}{a}}{a{a}}}".to_owned();
         let tstr = "{a{a}{a{a}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
@@ -1245,7 +1245,7 @@ mod tests {
     fn test_sed_struct_correctness_2() {
         let qstr = "{a{b}{a{a}}}".to_owned();
         let tstr = "{a{a{a}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
@@ -1259,7 +1259,7 @@ mod tests {
     fn test_sed_struct_correctness_real_data() {
         let qstr = "{S{S{NPSBJ{NNP{Mr.}}{NNP{Coleman}}}{VP{VBD{said}}{NPTMP{DT{this}}{NN{week}}}{SBAR{IN{that}}{S{NPSBJ{PRP{he}}}{VP{MD{would}}{VP{VB{devote}}{NP{NP{DT{the}}{NN{remainder}}}{PP{IN{of}}{NP{DT{the}}{JJ{political}}{NN{season}}}}}{PPCLR{TO{to}}{NP{JJ{positive}}{NN{campaigning}}}}}}}}}}{Interpunction{,}}{CC{but}}{S{NPSBJ{DT{the}}{NN{truce}}}{VP{VBD{lasted}}{NP{RB{only}}{NNS{hours}}}}}{Interpunction{.}}}".to_owned();
         let tstr = "{S{NPSBJ{NP{VBG{Continuing}}{NN{demand}}}{PP{IN{for}}{NP{NNS{dollars}}}}{PP{IN{from}}{NP{JJ{Japanese}}{NNS{investors}}}}}{VP{VBD{boosted}}{NP{DT{the}}{NNP{U.S.}}{NN{currency}}}}{Interpunction{.}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
@@ -1276,7 +1276,7 @@ mod tests {
     fn test_sed_string_structure_corectness() {
         let qstr = "{a{a{a{a}}}}".to_owned();
         let tstr = "{a{a}{a}{a}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let qt = parse_single(qstr, &mut ld);
         let tt = parse_single(tstr, &mut ld);
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
