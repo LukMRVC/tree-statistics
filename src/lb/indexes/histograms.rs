@@ -359,14 +359,12 @@ fn traverse_tree(
 
 #[cfg(test)]
 mod tests {
-    
-    
 
     /*
     #[test]
     fn test_histogram_traversals() {
         let tree_str = "{a{b{c}{d{c}}{b}}{f{g}{x}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let pt = parse_tree(Ok(tree_str), &mut ld).unwrap();
 
         let (leaf, degree, label) = create_tree_histograms(&pt);

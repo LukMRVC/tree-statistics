@@ -762,7 +762,7 @@ mod tests {
     #[test]
     fn test_label_set_converting() {
         let t1input = "{a{b{b{a}}{a}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_single(t1input, &mut label_dict);
         let mut sc = LabelSetConverter::default();
         let set_tuple = sc.create_single(&t1);
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn test_label_set_converting_2() {
         let t1input = "{a{b{a}{b{a}}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_single(t1input, &mut label_dict);
         let mut sc = LabelSetConverter::default();
         let set_tuple = sc.create_single(&t1);
@@ -838,7 +838,7 @@ mod tests {
     fn test_axes_set_converting() {
         let t1input = "{1{1}{2{2}{1}{3}}}".to_owned();
         let t2input = "{1{1{1}{2}{1}}{3}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
@@ -852,7 +852,7 @@ mod tests {
     fn test_set_converting() {
         let t1input = "{a{b}{a{b}{c}{a}}{b}}".to_owned();
         let t2input = "{a{c}{b{a{a}{b}{c}}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
@@ -926,7 +926,7 @@ mod tests {
     fn test_struct_ted() {
         let t1input = "{a{b}{a{b}{c}{a}}{b}}".to_owned();
         let t2input = "{a{c}{b{a{a}{b}{c}}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
@@ -944,7 +944,7 @@ mod tests {
     fn test_struct_ted_variant_simple() {
         let t1input = "{a{b}{a{a{b}{a}{b}}}{b}}".to_owned();
         let t2input = "{a{c}{b{a{a}{b}{b}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
@@ -961,7 +961,7 @@ mod tests {
     // fn test_struct_ted_variant_simple_2() {
     //     let t1input = "{0{1}}".to_owned();
     //     let t2input = "{62{5}{20}{28{17{1}{5}{20}}}{13{17}{42}}}".to_owned();
-    //     let mut label_dict = LabelDict::new();
+    //     let mut label_dict = LabelDict::default();
     //     let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
     //     let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
     //     let v = vec![t1, t2];
@@ -998,7 +998,7 @@ mod tests {
         let t1input = "{20{20{20{1203}{1204}}{20{460}{20{465}{1205}}}}{24}}".to_owned();
         let t2input = "{0{0{0{118}{0{1456}{251}}}{20{460}{20{537}{1457}}}}{2}}".to_owned();
         let t3input = "{20{142}{20{20{375}{376}}{2}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let t3 = parse_tree(Ok(t3input), &mut label_dict).unwrap();
@@ -1017,7 +1017,7 @@ mod tests {
     fn test_struct_ted_variant_2() {
         let t1input = "{9{20{20{673}{161}}{20{211}{100}}}{13}}".to_owned();
         let t2input = "{0{0{0{106}{9{888}{889}}}{20{460}{353}}}{2}} ".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
@@ -1032,7 +1032,7 @@ mod tests {
     fn test_struct_ted_variant_3() {
         let t1input = "{0{0{517}{20{472}{20{518}{519}}}}{24}}".to_owned();
         let t2input = "{0{0{15}{9{271}{9{9{890}{55}}{98}}}}{2}} ".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];
@@ -1047,7 +1047,7 @@ mod tests {
     fn test_struct_ted_variant_4() {
         let t1input = "{0{74}{0{75}{2}}}".to_owned();
         let t2input = "{0{0{9{891}{892}}{20{591}{624}}}{20{591}{893}}} ".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let t1 = parse_tree(Ok(t1input), &mut label_dict).unwrap();
         let t2 = parse_tree(Ok(t2input), &mut label_dict).unwrap();
         let v = vec![t1, t2];

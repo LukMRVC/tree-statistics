@@ -273,7 +273,7 @@ mod tests {
     fn test_pre_and_preorder() {
         use crate::parsing::parse_tree;
         let tree_str = "{1{2{3}{4}}{5{6}}{7{8}{9}}}".to_owned();
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let parsed_tree = parse_single(tree_str, &mut label_dict);
 
         let sed_index = SEDIndex::index_tree(&parsed_tree, &label_dict);
@@ -292,7 +292,7 @@ mod tests {
         x -> 4
         y -> 5
          */
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let tree = parse_single(tree_str, &mut label_dict);
         let idx = InvertedListLabelPostorderIndex::index_tree(&tree, &label_dict);
 
@@ -322,7 +322,7 @@ mod tests {
         b -> 2
         c -> 3
          */
-        let mut label_dict = LabelDict::new();
+        let mut label_dict = LabelDict::default();
         let tree = parse_single(tree_str, &mut label_dict);
         let idx = SEDIndexWithStructure::index_tree(&tree, &label_dict);
         assert_eq!(

@@ -306,7 +306,7 @@ fn braces_parity_check(parity: &mut i32, addorsub: i32) -> Result<(), TreeParseE
     *parity += addorsub;
     if *parity < 0 {
         return Err(TreeParseError::IncorrectFormat(
-            "Parity of brces does not match".to_owned(),
+            "Parity of braces does not match".to_owned(),
         ));
     }
     Ok(())
@@ -472,6 +472,13 @@ mod tests {
     }
 
     #[test]
+    fn parsing_should_fail_on_incorrect_brackets() {
+        let input = r#"{entry{created{1997-11-01}}{dataset{Swiss-Prot}}{modified{2023-02-22}}{version{57}}{xmlns{http://uniprot.org/uniprot}}{accession{Q50834}}{name{MFNF_METVA}}{protein{recommendedName{fullName{evidence{1}}{(4-\\}{4-[2-(gamma-L-glutamylamino)ethyl]phenoxymethyl\\}}furan-2-yl)methanamine synthase}}{ecNumber{evidence{1}}{2.5.1.131}}}{alternativeName{fullName{evidence{1}}{4-[[4-(2-aminoethyl)phenoxy]-methyl]-2-furanmethanamine-glutamate synthase}}{shortName{evidence{1}}{APMF-Glu synthase}}}}{gene{name{evidence{1}}{type{primary}}{mfnF}}}{organism{name{type{scientific}}{Methanococcus vannielii}}{lineage{taxon{Archaea}}{taxon{Euryarchaeota}}{taxon{Methanomada group}}{taxon{Methanococci}}{taxon{Methanococcales}}{taxon{Methanococcaceae}}{taxon{Methanococcus}}}}{reference{key{1}}{citation{date{1988}}{first{3125}}{last{3130}}{name{J. Bacteriol.}}{type{journal article}}{volume{170}}{title{Conservation of structure in the human gene encoding argininosuccinate synthetase and the argG genes of the archaebacteria Methanosarcina barkeri MS and Methanococcus vannielii.}}{authorList}}{scope{NUCLEOTIDE SEQUENCE [GENOMIC DNA]}}}{comment{type{function}}{text{evidence{1}}{Catalyzes the condensation between 5-(aminomethyl)-3-furanmethanol diphosphate (F1-PP) and gamma-glutamyltyramine to produce APMF-Glu.}}}{comment{type{catalytic activity}}{reaction{evidence{1}}{text{[5-(aminomethyl)furan-3-yl]methyl diphosphate + gamma-L-glutamyltyramine = (4-\\}{4-[2-(gamma-L-glutamylamino)ethyl]phenoxymethyl\\}}furan-2-yl)methanamine + diphosphate}}}}{comment{type{pathway}}{text{evidence{1}}{Cofactor biosynthesis; methanofuran biosynthesis.}}}{comment{type{similarity}}{text{evidence{2}}{Belongs to the MfnF family.}}}{dbReference{id{M21315}}{type{EMBL}}}{dbReference{id{GO:0016787}}{type{GO}}}{dbReference{id{GO:0016740}}{type{GO}}}{dbReference{id{3.30.420.190}}{type{Gene3D}}}{dbReference{id{IPR002821}}{type{InterPro}}}{dbReference{id{PF01968}}{type{Pfam}}}{keyword{id{KW-0808}}{Transferase}}{feature{description{(4-\\}{4-[2-(gamma-L-glutamylamino)ethyl]phenoxymethyl\\}}furan-2-yl)methanamine synthase}}{id{PRO_0000107077}}{type{chain}}{location}}{feature{type{non-terminal residue}}{location}}{evidence{key{1}}{type{ECO:0000250}}{source}}{sequence{checksum{2AA3DC7D3A0105DE}}{fragment{single}}{length{222}}{mass{24655}}{modified{1996-11-01}}{version{1}}{AEFVSQNIDKNCILVDMGSTTTDIIPIVDGKAASNKTDLERLMNNELLYVGSLRTPLSFLSNKIMFKDTITNVSSEYFAITGDISLVLDKITEMDYSCDTPDGKPADKRNSLIRISKVLCSDLNQISADESINIAIEYYKILIDLILENVKKVSEKYGLKNIVITGLGEEILKDALSELTKSNEFNIISIKERYGKDVSLATPSFSVSILLKNELNAKLNRS}}}"#.to_owned(); // missing closing brace
+        let tokens = parse_tree_tokens(input, None);
+        assert!(tokens.is_err(), "Parsing should fail on incorrect brackets");
+    }
+
+    #[test]
     fn test_parses_into_tokens_2() {
         let input = "{einsteinstrasse{1}{3}}".to_owned();
         let tokens = parse_tree_tokens(input, None);
@@ -589,7 +596,7 @@ mod tests {
     #[test]
     fn test_label_dict_preserved_label_ids() {
         // test label ids are not overwritten when parsing another tree
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let _t1 = parse_tree(Ok("{b{e}{d{a}}}".to_owned())).unwrap();
         let _t2 = parse_tree(Ok("{d{c}{f{g}{d{a}}}}".to_owned())).unwrap();
 
@@ -611,7 +618,7 @@ mod tests {
     #[test]
     fn test_descendants_correct() {
         let input = "{first{second{third}{fourth{fifth{six}{seven}}}}".to_owned();
-        let mut hs = LabelDict::new();
+        let mut hs = LabelDict::default();
         let arena = parse_tree(Ok(input));
         assert!(arena.is_ok());
         let arena = arena.unwrap();
@@ -656,7 +663,7 @@ mod tests {
     #[test]
     fn test_parses_empty_label() {
         let input = "{wendelsteinstrasse{1{{1}{2}{3}{4}{5}{6}{7}{14}}}}".to_owned();
-        let mut hs = LabelDict::new();
+        let mut hs = LabelDict::default();
         let arena = parse_tree(Ok(input));
         assert!(arena.is_ok());
         let arena = arena.unwrap();
@@ -670,7 +677,7 @@ mod tests {
     #[test]
     fn test_invalid_escape() {
         let input = r"{article{key{journals/corr/FongT15b}}{mdate{2017-06-07}}{publtype{informal withdrawn}}{title{On the Empirical Output Distribution of $\\}varepsilon$-Good Codes for Gaussian Channels under a Long-Term Power Constraint.}}{year{2015}}{volume{abs/1510.08544}}{journal{CoRR}}{ee{http://arxiv.org/abs/1510.08544}}{url{db/journals/corr/corr1510.html#FongT15b}}}".to_owned();
-        let mut ld = LabelDict::new();
+        let mut ld = LabelDict::default();
         let tree = parse_tree(Ok(input));
         assert!(tree.is_err());
     }
