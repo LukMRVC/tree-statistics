@@ -142,6 +142,8 @@ impl SEDIndexWithStructure {
             char: *label,
             preorder_following_postorder_preceding: 0,
             preorder_descendant_postorder_ancestor: 0,
+            sum: 0,
+            diff: 0,
         });
 
         // to get reversed postorder traversal we need to reverse the preorder traversal
@@ -149,6 +151,8 @@ impl SEDIndexWithStructure {
             char: *label,
             preorder_following_postorder_preceding: 0,
             preorder_descendant_postorder_ancestor: 0,
+            sum: 0,
+            diff: 0,
         });
 
         let pre_idx = pre.len() - 1;
@@ -179,6 +183,8 @@ impl SEDIndexWithStructure {
             char: *label,
             preorder_following_postorder_preceding: following as i32,
             preorder_descendant_postorder_ancestor: *depth as i32,
+            sum: following as i32 + preceding as i32,
+            diff: following as i32 - preceding as i32,
         });
 
         // to get a reversed preorder traversal we need to reverse the postorder traversal
@@ -186,13 +192,21 @@ impl SEDIndexWithStructure {
             char: *label,
             preorder_following_postorder_preceding: preceding as i32,
             preorder_descendant_postorder_ancestor: subtree_size as i32 - 1,
+            sum: preceding as i32 + subtree_size as i32 - 1,
+            diff: preceding as i32 - (subtree_size as i32 - 1),
         });
 
         pre[pre_idx].preorder_following_postorder_preceding = following as i32;
         pre[pre_idx].preorder_descendant_postorder_ancestor = subtree_size as i32 - 1;
 
+        pre[pre_idx].sum = following as i32 + subtree_size as i32 - 1;
+        pre[pre_idx].diff = following as i32 - (subtree_size as i32 - 1);
+
         rev_post[pre_idx].preorder_following_postorder_preceding = preceding as i32;
         rev_post[pre_idx].preorder_descendant_postorder_ancestor = *depth as i32;
+
+        rev_post[pre_idx].sum = preceding as i32 + *depth as i32;
+        rev_post[pre_idx].diff = preceding as i32 - *depth as i32;
         // node_char.info = following as i32;
 
         subtree_size

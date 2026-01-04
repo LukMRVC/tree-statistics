@@ -50,15 +50,45 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
+
+    // assumes size of s2 is bigger or equal than s1
+    let s1len = t1.c.tree_size;
+    let s2len = t2.c.tree_size;
+    let size_diff = s2len - s1len;
+    // Per Berghel & Roach, the threshold is the min of s2 length and k
+    let threshold = std::cmp::min(s2len, k);
+
+    // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+    // The shift by 1 and addition of 2 ensures sufficient buffer space
+    // as described in the Berghel & Roach paper
+    let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+    // Calculate array length needed to store diagonal values
+    let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+    let zero_k = zero_k as i32;
+
     let pre_dist = bounded_string_edit_distance_with_structure(
         &t1.reversed_preorder,
         &t2.reversed_preorder,
         k,
+        arr_len,
+        zero_k,
+        size_diff as i32,
+        threshold as i32,
     );
     if pre_dist > k {
         return pre_dist;
     }
-    let post_dist = bounded_string_edit_distance_with_structure(&t1.preorder, &t2.preorder, k);
+    let post_dist = bounded_string_edit_distance_with_structure(
+        &t1.preorder,
+        &t2.preorder,
+        k,
+        arr_len,
+        zero_k,
+        size_diff as i32,
+        threshold as i32,
+    );
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -67,6 +97,9 @@ pub struct TraversalCharacter {
     pub char: i32,
     pub preorder_following_postorder_preceding: i32,
     pub preorder_descendant_postorder_ancestor: i32,
+
+    pub sum: i32,
+    pub diff: i32,
 }
 
 /// Implements fastest known way to compute exact string edit between two strings
@@ -298,8 +331,8 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 }
 
 thread_local! {
-  static CURRENT_ROW: UnsafeCell<Vec<(i16, bool)>> = UnsafeCell::new(vec![(-1, true); 256]);
-  static NEXT_ROW: UnsafeCell<Vec<(i16, bool)>> = UnsafeCell::new(vec![(-1, true); 256]);
+  static SCRATCH: UnsafeCell<(Vec<(i32, bool)>, Vec<(i32, bool)>)> =
+        UnsafeCell::new((vec![(-1, true); 256], vec![(-1, true); 256]));
 }
 
 /// Performs bounded string edit distance with known maximal threshold
@@ -310,59 +343,51 @@ pub fn bounded_string_edit_distance_with_structure(
     s1: &[TraversalCharacter],
     s2: &[TraversalCharacter],
     k: usize,
+    arr_len: usize,
+    zero_k: i32,
+    size_diff: i32,
+    threshold: i32,
 ) -> usize {
-    // TODO: Handle cases, where the threshold k is bigger than both s1 and s2 lengths
-    use std::cmp::{max, min};
     // assumes size of s2 is bigger or equal than s1
-    let s1len = s1.len() as i16;
-    let s2len = s2.len() as i16;
-    let size_diff = s2len - s1len;
-    // Per Berghel & Roach, the threshold is the min of s2 length and k
-    let threshold = min(s2len, k as i16);
-
-    // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
-    // The shift by 1 and addition of 2 ensures sufficient buffer space
-    // as described in the Berghel & Roach paper
-    let zero_k: i16 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
-
-    // Calculate array length needed to store diagonal values
-    let arr_len = size_diff + (zero_k) * 2 + 2;
+    let s1len = s1.len() as i32;
+    let s2len = s2.len() as i32;
+    use std::cmp::{max, min};
 
     // Instead of storing the full DP matrix, Ukkonen's algorithm only stores
     // the current and next row (optimization described in the paper)
-    CURRENT_ROW.with(|current_row_slot| {
-      NEXT_ROW.with(|next_row_slot| {
-        let mut current_row: &mut Vec<(i16, bool)> = unsafe { &mut *current_row_slot.get() };
-        let mut next_row: &mut Vec<(i16, bool)> = unsafe { &mut *next_row_slot.get() };
+    SCRATCH.with(|(slots)| {
+        let mut current_row: &mut Vec<(i32, bool)> = unsafe { &mut (*slots.get()).0 };
+        let mut next_row: &mut Vec<(i32, bool)> = unsafe { &mut (*slots.get()).1 };
         current_row.clear();
         current_row.resize(arr_len as usize, (-1, true));
         next_row.clear();
         next_row.resize(arr_len as usize, (-1, true));
 
         // println!("Initialized rows with length: {}", arr_len);
-        let mut i = 0i16;
+        let mut i = 0i32;
         // condition_diagonal is the diaogonal on which the resulting SED lies.
         // we will be checking this diagonal to determine if we can stop early
         let condition_diagonal = size_diff + zero_k;
+        let condition_diagonal_idx = condition_diagonal as usize;
         let end_max = condition_diagonal << 1;
 
-        #[cfg(debug_assertions)]
-        {
-            println!("Searching for first value: {s1len} on {condition_diagonal} with max k={threshold} on ZERO_K={zero_k}");
-            print!(" --   |");
-            for i in 0..arr_len {
-                print!(" {i:>4} |");
-            }
-            println!("");
-        }
+        // #[cfg(debug_assertions)]
+        // {
+        //     println!("Searching for first value: {s1len} on {condition_diagonal} with max k={threshold} on ZERO_K={zero_k}");
+        //     print!(" --   |");
+        //     for i in 0..arr_len {
+        //         print!(" {i:>4} |");
+        //     }
+        //     println!("");
+        // }
 
         // prepare a simple test function if characters are eligible for substitution
         #[inline(always)]
-        fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i16 {
+        fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i32 {
             (t1.preorder_following_postorder_preceding
                 .abs_diff(t2.preorder_following_postorder_preceding)
                 + t1.preorder_descendant_postorder_ancestor
-                    .abs_diff(t2.preorder_descendant_postorder_ancestor)) as i16
+                    .abs_diff(t2.preorder_descendant_postorder_ancestor)) as i32
         }
 
         let mut next_allowed_substitution = true;
@@ -371,26 +396,27 @@ pub fn bounded_string_edit_distance_with_structure(
             i += 1;
             std::mem::swap(&mut next_row, &mut current_row);
 
-            let start: i16;
-            let mut next_cell: i16;
-            let mut previous_cell: i16;
-            let mut current_cell: i16 = -1;
+            let start: i32;
+            let mut next_cell: i32;
+            let mut previous_cell: i32;
+            let mut current_cell: i32 = -1;
 
             // Calculate the starting diagonal for this iteration
             // This follows Berghel & Roach's band algorithm approach
             if i <= zero_k {
                 start = -i + 1;
-                next_cell = i - 2i16;
+                next_cell = i - 2i32;
             } else {
                 // 2 if i = 11 and zero_k = 10
                 start = i - (zero_k << 1) + 1;
                 unsafe {
-                    (next_cell, next_allowed_substitution) = *current_row.get_unchecked((zero_k + start) as usize);
+                    (next_cell, next_allowed_substitution) =
+                        *current_row.get_unchecked((zero_k + start) as usize);
                 }
             }
 
             // Calculate the ending diagonal for this iteration
-            let end: i16;
+            let end: i32;
             if i <= condition_diagonal {
                 end = i;
                 unsafe {
@@ -418,7 +444,8 @@ pub fn bounded_string_edit_distance_with_structure(
                 can_substitute = next_allowed_substitution;
                 unsafe {
                     // f(d+1, p-1) - deletion - max row index adds by +1
-                    (next_cell, next_allowed_substitution) = *current_row.get_unchecked(diagonal_index + 1);
+                    (next_cell, next_allowed_substitution) =
+                        *current_row.get_unchecked(diagonal_index + 1);
                 }
 
                 // Calculate the max of three possible operations (delete, insert, replace)
@@ -449,7 +476,7 @@ pub fn bounded_string_edit_distance_with_structure(
                 // can_substitute = true;
                 // let mut max_row_number = max_row_number as usize;
                 unsafe {
-                    let k = k as i16;
+                    let k = k as i32;
                     // The core extension to the original algorithm: match characters while possible
                     // and consider both character equality AND structural constraints
                     // This is the diagonal extension from Ukkonen's algorithm
@@ -460,30 +487,21 @@ pub fn bounded_string_edit_distance_with_structure(
 
                     // First, find the maximum possible advance based on character equality
 
-                    let mut char_eq = false;
                     let mut struct_ok = false;
 
+                    // Optimized: fetch once, reuse
                     while max_row_number < s1len && (max_row_number + diag_offset) < s2len {
-                        char_eq = s1.get_unchecked((max_row_number) as usize).char
-                            == s2
-                                .get_unchecked((max_row_number + diag_offset) as usize)
-                                .char;
+                        let c1 = s1.get_unchecked(max_row_number as usize);
+                        let c2 = s2.get_unchecked((max_row_number + diag_offset) as usize);
 
-                        // Check structural constraints
-                        // this must always be evaluated because struct_ok is initialized to false
-                        struct_ok = (allowed_edits
-                            + struct_diff(
-                                s1.get_unchecked((max_row_number) as usize),
-                                s2.get_unchecked((max_row_number + diag_offset) as usize),
-                            ))
-                            <= k;
+                        let char_eq = c1.char == c2.char;
+                        struct_ok = (allowed_edits + (c1.sum - c2.sum).abs() <= k)
+                            && (allowed_edits + (c1.diff - c2.diff).abs() <= k);
 
                         if !char_eq || !struct_ok {
                             break;
                         }
-
                         max_row_number += 1;
-
                     }
 
                     // Branchless update: advance by the minimum of character and structural constraints
@@ -511,14 +529,14 @@ pub fn bounded_string_edit_distance_with_structure(
             // to determine the distance is > threshold, or we've reached the
             // threshold itself - this follows the "cutoff" principle in the paper
             unsafe {
-                if !(next_row.get_unchecked(condition_diagonal as usize).0 < s1len as i16
+                if !(next_row.get_unchecked(condition_diagonal_idx).0 < s1len as i32
                     && i <= threshold)
                 {
-                    if threshold < k as i16 {
-                        break ((i - 1) + k as i16 - threshold) as usize;
+                    if threshold < k as i32 {
+                        break ((i - 1) + k as i32 - threshold) as usize;
                     }
 
-                    if !(next_row.get_unchecked(condition_diagonal as usize).0 >= s1len as i16)
+                    if !(next_row.get_unchecked(condition_diagonal_idx).0 >= s1len as i32)
                         && i > threshold
                     {
                         break usize::MAX;
@@ -529,8 +547,9 @@ pub fn bounded_string_edit_distance_with_structure(
             }
         }
     })
-  })
 }
+
+use std::arch::x86_64::*;
 
 #[cfg(test)]
 mod tests {
