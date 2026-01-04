@@ -355,198 +355,202 @@ pub fn bounded_string_edit_distance_with_structure(
 
     // Instead of storing the full DP matrix, Ukkonen's algorithm only stores
     // the current and next row (optimization described in the paper)
-    SCRATCH.with(|(slots)| {
-        let mut current_row: &mut Vec<(i32, bool)> = unsafe { &mut (*slots.get()).0 };
-        let mut next_row: &mut Vec<(i32, bool)> = unsafe { &mut (*slots.get()).1 };
-        current_row.clear();
-        current_row.resize(arr_len as usize, (-1, true));
-        next_row.clear();
-        next_row.resize(arr_len as usize, (-1, true));
+    // SCRATCH.with(|(slots)| {
+    // let mut current_row: &mut Vec<(i32, bool)> = unsafe { &mut (*slots.get()).0 };
+    // let mut next_row: &mut Vec<(i32, bool)> = unsafe { &mut (*slots.get()).1 };
+    // current_row.clear();
+    // current_row.resize(arr_len as usize, (-1, true));
+    // next_row.clear();
+    // next_row.resize(arr_len as usize, (-1, true));
 
-        // println!("Initialized rows with length: {}", arr_len);
-        let mut i = 0i32;
-        // condition_diagonal is the diaogonal on which the resulting SED lies.
-        // we will be checking this diagonal to determine if we can stop early
-        let condition_diagonal = size_diff + zero_k;
-        let condition_diagonal_idx = condition_diagonal as usize;
-        let end_max = condition_diagonal << 1;
+    let mut current_row = vec![(-1, true); arr_len as usize];
+    let mut next_row = vec![(-1, true); arr_len as usize];
 
+    // println!("Initialized rows with length: {}", arr_len);
+    let mut i = 0i32;
+    // condition_diagonal is the diaogonal on which the resulting SED lies.
+    // we will be checking this diagonal to determine if we can stop early
+    let condition_diagonal = size_diff + zero_k;
+    let condition_diagonal_idx = condition_diagonal as usize;
+    let end_max = condition_diagonal << 1;
+
+    // #[cfg(debug_assertions)]
+    // {
+    //     println!("Searching for first value: {s1len} on {condition_diagonal} with max k={threshold} on ZERO_K={zero_k}");
+    //     print!(" --   |");
+    //     for i in 0..arr_len {
+    //         print!(" {i:>4} |");
+    //     }
+    //     println!("");
+    // }
+
+    // prepare a simple test function if characters are eligible for substitution
+    #[inline(always)]
+    fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i32 {
+        (t1.preorder_following_postorder_preceding
+            .abs_diff(t2.preorder_following_postorder_preceding)
+            + t1.preorder_descendant_postorder_ancestor
+                .abs_diff(t2.preorder_descendant_postorder_ancestor)) as i32
+    }
+
+    let mut next_allowed_substitution = true;
+    loop {
+        // i here is the current allowed edit distance
+        i += 1;
+        std::mem::swap(&mut next_row, &mut current_row);
+
+        let start: i32;
+        let mut next_cell: i32;
+        let mut previous_cell: i32;
+        let mut current_cell: i32 = -1;
+
+        // Calculate the starting diagonal for this iteration
+        // This follows Berghel & Roach's band algorithm approach
+        if i <= zero_k {
+            start = -i + 1;
+            next_cell = i - 2i32;
+        } else {
+            // 2 if i = 11 and zero_k = 10
+            start = i - (zero_k << 1) + 1;
+            unsafe {
+                (next_cell, next_allowed_substitution) =
+                    *current_row.get_unchecked((zero_k + start) as usize);
+            }
+        }
+
+        // Calculate the ending diagonal for this iteration
+        let end: i32;
+        if i <= condition_diagonal {
+            end = i;
+            unsafe {
+                *next_row.get_unchecked_mut((zero_k + i) as usize) = (-1, true);
+            }
+        } else {
+            end = end_max - i;
+        }
+        let current_edit_distance = (i - 1) as u32;
+        let mut diagonal_index: usize = (start + zero_k).try_into().unwrap();
+
+        let mut max_row_number;
+        let allowed_edits = i - 1;
+
+        // Process each diagonal in the band for this iteration
+        let mut can_substitute: bool;
+        for diag_offset in start..end {
+            // Per Ukkonen's algorithm, we're tracking three values to compute each cell:
+            // previous_cell, current_cell, and next_cell from the previous row
+
+            // f(d-1, p-1) - insertion - row remains
+            previous_cell = current_cell;
+            // f(d, p-1) - substitution of character
+            current_cell = next_cell;
+            can_substitute = next_allowed_substitution;
+            unsafe {
+                // f(d+1, p-1) - deletion - max row index adds by +1
+                (next_cell, next_allowed_substitution) =
+                    *current_row.get_unchecked(diagonal_index + 1);
+            }
+
+            // Calculate the max of three possible operations (delete, insert, replace)
+            // This is the standard dynamic programming recurrence relation for edit distance
+
+            // however replacement can not occur in all cases, only if the mapping is possible
+
+            // current_cell is basically the row in the matrix
+
+            unsafe {
+                // do a current_cell + 1
+                // If substitution is not allowed, treat as insertion/deletion (not diagonal move) current_cell + 0
+                max_row_number = max(
+                    current_cell + (if can_substitute { 1 } else { 0 }),
+                    max(previous_cell, next_cell + 1),
+                );
+
+                if !can_substitute {
+                    // pokud nemuzu delat substituci a previous a next nedaji vetsi cislo, tak jen vezmu cislo
+                    // current_cell, rovnou zapisu a nemusim se ani pokouset delat extension - zda se mi to zvetsi
+
+                    if max_row_number == current_cell {
+                        *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, false);
+                        diagonal_index += 1;
+                        continue;
+                    }
+                }
+            }
+            // can_substitute = true;
+            // let mut max_row_number = max_row_number as usize;
+            unsafe {
+                let k = k as i32;
+                // The core extension to the original algorithm: match characters while possible
+                // and consider both character equality AND structural constraints
+                // This is the diagonal extension from Ukkonen's algorithm
+
+                // Branchless optimization: Instead of breaking on structural constraint violation,
+                // we compute how many characters we can advance before hitting the constraint.
+                // This eliminates the inner branch and reduces pipeline stalls.
+
+                // First, find the maximum possible advance based on character equality
+
+                let mut struct_ok = false;
+                let struct_limit = k - allowed_edits;
+
+                // Optimized: fetch once, reuse
+                while max_row_number < s1len && (max_row_number + diag_offset) < s2len {
+                    let c1 = s1.get_unchecked(max_row_number as usize);
+                    let c2 = s2.get_unchecked((max_row_number + diag_offset) as usize);
+
+                    let char_eq = c1.char == c2.char;
+                    struct_ok = ((c1.sum - c2.sum).abs() <= struct_limit)
+                        && ((c1.diff - c2.diff).abs() <= struct_limit);
+
+                    if !char_eq || !struct_ok {
+                        break;
+                    }
+                    max_row_number += 1;
+                }
+
+                // Branchless update: advance by the minimum of character and structural constraints
+
+                // disable substitution if we hit the big sturctural diff. If the problem is only character mismatch, it should be true
+                // Update substitution flag without branching: can substitute if we matched all characters
+                // that were equal (no structural constraint violation occurred)
+                *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, struct_ok);
+            }
+
+            diagonal_index += 1;
+        }
+
+        // dbg!(&next_row);
         // #[cfg(debug_assertions)]
         // {
-        //     println!("Searching for first value: {s1len} on {condition_diagonal} with max k={threshold} on ZERO_K={zero_k}");
-        //     print!(" --   |");
-        //     for i in 0..arr_len {
-        //         print!(" {i:>4} |");
+        //     print!("p={:>3} |", i - 1);
+        //     for (v, sub) in next_row.iter() {
+        //         print!(" {v:>3}{s}|", s = if !sub { "x" } else { "" });
         //     }
-        //     println!("");
+        //     println!(" -- cond: {condition_diagonal}");
         // }
 
-        // prepare a simple test function if characters are eligible for substitution
-        #[inline(always)]
-        fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i32 {
-            (t1.preorder_following_postorder_preceding
-                .abs_diff(t2.preorder_following_postorder_preceding)
-                + t1.preorder_descendant_postorder_ancestor
-                    .abs_diff(t2.preorder_descendant_postorder_ancestor)) as i32
-        }
-
-        let mut next_allowed_substitution = true;
-        loop {
-            // i here is the current allowed edit distance
-            i += 1;
-            std::mem::swap(&mut next_row, &mut current_row);
-
-            let start: i32;
-            let mut next_cell: i32;
-            let mut previous_cell: i32;
-            let mut current_cell: i32 = -1;
-
-            // Calculate the starting diagonal for this iteration
-            // This follows Berghel & Roach's band algorithm approach
-            if i <= zero_k {
-                start = -i + 1;
-                next_cell = i - 2i32;
-            } else {
-                // 2 if i = 11 and zero_k = 10
-                start = i - (zero_k << 1) + 1;
-                unsafe {
-                    (next_cell, next_allowed_substitution) =
-                        *current_row.get_unchecked((zero_k + start) as usize);
-                }
-            }
-
-            // Calculate the ending diagonal for this iteration
-            let end: i32;
-            if i <= condition_diagonal {
-                end = i;
-                unsafe {
-                    *next_row.get_unchecked_mut((zero_k + i) as usize) = (-1, true);
-                }
-            } else {
-                end = end_max - i;
-            }
-            let current_edit_distance = (i - 1) as u32;
-            let mut diagonal_index: usize = (start + zero_k).try_into().unwrap();
-
-            let mut max_row_number;
-            let allowed_edits = i - 1;
-
-            // Process each diagonal in the band for this iteration
-            let mut can_substitute: bool;
-            for diag_offset in start..end {
-                // Per Ukkonen's algorithm, we're tracking three values to compute each cell:
-                // previous_cell, current_cell, and next_cell from the previous row
-
-                // f(d-1, p-1) - insertion - row remains
-                previous_cell = current_cell;
-                // f(d, p-1) - substitution of character
-                current_cell = next_cell;
-                can_substitute = next_allowed_substitution;
-                unsafe {
-                    // f(d+1, p-1) - deletion - max row index adds by +1
-                    (next_cell, next_allowed_substitution) =
-                        *current_row.get_unchecked(diagonal_index + 1);
+        // Check termination condition: either we've computed enough rows
+        // to determine the distance is > threshold, or we've reached the
+        // threshold itself - this follows the "cutoff" principle in the paper
+        unsafe {
+            if !(next_row.get_unchecked(condition_diagonal_idx).0 < s1len as i32 && i <= threshold)
+            {
+                if threshold < k as i32 {
+                    break ((i - 1) + k as i32 - threshold) as usize;
                 }
 
-                // Calculate the max of three possible operations (delete, insert, replace)
-                // This is the standard dynamic programming recurrence relation for edit distance
-
-                // however replacement can not occur in all cases, only if the mapping is possible
-
-                // current_cell is basically the row in the matrix
-
-                unsafe {
-                    // do a current_cell + 1
-                    max_row_number = max(current_cell + 1, max(previous_cell, next_cell + 1));
-
-                    // If substitution is not allowed, treat as insertion/deletion (not diagonal move)
-                    if !can_substitute {
-                        // pokud nemuzu delat substituci a previous a next nedaji vetsi cislo, tak jen vezmu cislo
-                        // current_cell, rovnou zapisu a nemusim se ani pokouset delat extension - zda se mi to zvetsi
-
-                        max_row_number = max(max(previous_cell, current_cell), next_cell + 1);
-
-                        if max_row_number == current_cell {
-                            *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, false);
-                            diagonal_index += 1;
-                            continue;
-                        }
-                    }
-                }
-                // can_substitute = true;
-                // let mut max_row_number = max_row_number as usize;
-                unsafe {
-                    let k = k as i32;
-                    // The core extension to the original algorithm: match characters while possible
-                    // and consider both character equality AND structural constraints
-                    // This is the diagonal extension from Ukkonen's algorithm
-
-                    // Branchless optimization: Instead of breaking on structural constraint violation,
-                    // we compute how many characters we can advance before hitting the constraint.
-                    // This eliminates the inner branch and reduces pipeline stalls.
-
-                    // First, find the maximum possible advance based on character equality
-
-                    let mut struct_ok = false;
-
-                    // Optimized: fetch once, reuse
-                    while max_row_number < s1len && (max_row_number + diag_offset) < s2len {
-                        let c1 = s1.get_unchecked(max_row_number as usize);
-                        let c2 = s2.get_unchecked((max_row_number + diag_offset) as usize);
-
-                        let char_eq = c1.char == c2.char;
-                        struct_ok = (allowed_edits + (c1.sum - c2.sum).abs() <= k)
-                            && (allowed_edits + (c1.diff - c2.diff).abs() <= k);
-
-                        if !char_eq || !struct_ok {
-                            break;
-                        }
-                        max_row_number += 1;
-                    }
-
-                    // Branchless update: advance by the minimum of character and structural constraints
-
-                    // disable substitution if we hit the big sturctural diff. If the problem is only character mismatch, it should be true
-                    // Update substitution flag without branching: can substitute if we matched all characters
-                    // that were equal (no structural constraint violation occurred)
-                    *next_row.get_unchecked_mut(diagonal_index) = (max_row_number, struct_ok);
-                }
-
-                diagonal_index += 1;
-            }
-
-            // dbg!(&next_row);
-            // #[cfg(debug_assertions)]
-            // {
-            //     print!("p={:>3} |", i - 1);
-            //     for (v, sub) in next_row.iter() {
-            //         print!(" {v:>3}{s}|", s = if !sub { "x" } else { "" });
-            //     }
-            //     println!(" -- cond: {condition_diagonal}");
-            // }
-
-            // Check termination condition: either we've computed enough rows
-            // to determine the distance is > threshold, or we've reached the
-            // threshold itself - this follows the "cutoff" principle in the paper
-            unsafe {
-                if !(next_row.get_unchecked(condition_diagonal_idx).0 < s1len as i32
-                    && i <= threshold)
+                if !(next_row.get_unchecked(condition_diagonal_idx).0 >= s1len as i32)
+                    && i > threshold
                 {
-                    if threshold < k as i32 {
-                        break ((i - 1) + k as i32 - threshold) as usize;
-                    }
-
-                    if !(next_row.get_unchecked(condition_diagonal_idx).0 >= s1len as i32)
-                        && i > threshold
-                    {
-                        break usize::MAX;
-                    }
-
-                    break (i - 1) as usize;
+                    break usize::MAX;
                 }
+
+                break (i - 1) as usize;
             }
         }
-    })
+    }
+    // })
 }
 
 use std::arch::x86_64::*;
