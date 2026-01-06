@@ -137,17 +137,21 @@ pub fn parse_dataset(
 
     let reader = BufReader::new(File::open(dataset_file).unwrap());
 
-    // Parse directly into trees - eliminates intermediate Vec<Vec<String>>
-    let mut trees: Vec<ParsedTree> = reader
+    // Parse in parallel while tracking original index for stable ordering
+    // enumerate() is lazy, par_bridge() streams directly from the reader
+    let mut trees: Vec<(usize, ParsedTree)> = reader
         .lines()
+        .enumerate()
         .par_bridge()
-        .filter_map(|tree_line| {
-            let tree_line = tree_line.expect("line reading failed!");
+        .filter_map(|(idx, tree_line)| {
+            let tree_line = tree_line.ok()?;
             if !tree_line.is_ascii() {
                 return None;
             }
 
-            parse_tree_directly(&tree_line, &scc_label_dict, &max_node_id).ok()
+            parse_tree_directly(&tree_line, &scc_label_dict, &max_node_id)
+                .ok()
+                .map(|tree| (idx, tree))
         })
         .collect();
 
@@ -158,7 +162,11 @@ pub fn parse_dataset(
         false
     });
 
-    trees.sort_by(|a, b| a.count().cmp(&b.count()));
+    // Stable sort: by tree count, then by original index as tiebreaker
+    trees.sort_by(|(idx_a, a), (idx_b, b)| a.count().cmp(&b.count()).then(idx_a.cmp(idx_b)));
+
+    // Extract just the trees, discarding indices
+    let trees = trees.into_iter().map(|(_, tree)| tree).collect();
 
     Ok(trees)
 }

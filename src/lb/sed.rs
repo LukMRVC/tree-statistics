@@ -384,15 +384,6 @@ pub fn bounded_string_edit_distance_with_structure(
     //     println!("");
     // }
 
-    // prepare a simple test function if characters are eligible for substitution
-    #[inline(always)]
-    fn struct_diff(t1: &TraversalCharacter, t2: &TraversalCharacter) -> i32 {
-        (t1.preorder_following_postorder_preceding
-            .abs_diff(t2.preorder_following_postorder_preceding)
-            + t1.preorder_descendant_postorder_ancestor
-                .abs_diff(t2.preorder_descendant_postorder_ancestor)) as i32
-    }
-
     let mut next_allowed_substitution = true;
     loop {
         // i here is the current allowed edit distance
@@ -492,7 +483,6 @@ pub fn bounded_string_edit_distance_with_structure(
                 // First, find the maximum possible advance based on character equality
 
                 let mut struct_ok = false;
-                let struct_limit = k - allowed_edits;
 
                 // Optimized: fetch once, reuse
                 while max_row_number < s1len && (max_row_number + diag_offset) < s2len {
@@ -500,8 +490,8 @@ pub fn bounded_string_edit_distance_with_structure(
                     let c2 = s2.get_unchecked((max_row_number + diag_offset) as usize);
 
                     let char_eq = c1.char == c2.char;
-                    struct_ok = ((c1.sum - c2.sum).abs() <= struct_limit)
-                        && ((c1.diff - c2.diff).abs() <= struct_limit);
+                    struct_ok = (allowed_edits + (c1.sum - c2.sum).abs() <= k)
+                        && (allowed_edits + (c1.diff - c2.diff).abs() <= k);
 
                     if !char_eq || !struct_ok {
                         break;
