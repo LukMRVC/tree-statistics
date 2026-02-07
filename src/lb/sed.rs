@@ -397,7 +397,7 @@ pub fn bounded_string_edit_distance_with_structure(
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
 
-        let start: i32;
+        let mut start: i32;
         let mut next_cell: i32;
         let mut previous_cell: i32;
         let mut current_cell: i32 = -1;
@@ -417,7 +417,7 @@ pub fn bounded_string_edit_distance_with_structure(
         }
 
         // Calculate the ending diagonal for this iteration
-        let end: i32;
+        let mut end: i32;
         if i <= condition_diagonal {
             end = i;
             unsafe {
@@ -562,6 +562,134 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn test_bounded_sed_br_structure() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> g
+        // 2 -> a
+        // 3 -> r
+        // 4 -> v
+        // 5 -> e
+        // 6 -> y
+
+        // garvey
+        let mut v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 5,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 6,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+        ];
+        // avery
+        let mut v2 = vec![
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 5,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 6,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+        ];
+
+        let threshold_k = 3;
+        if v1.len() > v2.len() {
+            (v1, v2) = (v2, v1);
+        }
+
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
+        assert_eq!(result, 3);
+    }
 
     #[test]
     fn test_bounded_sed_structure() {
