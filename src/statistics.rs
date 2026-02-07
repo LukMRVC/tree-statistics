@@ -29,6 +29,8 @@ pub struct TreeStatistics {
     pub leaf_count: usize,
     /// avg node degree
     pub avg_degree: f64,
+    /// weighted shallow factor
+    pub weighted_branching_shallow_factor: f64,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -80,9 +82,10 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
     let mut node_stack = vec![];
 
     let root_id = tree.get_node_id(root).unwrap();
-    let mut degrees = vec![];
+    let mut degrees = Vec::with_capacity(tree.count());
     let mut depths = vec![];
     let mut unique_labels = 0;
+    let mut node_degrees_and_depth: Vec<(usize, usize)> = Vec::with_capacity(tree.count());
 
     let mut distinct_label_set = FxHashSet::default();
 
@@ -102,6 +105,7 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
     for nid in root_id.descendants(tree) {
         let n = tree.get(nid).unwrap();
         let mut degree = nid.children(tree).count();
+        node_degrees_and_depth.push((degree, node_stack.len() + 1));
 
         if let Some(&freq) = freq_ordering.get(NonZeroUsize::new(*n.get() as usize).unwrap()) {
             unique_labels += usize::from(freq == 1);
@@ -144,6 +148,17 @@ pub fn gather(tree: &ParsedTree, freq_ordering: &LabelFreqOrdering) -> TreeStati
         degree_stddev,
         leaf_count,
         avg_degree: avg_degree,
+        // 'weighted_branching_shallow_factor': sum(d / depth**2 for d, depth in degrees_with_depth if d > 0) / non_leafs_count,
+        weighted_branching_shallow_factor: {
+            let _sum = node_degrees_and_depth
+                .iter()
+                .map(|(degree, depth)| *degree as f64 / (depth * depth) as f64)
+                .sum::<f64>();
+
+            let non_leafs_count = tree.count() - leaf_count;
+
+            _sum / non_leafs_count as f64
+        },
     }
 }
 

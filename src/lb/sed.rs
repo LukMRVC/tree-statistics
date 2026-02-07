@@ -1,6 +1,8 @@
 use std::usize;
 use std::{cell::UnsafeCell, sync::LazyLock};
 
+use rustc_hash::FxHashMap;
+
 use crate::indexing::{SEDIndex, SEDIndexWithStructure};
 
 pub fn sed(t1: &SEDIndex, t2: &SEDIndex) -> usize {
@@ -50,7 +52,6 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-
     // assumes size of s2 is bigger or equal than s1
     let s1len = t1.c.tree_size;
     let s2len = t2.c.tree_size;
@@ -100,6 +101,12 @@ pub struct TraversalCharacter {
 
     pub sum: i32,
     pub diff: i32,
+}
+
+impl std::hash::Hash for TraversalCharacter {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.char.hash(state);
+    }
 }
 
 /// Implements fastest known way to compute exact string edit between two strings
@@ -471,7 +478,7 @@ pub fn bounded_string_edit_distance_with_structure(
             // can_substitute = true;
             // let mut max_row_number = max_row_number as usize;
             unsafe {
-                let k = k as i32;
+                let k = threshold as i32;
                 // The core extension to the original algorithm: match characters while possible
                 // and consider both character equality AND structural constraints
                 // This is the diagonal extension from Ukkonen's algorithm
@@ -569,34 +576,39 @@ mod tests {
         // arvey
         let v1 = vec![
             TraversalCharacter {
-                char: 1,
-                preorder_following_postorder_preceding: 0,
-                preorder_descendant_postorder_ancestor: 0,
-            },
-            TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 3,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 5,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 6,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         // avery
@@ -605,33 +617,69 @@ mod tests {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 3,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 5,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 5,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
 
-        let result = string_edit_distance_with_structure(&v2, &v1, 3);
+        let threshold_k = 3;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+
+        let result = string_edit_distance_with_structure(&v2, &v1, threshold_k as u32);
         dbg!(&result);
         assert!(result <= 2);
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         dbg!(&result);
         assert_eq!(result, 2);
     }
@@ -653,36 +701,50 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 3,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 3,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 6,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 7,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         // kitten
@@ -691,35 +753,73 @@ mod tests {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 3,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 4,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 5,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 6,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
 
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 3);
+        let threshold_k = 3;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         dbg!(&result);
         assert_eq!(result, 3);
     }
@@ -735,11 +835,15 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 3,
+                sum: 3,
+                diff: -3,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -747,17 +851,46 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 1,
+                sum: 1,
+                diff: -1,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
-        let result = string_edit_distance_with_structure(&v2, &v1, 1);
+        let threshold_k = 1;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let result = string_edit_distance_with_structure(&v2, &v1, threshold_k as u32);
         assert_eq!(result, 4);
 
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         assert_eq!(result, 1);
     }
 
@@ -772,31 +905,43 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 3,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 3,
+                diff: 3,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -804,26 +949,59 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
-        let result = string_edit_distance_with_structure(&v1, &v2, 2);
+        let threshold_k = 2;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let result = string_edit_distance_with_structure(&v1, &v2, threshold_k as u32);
         assert_eq!(result, 2);
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 2);
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         assert_eq!(result, 2);
     }
 
@@ -838,11 +1016,15 @@ mod tests {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -850,15 +1032,44 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
 
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
+        let threshold_k = 1;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         assert_eq!(result, usize::MAX);
     }
 
@@ -873,16 +1084,22 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 2,
+                sum: 4,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 2,
+                sum: 4,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -890,20 +1107,51 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
 
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 1);
+        let threshold_k = 1;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         assert_eq!(result, 1);
     }
 
@@ -923,11 +1171,15 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_descendant_postorder_ancestor: 0,
                 preorder_following_postorder_preceding: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -935,20 +1187,51 @@ mod tests {
                 char: 1,
                 preorder_descendant_postorder_ancestor: 0,
                 preorder_following_postorder_preceding: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 3,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
 
-        let result = bounded_string_edit_distance_with_structure(&v1, &v2, 2);
+        let threshold_k = 2;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let result = bounded_string_edit_distance_with_structure(
+            &v1,
+            &v2,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
         assert_eq!(result, 1);
     }
 
@@ -960,26 +1243,36 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -987,26 +1280,36 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 2,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
         ];
 
@@ -1031,26 +1334,36 @@ mod tests {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 4,
+                    sum: 4,
+                    diff: -4,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 3,
+                    sum: 3,
+                    diff: -3,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 2,
+                    sum: 2,
+                    diff: -2,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 1,
+                    sum: 1,
+                    diff: -1,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 0,
+                    sum: 0,
+                    diff: 0,
                 },
             ]
         );
@@ -1062,26 +1375,36 @@ mod tests {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 4,
+                    sum: 4,
+                    diff: -4,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 3,
+                    sum: 3,
+                    diff: -3,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 2,
+                    sum: 2,
+                    diff: -2,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 1,
+                    sum: 1,
+                    diff: -1,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 0,
+                    sum: 0,
+                    diff: 0,
                 },
             ]
         );
@@ -1093,31 +1416,43 @@ mod tests {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 5,
+                    sum: 5,
+                    diff: -5,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 4,
+                    sum: 4,
+                    diff: -4,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 2,
                     preorder_descendant_postorder_ancestor: 1,
+                    sum: 3,
+                    diff: 1,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 2,
                     preorder_descendant_postorder_ancestor: 0,
+                    sum: 2,
+                    diff: 2,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 1,
+                    sum: 1,
+                    diff: -1,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
                     preorder_descendant_postorder_ancestor: 0,
+                    sum: 0,
+                    diff: 0,
                 },
             ]
         );
@@ -1162,8 +1497,34 @@ mod tests {
         let qs = SEDIndexWithStructure::index_tree(&qt, &ld);
         let ts = SEDIndexWithStructure::index_tree(&tt, &ld);
 
-        let sed = string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 3);
-        let bsed = bounded_string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 3);
+        let threshold_k = 3;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = ts.c.tree_size;
+        let s2len = qs.c.tree_size;
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let sed =
+            string_edit_distance_with_structure(&ts.preorder, &qs.preorder, threshold_k as u32);
+        let bsed = bounded_string_edit_distance_with_structure(
+            &ts.preorder,
+            &qs.preorder,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
 
         assert!(
             sed > bsed,
@@ -1189,7 +1550,32 @@ mod tests {
 
         let sed = string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 17);
         // s2 is bigger
-        let bsed = bounded_string_edit_distance_with_structure(&ts.preorder, &qs.preorder, 17);
+        let threshold_k = 17;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = ts.c.tree_size;
+        let s2len = qs.c.tree_size;
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
+
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let bsed = bounded_string_edit_distance_with_structure(
+            &ts.preorder,
+            &qs.preorder,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
 
         assert_eq!(sed, 17, "SED result is not as expected: {sed} != 17");
         assert_eq!(bsed, 17, "SED result is not as expected: {bsed} != 17");
@@ -1210,31 +1596,43 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 5,
+                sum: 5,
+                diff: -5,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 2,
+                sum: 4,
+                diff: 0,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 3,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 3,
+                diff: 3,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 1,
+                sum: 1,
+                diff: -1,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         let v2 = vec![
@@ -1242,28 +1640,61 @@ mod tests {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 3,
+                sum: 3,
+                diff: -3,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 2,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 2,
+                diff: 2,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 1,
+                sum: 1,
+                diff: -1,
             },
             TraversalCharacter {
                 char: 1,
                 preorder_following_postorder_preceding: 0,
                 preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
             },
         ];
         assert_eq!(qs.preorder, v1);
         assert_eq!(ts.preorder, v2);
-        let result = bounded_string_edit_distance_with_structure(&v2, &v1, 2);
+        let threshold_k = 2;
+        // assumes size of s2 is bigger or equal than s1
+        let s1len = v1.len();
+        let s2len = v2.len();
+        let size_diff = s2len - s1len;
+        // Per Berghel & Roach, the threshold is the min of s2 length and k
+        let threshold = std::cmp::min(s2len, threshold_k);
 
-        let result = sed_struct_k(&qs, &ts, 2);
+        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
+        // The shift by 1 and addition of 2 ensures sufficient buffer space
+        // as described in the Berghel & Roach paper
+        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
+
+        // Calculate array length needed to store diagonal values
+        let arr_len = (size_diff + (zero_k) * 2 + 2);
+
+        let zero_k = zero_k as i32;
+        let result = bounded_string_edit_distance_with_structure(
+            &v2,
+            &v1,
+            threshold_k,
+            arr_len,
+            zero_k,
+            size_diff as i32,
+            threshold as i32,
+        );
+
+        let result = sed_struct_k(&qs, &ts, threshold_k);
         dbg!(result);
         assert_eq!(result, 2, "SED result is not as expected: {result} != 2");
     }

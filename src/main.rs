@@ -459,71 +459,84 @@ fn write_files(
 ) -> Result<(), anyhow::Error> {
     let out = output_dir.as_ref().to_path_buf();
     write_file(
-        [&out, &PathBuf::from("degrees.csv")]
+        [&out, &PathBuf::from("avg_fanout.csv")]
             .iter()
             .collect::<PathBuf>(),
         &stats
             .iter()
-            .flat_map(|s| &s.degrees)
-            .collect::<Vec<&usize>>(),
+            .map(|s| s.degrees.iter().sum::<usize>() as f64 / s.degrees.len() as f64)
+            .collect::<Vec<f64>>(),
     )?;
+    // write_file(
+    //     [&out, &PathBuf::from("avg_degrees.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats.iter().map(|s| &s.avg_degree).collect::<Vec<_>>(),
+    // )?;
+    // write_file(
+    //     [&out, &PathBuf::from("depths.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats
+    //         .iter()
+    //         .flat_map(|s| &s.depths)
+    //         .collect::<Vec<&usize>>(),
+    // )?;
+    // write_file(
+    //     [&out, &PathBuf::from("unique_labels.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats
+    //         .iter()
+    //         .map(|s| s.collection_unique_labels)
+    //         .collect::<Vec<_>>(),
+    // )?;
+    // write_file(
+    //     [&out, &PathBuf::from("distinct_labels.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats.iter().map(|s| s.distinct_labels).collect::<Vec<_>>(),
+    // )?;
+
+    // write_file(
+    //     [&out, &PathBuf::from("tree_sizes.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats.iter().map(|s| s.size).collect::<Vec<_>>(),
+    // )?;
+
+    // write_file(
+    //     [&out, &PathBuf::from("sackins.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats.iter().map(|s| s.sacking_index).collect::<Vec<_>>(),
+    // )?;
+
+    // write_file(
+    //     [&out, &PathBuf::from("degree_stddev.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats.iter().map(|s| s.degree_stddev).collect::<Vec<_>>(),
+    // )?;
+
+    // write_file(
+    //     [&out, &PathBuf::from("tree_leafs.csv")]
+    //         .iter()
+    //         .collect::<PathBuf>(),
+    //     &stats.iter().map(|s| s.leaf_count).collect::<Vec<_>>(),
+    // )?;
+
     write_file(
-        [&out, &PathBuf::from("avg_degrees.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats.iter().map(|s| &s.avg_degree).collect::<Vec<_>>(),
-    )?;
-    write_file(
-        [&out, &PathBuf::from("depths.csv")]
-            .iter()
-            .collect::<PathBuf>(),
+        [
+            &out,
+            &PathBuf::from("weighted_branching_shallow_factor.csv"),
+        ]
+        .iter()
+        .collect::<PathBuf>(),
         &stats
             .iter()
-            .flat_map(|s| &s.depths)
-            .collect::<Vec<&usize>>(),
-    )?;
-    write_file(
-        [&out, &PathBuf::from("unique_labels.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats
-            .iter()
-            .map(|s| s.collection_unique_labels)
+            .map(|s| s.weighted_branching_shallow_factor)
             .collect::<Vec<_>>(),
-    )?;
-    write_file(
-        [&out, &PathBuf::from("distinct_labels.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats.iter().map(|s| s.distinct_labels).collect::<Vec<_>>(),
-    )?;
-
-    write_file(
-        [&out, &PathBuf::from("tree_sizes.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats.iter().map(|s| s.size).collect::<Vec<_>>(),
-    )?;
-
-    write_file(
-        [&out, &PathBuf::from("sackins.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats.iter().map(|s| s.sacking_index).collect::<Vec<_>>(),
-    )?;
-
-    write_file(
-        [&out, &PathBuf::from("degree_stddev.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats.iter().map(|s| s.degree_stddev).collect::<Vec<_>>(),
-    )?;
-
-    write_file(
-        [&out, &PathBuf::from("tree_leafs.csv")]
-            .iter()
-            .collect::<PathBuf>(),
-        &stats.iter().map(|s| s.leaf_count).collect::<Vec<_>>(),
     )?;
 
     Ok(())

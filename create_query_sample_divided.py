@@ -32,7 +32,7 @@ def cli(
         orig_ds = {l.strip(): idx for idx, l in enumerate(f)}
     # read the data file and get the lines into array
     with open(picked_path) as f:
-        picked_ds = {orig_ds[l.strip()]: l.strip() for l in f}
+        picked_ds = {orig_ds[l.strip()]: (l.strip(), l.count('{')) for l in f}
 
     df = pl.read_csv(
         dist_path,
@@ -70,7 +70,7 @@ def cli(
         # iterate through the rows in the group and add set T1 value to the query_set if not already in the set
         dictdf = g.to_dict(as_series=True)
         for t1 in dictdf["T1"]:
-            if t1 not in query_set and t1 in picked_ds:
+            if t1 not in query_set and t1 in picked_ds and tau < picked_ds[t1][1]:
                 # print(t1)
                 query_set[t1] = tau
             if len(query_set.keys()) >= 300:
@@ -80,11 +80,11 @@ def cli(
             continue
         break
 
-    sorted_query_set = sorted(query_set.items(), key=lambda x: x[0])
-
+    sorted_query_set = sorted(query_set.items(), key=lambda x: x[1])
+    # print(f"#dist;query, total number of picked: #{len(sorted_query_set)}")
     # read the data file and get the lines into array
     for t1, dist in sorted_query_set:
-        print(f"{dist};{picked_ds[t1]}")
+        print(f"{dist};{picked_ds[t1][0]}")
     # print(f"Number of queries: {len(query_set)}")
     # print(f"Max value in dist column: {max_dist}")
 

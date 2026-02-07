@@ -345,32 +345,44 @@ mod tests {
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
-                    preorder_descendant_postorder_ancestor: 5
+                    preorder_descendant_postorder_ancestor: 5,
+                    sum: 5,
+                    diff: -5,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 4,
-                    preorder_descendant_postorder_ancestor: 0
+                    preorder_descendant_postorder_ancestor: 0,
+                    sum: 4,
+                    diff: 4,
                 },
                 TraversalCharacter {
                     char: 3,
                     preorder_following_postorder_preceding: 3,
-                    preorder_descendant_postorder_ancestor: 0
+                    preorder_descendant_postorder_ancestor: 0,
+                    sum: 3,
+                    diff: 3,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
-                    preorder_descendant_postorder_ancestor: 2
+                    preorder_descendant_postorder_ancestor: 2,
+                    sum: 2,
+                    diff: -2,
                 },
                 TraversalCharacter {
                     char: 3,
                     preorder_following_postorder_preceding: 1,
-                    preorder_descendant_postorder_ancestor: 0
+                    preorder_descendant_postorder_ancestor: 0,
+                    sum: 1,
+                    diff: 1,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 0,
-                    preorder_descendant_postorder_ancestor: 0
+                    preorder_descendant_postorder_ancestor: 0,
+                    sum: 0,
+                    diff: 0,
                 }
             ]
         );
@@ -380,32 +392,44 @@ mod tests {
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 3,
-                    preorder_descendant_postorder_ancestor: 2
+                    preorder_descendant_postorder_ancestor: 2,
+                    sum: 5,
+                    diff: 1,
                 },
                 TraversalCharacter {
                     char: 3,
                     preorder_following_postorder_preceding: 2,
-                    preorder_descendant_postorder_ancestor: 2
+                    preorder_descendant_postorder_ancestor: 2,
+                    sum: 4,
+                    diff: 0,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 2,
-                    preorder_descendant_postorder_ancestor: 1
+                    preorder_descendant_postorder_ancestor: 1,
+                    sum: 3,
+                    diff: 1,
                 },
                 TraversalCharacter {
                     char: 3,
                     preorder_following_postorder_preceding: 1,
-                    preorder_descendant_postorder_ancestor: 1
+                    preorder_descendant_postorder_ancestor: 1,
+                    sum: 2,
+                    diff: 0,
                 },
                 TraversalCharacter {
                     char: 2,
                     preorder_following_postorder_preceding: 0,
-                    preorder_descendant_postorder_ancestor: 1
+                    preorder_descendant_postorder_ancestor: 1,
+                    sum: 1,
+                    diff: -1,
                 },
                 TraversalCharacter {
                     char: 1,
                     preorder_following_postorder_preceding: 0,
-                    preorder_descendant_postorder_ancestor: 0
+                    preorder_descendant_postorder_ancestor: 0,
+                    sum: 0,
+                    diff: 0,
                 },
             ]
         );
