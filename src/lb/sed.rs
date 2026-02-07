@@ -550,7 +550,109 @@ pub fn bounded_string_edit_distance_with_structure(
     // })
 }
 
-use std::arch::x86_64::*;
+/// Berghel & Roach bounded string edit distance algorithm
+/// Returns the edit distance if <= k, otherwise returns usize::MAX
+/// Assumes s2.len() >= s1.len()
+pub fn berghel_roach_distance(
+    s1: &[TraversalCharacter],
+    s2: &[TraversalCharacter],
+    k: usize,
+) -> usize {
+    let s1len = s1.len();
+    let s2len = s2.len();
+    let k = k as i32;
+
+    // If length difference exceeds threshold, distance must be > k
+    let size_diff = (s2len - s1len) as i32;
+    if size_diff > k {
+        return usize::MAX;
+    }
+
+    // The target diagonal where we need to reach m (end of s1)
+    let target_diagonal = size_diff;
+
+    // FROW array: stores the farthest row reached on each diagonal for current p
+    // Index mapping: diagonal d is stored at index (d + k + 1)
+    // We need range [-k-1, n-m+k+1], but we'll allocate conservatively
+    let offset = k + 1;
+    let array_size = (2 * k + 3) as usize;
+
+    let mut frow_curr = vec![-1i32; array_size];
+    let mut frow_next = vec![-1i32; array_size];
+
+    // Initialize: with 0 edits (p=0), we can only follow diagonal 0
+    // Start at (-1, -1) conceptually, so frow[0] = -1
+    // Then extend greedily along diagonal 0
+    let mut row = 0;
+    while row < s2len && row < s1len && s1[row].char == s2[row].char {
+        row += 1;
+    }
+    frow_curr[(offset + 0) as usize] = row as i32;
+
+    // Check if we're already done
+    if row == s2len && target_diagonal == 0 {
+        return 0;
+    }
+
+    // Main loop: iterate over number of edits p
+    for p in 1..=k {
+        std::mem::swap(&mut frow_curr, &mut frow_next);
+
+        // Berghel & Roach bounds: only process diagonals within reach
+        // With p edits, we can reach diagonals in range:
+        // [target_diagonal - (k - p), target_diagonal + (k - p)]
+        let remaining = k - p;
+        let diag_min = target_diagonal - remaining;
+        let diag_max = target_diagonal + remaining;
+
+        // Also constrained by matrix boundaries and edit budget
+        let diag_start = std::cmp::max(diag_min, -p);
+        let diag_end = std::cmp::min(diag_max, size_diff + p);
+
+        for diag_offset in diag_start..=diag_end {
+            let idx = (offset + diag_offset) as usize;
+
+            // Three possibilities for reaching diagonal d with p edits:
+            // 1. Deletion: from diagonal d+1, advance row by 1
+            // 2. Insertion: from diagonal d-1, keep same row
+            // 3. Substitution: from diagonal d, advance row by 1
+
+            let from_deletion = frow_next[idx + 1] + 1;
+
+            let from_insertion = frow_next[idx - 1];
+
+            let from_substitution = frow_next[idx] + 1;
+            // Take the maximum row we can reach
+            let mut max_row = std::cmp::max(
+                from_deletion,
+                std::cmp::max(from_insertion, from_substitution),
+            );
+
+            // Greedy extension: match as many characters as possible
+            // On diagonal d, position (row, col) where col = row + d
+            let m_i32 = s2len as i32;
+            let n_i32 = s1len as i32;
+
+            while max_row < n_i32 && max_row + diag_offset < m_i32 {
+                if s1[max_row as usize].char == s2[(max_row + diag_offset) as usize].char {
+                    max_row += 1;
+                } else {
+                    break;
+                }
+            }
+
+            frow_curr[idx] = max_row;
+
+            // Early termination: if we reached the end of s1 on target diagonal
+            if diag_offset == target_diagonal && max_row >= n_i32 {
+                return p as usize;
+            }
+        }
+    }
+
+    // If we exhausted k edits without reaching the target
+    usize::MAX
+}
 
 #[cfg(test)]
 mod tests {
@@ -679,15 +781,7 @@ mod tests {
 
         let zero_k = zero_k as i32;
 
-        let result = bounded_string_edit_distance_with_structure(
-            &v2,
-            &v1,
-            threshold_k,
-            arr_len,
-            zero_k,
-            size_diff as i32,
-            threshold as i32,
-        );
+        let result = berghel_roach_distance(&v1, &v2, threshold_k);
         assert_eq!(result, 3);
     }
 
