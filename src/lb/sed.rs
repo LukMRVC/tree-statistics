@@ -41,6 +41,48 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
     result
 }
 
+struct SEDParameters {
+    target_diagonal: usize,
+    threshold: usize,
+    offset_0th_diagonal: usize,
+    array_size: usize,
+}
+
+fn compute_sed_parameters(s1_len: &usize, s2_len: &usize, k: &usize) -> SEDParameters {
+    let size_diff = s2_len - s1_len;
+    // Per Berghel & Roach, the threshold is the min of s2 length and k
+    let threshold = *std::cmp::min(s2_len, k);
+
+    // The target diagonal where we need to reach end of s1
+    let target_diagonal = size_diff;
+    // The offset for indexing the diagonals in the FROW array, which allows us to handle negative indices
+    // This is also referred to as ZERO_K in the Berghel & Roach paper, as it represents the diagonal corresponding to zero edits
+    let offset_0th_diagonal = threshold + 1;
+
+    // the maximum number of diagonals we need to consider
+    // is 2*k (-k to +k) plus the diagonal for zero edits, plus one extra at each end for the case when we exceed k
+    // that is why we add + 3
+    let array_size = (2 * k + 3) as usize;
+
+    SEDParameters {
+        target_diagonal: size_diff,
+        threshold,
+        offset_0th_diagonal,
+        array_size,
+    }
+}
+
+macro_rules! prepare_sed_inputs {
+    ($t1:expr, $t2:expr, $k:expr) => {{
+        let (mut t1, mut t2) = ($t1, $t2);
+        if t1.preorder.len() > t2.preorder.len() {
+            (t1, t2) = (t2, t1);
+        }
+        let params = compute_sed_parameters(&t1.c.tree_size, &t2.c.tree_size, &$k);
+        (t1, t2, params)
+    }};
+}
+
 /// Computes bounded string edit distance with known maximal threshold.
 /// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
 pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: usize) -> usize {
@@ -49,47 +91,14 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
         return k + 1;
     }
 
-    if t1.preorder.len() > t2.preorder.len() {
-        (t1, t2) = (t2, t1);
-    }
-    // assumes size of s2 is bigger or equal than s1
-    let s1len = t1.c.tree_size;
-    let s2len = t2.c.tree_size;
-    let size_diff = s2len - s1len;
-    // Per Berghel & Roach, the threshold is the min of s2 length and k
-    let threshold = std::cmp::min(s2len, k);
+    // Usage in sed_struct_k:
+    let (t1, t2, params) = prepare_sed_inputs!(t1, t2, k);
 
-    // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
-    // The shift by 1 and addition of 2 ensures sufficient buffer space
-    // as described in the Berghel & Roach paper
-    let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
-
-    // Calculate array length needed to store diagonal values
-    let arr_len = (size_diff + (zero_k) * 2 + 2);
-
-    let zero_k = zero_k as i32;
-
-    let pre_dist = bounded_string_edit_distance_with_structure(
-        &t1.reversed_preorder,
-        &t2.reversed_preorder,
-        k,
-        arr_len,
-        zero_k,
-        size_diff as i32,
-        threshold as i32,
-    );
+    let pre_dist = berghel_roach_distance(&t1.reversed_preorder, &t2.reversed_preorder, &params);
     if pre_dist > k {
         return pre_dist;
     }
-    let post_dist = bounded_string_edit_distance_with_structure(
-        &t1.preorder,
-        &t2.preorder,
-        k,
-        arr_len,
-        zero_k,
-        size_diff as i32,
-        threshold as i32,
-    );
+    let post_dist = berghel_roach_distance(&t1.preorder, &t2.preorder, &params);
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -337,11 +346,6 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     }
 }
 
-thread_local! {
-  static SCRATCH: UnsafeCell<(Vec<(i32, bool)>, Vec<(i32, bool)>)> =
-        UnsafeCell::new((vec![(-1, true); 256], vec![(-1, true); 256]));
-}
-
 /// Performs bounded string edit distance with known maximal threshold
 /// based on the algorithm by Hal Berghel and David Roach
 /// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
@@ -556,58 +560,95 @@ pub fn bounded_string_edit_distance_with_structure(
 pub fn berghel_roach_distance(
     s1: &[TraversalCharacter],
     s2: &[TraversalCharacter],
-    k: usize,
+    params: &SEDParameters,
 ) -> usize {
     let s1len = s1.len();
     let s2len = s2.len();
-    let k = k as i32;
+    let k = params.threshold as i32;
+    assert!(
+        s2len >= s1len,
+        "Berghel & Roach algorithm assumes s2 is longer or equal to s1"
+    );
 
     // If length difference exceeds threshold, distance must be > k
-    let size_diff = (s2len - s1len) as i32;
-    if size_diff > k {
+    if params.target_diagonal > params.threshold {
         return usize::MAX;
     }
 
     // The target diagonal where we need to reach m (end of s1)
-    let target_diagonal = size_diff;
+    // and is the same as (s2 - s1) length difference, which is the diagonal offset we need to reach
+    let target_diagonal = params.target_diagonal as i32;
 
     // FROW array: stores the farthest row reached on each diagonal for current p
     // Index mapping: diagonal d is stored at index (d + k + 1)
     // We need range [-k-1, n-m+k+1], but we'll allocate conservatively
-    let offset = k + 1;
-    let array_size = (2 * k + 3) as usize;
+    let offset = params.offset_0th_diagonal as i32;
 
-    let mut frow_curr = vec![-1i32; array_size];
-    let mut frow_next = vec![-1i32; array_size];
+    let mut frow_curr = vec![-1i32; params.array_size];
+    let mut frow_prev = vec![-1i32; params.array_size];
+
+    #[inline(always)]
+    fn greedy_extend(
+        s1: &[TraversalCharacter],
+        s2: &[TraversalCharacter],
+        start_row: i32,
+        diag_offset: i32,
+    ) -> i32 {
+        let mut row = start_row;
+        let max_allowed_extend = std::cmp::min(s1.len() as i32, s2.len() as i32 - (diag_offset));
+        while row < max_allowed_extend
+            && s1[row as usize].char == s2[(row + diag_offset) as usize].char
+        {
+            row += 1;
+        }
+        row
+    }
 
     // Initialize: with 0 edits (p=0), we can only follow diagonal 0
     // Start at (-1, -1) conceptually, so frow[0] = -1
     // Then extend greedily along diagonal 0
-    let mut row = 0;
-    while row < s2len && row < s1len && s1[row].char == s2[row].char {
-        row += 1;
-    }
-    frow_curr[(offset + 0) as usize] = row as i32;
+    let mut row = greedy_extend(&s1, &s2, 0, 0);
+    frow_curr[offset as usize] = row as i32;
 
     // Check if we're already done
-    if row == s2len && target_diagonal == 0 {
+    if target_diagonal == 0 && row == s2len as i32 {
         return 0;
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        dbg!(s1.iter().map(|c| c.char).collect::<Vec<_>>());
+        dbg!(s2.iter().map(|c| c.char).collect::<Vec<_>>());
+
+        print!("p=0    |");
+        for (i, v) in frow_curr.iter().enumerate() {
+            print!(
+                " {v:>3}{s}|",
+                s = if i == (target_diagonal + offset) as usize {
+                    "*"
+                } else {
+                    ""
+                }
+            );
+        }
+        println!(" -- diag range [0, 0]");
     }
 
     // Main loop: iterate over number of edits p
     for p in 1..=k {
-        std::mem::swap(&mut frow_curr, &mut frow_next);
+        std::mem::swap(&mut frow_curr, &mut frow_prev);
 
         // Berghel & Roach bounds: only process diagonals within reach
         // With p edits, we can reach diagonals in range:
         // [target_diagonal - (k - p), target_diagonal + (k - p)]
+
         let remaining = k - p;
         let diag_min = target_diagonal - remaining;
         let diag_max = target_diagonal + remaining;
 
         // Also constrained by matrix boundaries and edit budget
         let diag_start = std::cmp::max(diag_min, -p);
-        let diag_end = std::cmp::min(diag_max, size_diff + p);
+        let diag_end = std::cmp::min(diag_max, target_diagonal + p);
 
         for diag_offset in diag_start..=diag_end {
             let idx = (offset + diag_offset) as usize;
@@ -617,11 +658,11 @@ pub fn berghel_roach_distance(
             // 2. Insertion: from diagonal d-1, keep same row
             // 3. Substitution: from diagonal d, advance row by 1
 
-            let from_deletion = frow_next[idx + 1] + 1;
+            let from_deletion = frow_prev[idx + 1] + 1;
 
-            let from_insertion = frow_next[idx - 1];
+            let from_insertion = frow_prev[idx - 1];
 
-            let from_substitution = frow_next[idx] + 1;
+            let from_substitution = frow_prev[idx] + 1;
             // Take the maximum row we can reach
             let mut max_row = std::cmp::max(
                 from_deletion,
@@ -633,20 +674,45 @@ pub fn berghel_roach_distance(
             let m_i32 = s2len as i32;
             let n_i32 = s1len as i32;
 
-            while max_row < n_i32 && max_row + diag_offset < m_i32 {
-                if s1[max_row as usize].char == s2[(max_row + diag_offset) as usize].char {
-                    max_row += 1;
-                } else {
-                    break;
-                }
-            }
+            max_row = greedy_extend(&s1, &s2, max_row, diag_offset);
 
             frow_curr[idx] = max_row;
 
             // Early termination: if we reached the end of s1 on target diagonal
             if diag_offset == target_diagonal && max_row >= n_i32 {
+                #[cfg(debug_assertions)]
+                {
+                    print!("p={p:>3} |");
+                    for (i, v) in frow_curr.iter().enumerate() {
+                        print!(
+                            " {v:>3}{s}|",
+                            s = if i == (target_diagonal + offset) as usize {
+                                "*"
+                            } else {
+                                ""
+                            }
+                        );
+                    }
+                    println!(" -- diag range [{diag_start}, {diag_end}]");
+                }
                 return p as usize;
             }
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            print!("p={p:>3} |");
+            for (i, v) in frow_curr.iter().enumerate() {
+                print!(
+                    " {v:>3}{s}|",
+                    s = if i == (target_diagonal + offset) as usize {
+                        "*"
+                    } else {
+                        ""
+                    }
+                );
+            }
+            println!(" -- diag range [{diag_start}, {diag_end}]");
         }
     }
 
@@ -664,6 +730,16 @@ mod tests {
     };
 
     use super::*;
+    macro_rules! prepare_sed_inputs_traversals {
+        ($t1:expr, $t2:expr, $k:expr) => {{
+            let (mut t1, mut t2) = ($t1, $t2);
+            if t1.len() > t2.len() {
+                (t1, t2) = (t2, t1);
+            }
+            let params = compute_sed_parameters(&t1.len(), &t2.len(), &$k);
+            (t1, t2, params)
+        }};
+    }
 
     #[test]
     fn test_bounded_sed_br_structure() {
@@ -760,29 +836,104 @@ mod tests {
         ];
 
         let threshold_k = 3;
-        if v1.len() > v2.len() {
-            (v1, v2) = (v2, v1);
-        }
 
-        // assumes size of s2 is bigger or equal than s1
-        let s1len = v1.len();
-        let s2len = v2.len();
-        let size_diff = s2len - s1len;
-        // Per Berghel & Roach, the threshold is the min of s2 length and k
-        let threshold = std::cmp::min(s2len, threshold_k);
+        let (v1, v2, params) = prepare_sed_inputs_traversals!(v1, v2, threshold_k);
 
-        // zero_k represents the initial diagonal (0th/main diagonal of the SED matrix) in the edit distance matrix
-        // The shift by 1 and addition of 2 ensures sufficient buffer space
-        // as described in the Berghel & Roach paper
-        let zero_k = (((if s1len < threshold { s1len } else { threshold }) >> 1) + 2);
-
-        // Calculate array length needed to store diagonal values
-        let arr_len = (size_diff + (zero_k) * 2 + 2);
-
-        let zero_k = zero_k as i32;
-
-        let result = berghel_roach_distance(&v1, &v2, threshold_k);
+        let result = berghel_roach_distance(&v1, &v2, &params);
         assert_eq!(result, 3);
+    }
+
+    #[test]
+    fn test_bounded_sed_br_worst_case_structure() {
+        // i have simple alphabet mapping for testing purposes
+        // 1 -> g
+        // 2 -> a
+        // 3 -> r
+        // 4 -> v
+        // 5 -> e
+        // 6 -> y
+
+        // garvey
+        let mut v1 = vec![
+            TraversalCharacter {
+                char: 1,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 2,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 3,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 4,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 5,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+        ];
+        // avery
+        let mut v2 = vec![
+            TraversalCharacter {
+                char: 6,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 7,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 8,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 9,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+            TraversalCharacter {
+                char: 10,
+                preorder_following_postorder_preceding: 0,
+                preorder_descendant_postorder_ancestor: 0,
+                sum: 0,
+                diff: 0,
+            },
+        ];
+
+        let threshold_k = 5;
+        let (v1, v2, params) = prepare_sed_inputs_traversals!(v1, v2, threshold_k);
+        let result = berghel_roach_distance(&v1, &v2, &params);
+        assert_eq!(result, 5);
     }
 
     #[test]
