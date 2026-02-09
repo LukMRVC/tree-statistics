@@ -1,5 +1,5 @@
-use std::usize;
 use std::{cell::UnsafeCell, sync::LazyLock};
+use std::{i32, usize};
 
 use rustc_hash::FxHashMap;
 
@@ -39,6 +39,57 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
     }
 
     result
+}
+
+struct BerghelRoachSed {
+    fkp_matrix: Vec<i32>,
+    max_diag: i32,
+    // must be + 2 to accommodate for "virtual -1" and 0 cost
+    max_cost: i32,
+    zero_diagonal_offset: i32,
+}
+
+impl BerghelRoachSed {
+    pub fn new(max_diag: i32, max_cost: i32) -> Self {
+        let zero_diagonal_offset = max_cost / 2;
+        Self {
+            fkp_matrix: Self::initialize_fkp_matrix(
+                zero_diagonal_offset,
+                Self::get_max_diag(max_diag),
+                max_cost + 2,
+            ),
+            max_diag: Self::get_max_diag(max_diag),
+            max_cost: max_cost + 2,
+            zero_diagonal_offset,
+        }
+    }
+
+    fn get_max_diag(size_diff: i32) -> i32 {
+        size_diff * 2 + 3
+    }
+
+    fn fkp_matrix_access(&self, row: usize, col: usize, cols: usize) -> i32 {
+        self.fkp_matrix[row * cols + col]
+    }
+
+    fn initialize_fkp_matrix(zero_diagonal_offset: i32, max_diag: i32, max_cost: i32) -> Vec<i32> {
+        let mut matrix = vec![-1i32; (max_diag * max_cost) as usize];
+        for diag in -zero_diagonal_offset..max_diag {
+            for cost in 0..=(max_cost + 1) {
+                if cost == diag.abs() - 1 {
+                    if diag < 0 {
+                        matrix[(cost * (diag + zero_diagonal_offset)) as usize] = diag.abs() - 1;
+                    } else {
+                        matrix[(cost * (diag + zero_diagonal_offset)) as usize] = -1;
+                    }
+                } else {
+                    matrix[(cost * (diag + zero_diagonal_offset)) as usize] = i32::MIN;
+                }
+            }
+        }
+
+        matrix
+    }
 }
 
 struct SEDParameters {
@@ -604,17 +655,6 @@ pub fn berghel_roach_distance(
         row
     }
 
-    // Initialize: with 0 edits (p=0), we can only follow diagonal 0
-    // Start at (-1, -1) conceptually, so frow[0] = -1
-    // Then extend greedily along diagonal 0
-    let mut row = greedy_extend(&s1, &s2, 0, 0);
-    frow_curr[offset as usize] = row as i32;
-
-    // Check if we're already done
-    if target_diagonal == 0 && row == s2len as i32 {
-        return 0;
-    }
-
     #[cfg(debug_assertions)]
     {
         dbg!(s1.iter().map(|c| c.char).collect::<Vec<_>>());
@@ -635,7 +675,7 @@ pub fn berghel_roach_distance(
     }
 
     // Main loop: iterate over number of edits p
-    for p in 1..=k {
+    for p in target_diagonal..=k {
         std::mem::swap(&mut frow_curr, &mut frow_prev);
 
         // Berghel & Roach bounds: only process diagonals within reach
