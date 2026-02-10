@@ -72,18 +72,28 @@ impl BerghelRoachSed {
         self.fkp_matrix[row * cols + col]
     }
 
+    #[inline(always)]
+    fn access_fkp_matrix(cost: i32, diag: i32, max_diag: i32, zero_diagonal_offset: i32) -> usize {
+        (((cost + 1) * (max_diag + 1)) + (diag + zero_diagonal_offset)) as usize
+    }
+
     fn initialize_fkp_matrix(zero_diagonal_offset: i32, max_diag: i32, max_cost: i32) -> Vec<i32> {
-        let mut matrix = vec![-1i32; (max_diag * max_cost) as usize];
-        for diag in -zero_diagonal_offset..max_diag {
-            for cost in 0..=(max_cost + 1) {
+        let mut matrix = vec![i32::MIN; ((max_diag + 1) * (max_cost + 2)) as usize];
+        for diag in -zero_diagonal_offset..(max_diag - zero_diagonal_offset) {
+            for cost in -1..(max_cost + 1) {
                 if cost == diag.abs() - 1 {
                     if diag < 0 {
-                        matrix[(cost * (diag + zero_diagonal_offset)) as usize] = diag.abs() - 1;
+                        matrix
+                            [Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
+                            diag.abs() - 1;
                     } else {
-                        matrix[(cost * (diag + zero_diagonal_offset)) as usize] = -1;
+                        matrix
+                            [Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
+                            -1;
                     }
                 } else {
-                    matrix[(cost * (diag + zero_diagonal_offset)) as usize] = i32::MIN;
+                    matrix[Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
+                        i32::MIN;
                 }
             }
         }
@@ -764,10 +774,71 @@ pub fn berghel_roach_distance(
 mod tests {
     use std::process::Output;
 
+    use num_traits::zero;
+    use rayon::vec;
+
     use crate::{
         indexing::Indexer,
         parsing::{parse_single, tree_to_string, LabelDict, TreeOutput},
     };
+
+    #[test]
+    fn test_initialize_fkp_matrix() {
+        let max_diag = 10;
+        let max_cost = 3;
+        let zero_diagonal_offset = max_diag / 2;
+        let matrix =
+            BerghelRoachSed::initialize_fkp_matrix(zero_diagonal_offset, max_diag, max_cost + 2);
+
+        // at p = -1, diag = 0
+        let mut index_calc = |row: usize, col: usize| row * max_diag as usize + col;
+
+        let mut rv1 = vec![i32::MIN; max_diag as usize + 1];
+        rv1[zero_diagonal_offset as usize] = -1;
+
+        let mut rv2 = vec![i32::MIN; max_diag as usize + 1];
+        rv2[zero_diagonal_offset as usize - 1] = 0;
+        rv2[zero_diagonal_offset as usize + 1] = -1;
+        let mut rv3 = vec![i32::MIN; max_diag as usize + 1];
+        rv3[zero_diagonal_offset as usize - 2] = 1;
+        rv3[zero_diagonal_offset as usize + 2] = -1;
+        let mut rv4 = vec![i32::MIN; max_diag as usize + 1];
+        rv4[zero_diagonal_offset as usize - 3] = 2;
+        rv4[zero_diagonal_offset as usize + 3] = -1;
+        let mut rv5 = vec![i32::MIN; max_diag as usize + 1];
+        rv5[zero_diagonal_offset as usize - 4] = 3;
+        rv5[zero_diagonal_offset as usize + 4] = -1;
+        let mut rv6 = vec![i32::MIN; max_diag as usize + 1];
+        rv6[zero_diagonal_offset as usize - 5] = 4;
+        let mut rv7 = vec![i32::MIN; max_diag as usize + 1];
+
+        // print matrix row by row
+        eprintln!("Initialized FKP Matrix:");
+        for (idx, val) in matrix.iter().enumerate() {
+            eprint!("{:>5} ", val);
+
+            if idx % (max_diag + 1) as usize == max_diag as usize {
+                eprintln!("");
+            }
+        }
+
+        eprintln!("");
+        eprintln!("");
+
+        // combine all rv vectors into single vector
+        let mut combined = vec![];
+        combined.extend(rv1);
+        combined.extend(rv2);
+        combined.extend(rv3);
+        combined.extend(rv4);
+        combined.extend(rv5);
+        combined.extend(rv6);
+        combined.extend(rv7);
+
+        // Check some key values in the matrix
+        assert_eq!(matrix, combined);
+        // assert_eq!(matrix, initialized_fkp_target);
+    }
 
     use super::*;
     macro_rules! prepare_sed_inputs_traversals {
