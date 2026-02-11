@@ -51,6 +51,9 @@ pub struct BerghelRoachSed<'a, T: Eq> {
     query: &'a [T],
 }
 
+// Use a power-of-two alignment (16 elements = 64 bytes)
+const ALIGNMENT: i32 = 16;
+
 impl<'a, T: Eq> BerghelRoachSed<'a, T> {
     pub fn initialize_query(query: &'a [T], threshold: i32) -> Self {
         // initialize the control structure for the query
@@ -110,18 +113,22 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
         let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
             use std::cmp::max;
 
-            let previous_row = &matrix[Self::access_fkp_matrix(
-                cost - 1,
-                -zero_diagonal_offset,
-                max_diag,
-                zero_diagonal_offset,
-            )
-                ..Self::access_fkp_matrix(
-                    cost - 1,
-                    max_diag - zero_diagonal_offset,
-                    max_diag,
-                    zero_diagonal_offset,
-                )];
+            let previous_row = unsafe {
+                matrix.get_unchecked(
+                    Self::access_fkp_matrix(
+                        cost - 1,
+                        -zero_diagonal_offset,
+                        max_diag,
+                        zero_diagonal_offset,
+                    )
+                        ..Self::access_fkp_matrix(
+                            cost - 1,
+                            max_diag - zero_diagonal_offset,
+                            max_diag,
+                            zero_diagonal_offset,
+                        ),
+                )
+            };
 
             let offset_diag = (diag + self.zero_diagonal_offset) as usize;
 
@@ -134,17 +141,18 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
                     ),
                 )
             };
+
             // While loop to extend the match (Ukkonen's optimization)
             // Added safe bounds check (t >= 0) just in case initialization used -999
-            while max_row < m && max_row + diag < n {
-                unsafe {
-                    if s1.get_unchecked(max_row as usize)
-                        != s2.get_unchecked((max_row + diag) as usize)
-                    {
-                        break;
-                    }
+            unsafe {
+                while max_row >= 0
+                    && max_row < m
+                    && max_row + diag < n
+                    && s1.get_unchecked(max_row as usize)
+                        == s2.get_unchecked((max_row + diag) as usize)
+                {
+                    max_row += 1;
                 }
-                max_row += 1;
             }
 
             //
@@ -212,12 +220,10 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
         self.fkp_matrix[row * cols + col]
     }
 
-    #[inline(always)]
     fn access_fkp_matrix(cost: i32, diag: i32, max_diag: i32, zero_diagonal_offset: i32) -> usize {
         ((cost + 1) * (max_diag + 1) + diag + zero_diagonal_offset) as usize
     }
 
-    #[inline(always)]
     fn fkp_matrix_at(&self, cost: i32, diag: i32) -> usize {
         ((cost + 1) * (self.max_diag + 1) + diag + self.zero_diagonal_offset) as usize
     }
