@@ -1,5 +1,6 @@
 use crate::indexing::{Indexer, InvertedListLabelPostorderIndex, SEDIndex};
 use crate::lb::binary_branch::{self, ted as bib_ted, ted_l1 as bib_l1, BinaryBranchConverter};
+use crate::lb::sed::{self, bounded_string_edit_distance, BerghelRoachSed};
 use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
@@ -101,19 +102,19 @@ fn main() -> Result<(), anyhow::Error> {
                 .map(|tree| SEDIndex::index_tree(tree, &label_dict))
                 .map(|index| {
                     format!(
-                        "{pre}",
+                        "{pre}-{post}",
                         pre = index
                             .preorder
                             .iter()
                             .map(|x| x.to_string())
                             .collect::<Vec<_>>()
                             .join(";"),
-                        // post = index
-                        //     .postorder
-                        //     .iter()
-                        //     .map(|x| x.to_string())
-                        //     .collect::<Vec<_>>()
-                        //     .join(";")
+                        post = index
+                            .postorder
+                            .iter()
+                            .map(|x| x.to_string())
+                            .collect::<Vec<_>>()
+                            .join(";")
                     )
                 })
                 .collect::<Vec<_>>();
@@ -211,15 +212,57 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
 
-                        let mut candidates = vec![];
+                        let mut candidates = vec![(usize::MAX, usize::MAX); sed_indexes.len() * 2];
                         let mut elapsed: Duration = Duration::MAX;
+
                         for _ in 0..runs {
-                            let elapsed_run: Duration;
-                            (candidates, elapsed_run) =
-                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k);
+                            let elapsed_run: Instant = Instant::now();
+                            let (t, query) = &sed_queries[0];
+                            let mut insert_idx = 0usize;
+                            let mut pre_br =
+                                BerghelRoachSed::initialize_query(&query.preorder, *t as i32);
+                            let mut post_br =
+                                BerghelRoachSed::initialize_query(&query.postorder, *t as i32);
+                            for (qid, (t, query)) in sed_queries.iter().enumerate() {
+                                // reserve space for candidates of this query
+                                if candidates.len() - insert_idx < sed_indexes.len() {
+                                    candidates.resize(
+                                        insert_idx + sed_indexes.len(),
+                                        (usize::MAX, usize::MAX),
+                                    );
+                                }
+
+                                pre_br.reinitialize_query(&query.preorder, *t as i32);
+                                post_br.reinitialize_query(&query.postorder, *t as i32);
+                                for (tid, tree) in sed_indexes.iter().enumerate() {
+                                    unsafe {
+                                        *candidates.get_unchecked_mut(insert_idx) = (qid, tid);
+                                    }
+                                    insert_idx += usize::from(
+                                        post_br.compute_distance(&tree.postorder) <= *t
+                                            && pre_br.compute_distance(&tree.preorder) <= *t,
+                                    );
+                                }
+                            }
+                            // let mut br_post = BerghelRoachSed::
+                            let elapsed_run = elapsed_run.elapsed();
+
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
-                        (candidates, elapsed)
+
+                        // for _ in 0..runs {
+                        //     let elapsed_run: Duration;
+                        //     (candidates, elapsed_run) =
+                        //         lb::iterate_queries!(sed_queries, sed_indexes, sed_k);
+                        //     elapsed = std::cmp::min(elapsed, elapsed_run)
+                        // }
+                        (
+                            candidates
+                                .into_iter()
+                                .filter(|(q, t)| *q < usize::MAX)
+                                .collect::<Vec<_>>(),
+                            elapsed,
+                        )
                     }
                     LBM::SEDStruct => {
                         let sed_indexes = trees

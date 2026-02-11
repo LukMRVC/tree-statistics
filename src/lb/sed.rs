@@ -41,7 +41,7 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
     result
 }
 
-struct BerghelRoachSed<'a, T: Eq> {
+pub struct BerghelRoachSed<'a, T: Eq> {
     fkp_matrix: Vec<i32>,
     max_diag: i32,
     // must be + 2 to accommodate for "virtual -1" and 0 cost
@@ -103,6 +103,10 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
 
         let target_diagonal = n - m;
 
+        if target_diagonal > self.max_computable_cost {
+            return usize::MAX;
+        }
+
         let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
             use std::cmp::max;
 
@@ -121,24 +125,37 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
 
             let offset_diag = (diag + self.zero_diagonal_offset) as usize;
 
-            let mut max_row = max(
-                previous_row[offset_diag] + 1, // substitution
+            let mut max_row = unsafe {
                 max(
-                    previous_row[offset_diag - 1],     // deletion
-                    previous_row[offset_diag + 1] + 1, // insertion
-                ),
-            );
+                    previous_row.get_unchecked(offset_diag) + 1, // substitution
+                    max(
+                        *previous_row.get_unchecked(offset_diag - 1), // deletion
+                        previous_row.get_unchecked(offset_diag + 1) + 1, // insertion
+                    ),
+                )
+            };
             // While loop to extend the match (Ukkonen's optimization)
             // Added safe bounds check (t >= 0) just in case initialization used -999
-            while (max_row < m && max_row + diag < n)
-                && s1[max_row as usize] == s2[(max_row + diag) as usize]
-            {
+            while max_row < m && max_row + diag < n {
+                unsafe {
+                    if s1.get_unchecked(max_row as usize)
+                        != s2.get_unchecked((max_row + diag) as usize)
+                    {
+                        break;
+                    }
+                }
                 max_row += 1;
             }
 
             //
-            let idx = Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset);
-            matrix[idx] = max_row;
+            unsafe {
+                *matrix.get_unchecked_mut(Self::access_fkp_matrix(
+                    cost,
+                    diag,
+                    max_diag,
+                    zero_diagonal_offset,
+                )) = max_row;
+            }
         };
 
         let mut cost = target_diagonal;
@@ -177,10 +194,12 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
             let current_target_diag_idx =
                 Self::access_fkp_matrix(cost - 1, target_diagonal, max_diag, zero_diagonal_offset);
 
-            if fkp_matrix[current_target_diag_idx] == m {
-                return (cost - 1) as usize;
-            } else if cost > self.max_computable_cost {
-                return usize::MAX;
+            unsafe {
+                if *fkp_matrix.get_unchecked(current_target_diag_idx) == m {
+                    return (cost - 1) as usize;
+                } else if cost > self.max_computable_cost {
+                    return usize::MAX;
+                }
             }
         }
     }
@@ -401,6 +420,10 @@ pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
     std::cmp::max(pre_dist, post_dist)
 }
 
+pub fn sed_k_br<'a, T: Eq>(br: &'a mut BerghelRoachSed<T>, target: &'a [T]) -> usize {
+    br.compute_distance(&target)
+}
+
 pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     use std::cmp::{max, min};
     // assumes size of s2 is bigger or equal than s1
@@ -444,14 +467,19 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     // if s1len == 0 {
     //     return s2len;
     // }
+    let (s1, s2) = if s1.len() <= s2.len() {
+        (s1, s2)
+    } else {
+        (s2, s1)
+    };
+
     let s1len = s1.len() as i64;
     let s2len = s2.len() as i64;
 
     let threshold = min(s2len, k as i64);
     let size_diff = s2len - s1len;
-
-    if threshold < size_diff {
-        return threshold as usize;
+    if size_diff > threshold {
+        return usize::MAX;
     }
 
     let zero_k: i64 = ((if s1len < threshold { s1len } else { threshold }) >> 1) + 2;
@@ -993,6 +1021,23 @@ mod tests {
         let result = br.compute_distance(&target);
         assert_eq!(
             result, 3,
+            "Expected edit distance of 3 between 'kitten' and 'sitting' with k=5"
+        );
+
+        let query = "123456452abc"
+            .chars()
+            .map(|c| c as char)
+            .collect::<Vec<_>>();
+        let target = "173829526452abc"
+            .chars()
+            .map(|c| c as char)
+            .collect::<Vec<_>>();
+
+        br.reinitialize_query(&query, 4);
+        let result = br.compute_distance(&target);
+        assert_eq!(
+            result,
+            usize::MAX,
             "Expected edit distance of 3 between 'kitten' and 'sitting' with k=5"
         );
 

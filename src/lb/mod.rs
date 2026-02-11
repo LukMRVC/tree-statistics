@@ -10,8 +10,6 @@ macro_rules! iterate_queries {
         let mut candidates = vec![];
         for (qid, (t, query)) in $query_tuple.iter().enumerate() {
             for (tid, tree) in $tree_indexes.iter().enumerate() {
-                println!("Comparing query {} with tree {}...", qid + 1, tid + 1);
-
                 if $lb_func(query, tree, *t) <= *t {
                     candidates.push((qid, tid));
                 }
