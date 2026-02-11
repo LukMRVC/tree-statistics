@@ -247,6 +247,225 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
     }
 }
 
+pub struct BerghelRoachSedStruct<'a> {
+    fkp_matrix: Vec<(i32, bool)>,
+    max_diag: i32,
+    // must be + 2 to accommodate for "virtual -1" and 0 cost
+    max_cost: i32,
+    max_computable_cost: i32,
+    zero_diagonal_offset: i32,
+    query: &'a [TraversalCharacter],
+}
+
+impl<'a> BerghelRoachSedStruct<'a> {
+    pub fn reinitialize_query(&mut self, query: &'a [TraversalCharacter], threshold: i32) {
+        if self.max_cost >= threshold + 2 && self.max_diag >= threshold * 2 + 3 {
+            self.query = query;
+            self.max_computable_cost = threshold;
+            return;
+        }
+
+        *self = Self::initialize_query(query, threshold);
+    }
+
+    pub fn compute_distance(&mut self, target: &[TraversalCharacter]) -> usize {
+        let mut s1 = self.query;
+        let mut s2 = target;
+
+        if s1.len() >= s2.len() {
+            (s1, s2) = (s2, s1);
+        }
+
+        let m = s1.len() as i32;
+        let n = s2.len() as i32;
+        let max_diag = self.max_diag;
+        let zero_diagonal_offset = self.zero_diagonal_offset;
+
+        let target_diagonal = n - m;
+        let threshold = self.max_computable_cost;
+
+        if target_diagonal > self.max_computable_cost {
+            return usize::MAX;
+        }
+
+        let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<(i32, bool)>| {
+            use std::cmp::max;
+
+            let previous_row = &matrix[Self::access_fkp_matrix(
+                cost - 1,
+                -zero_diagonal_offset,
+                max_diag,
+                zero_diagonal_offset,
+            )
+                ..Self::access_fkp_matrix(
+                    cost - 1,
+                    max_diag - zero_diagonal_offset,
+                    max_diag,
+                    zero_diagonal_offset,
+                )];
+
+            let offset_diag = (diag + self.zero_diagonal_offset) as usize;
+            let mut struct_ok = false;
+
+            let mut max_row = unsafe {
+                max(
+                    previous_row.get_unchecked(offset_diag).0 + 1, // substitution
+                    max(
+                        previous_row.get_unchecked(offset_diag - 1).0, // deletion
+                        previous_row.get_unchecked(offset_diag + 1).0 + 1, // insertion
+                    ),
+                )
+            };
+            let allowed_edits = cost - 1;
+
+            // While loop to extend the match (Ukkonen's optimization)
+            // Added safe bounds check (t >= 0) just in case initialization used -999
+            unsafe {
+                while max_row < m && max_row + diag < n {
+                    let c1 = s1.get_unchecked(max_row as usize);
+                    let c2 = s2.get_unchecked((max_row + diag) as usize);
+
+                    let char_eq = c1.char == c2.char;
+                    struct_ok = (allowed_edits + (c1.sum - c2.sum).abs() <= threshold)
+                        && (allowed_edits + (c1.diff - c2.diff).abs() <= threshold);
+
+                    if !char_eq || !struct_ok {
+                        break;
+                    }
+                    max_row += 1;
+                }
+            }
+
+            //
+            unsafe {
+                *matrix.get_unchecked_mut(Self::access_fkp_matrix(
+                    cost,
+                    diag,
+                    max_diag,
+                    zero_diagonal_offset,
+                )) = (max_row, struct_ok);
+            }
+        };
+
+        let mut cost = target_diagonal;
+        let fkp_matrix = &mut self.fkp_matrix;
+
+        loop {
+            let mut inc = cost;
+
+            for temp_cost in 0..cost {
+                if ((n - m) - inc).abs() <= temp_cost {
+                    greedy_extend((n - m) - inc, temp_cost, fkp_matrix);
+                }
+                if ((n - m) + inc).abs() <= temp_cost {
+                    greedy_extend((n - m) + inc, temp_cost, fkp_matrix);
+                }
+
+                inc -= 1;
+            }
+
+            greedy_extend((n - m), cost, fkp_matrix);
+            cost += 1;
+
+            // print matrix row by row
+
+            // eprintln!("FKP Matrix:");
+            // for (idx, val) in fkp_matrix.iter().enumerate() {
+            //     eprint!("{:>12} ", val);
+
+            //     if idx % (max_diag + 1) as usize == max_diag as usize {
+            //         eprintln!("");
+            //     }
+            // }
+
+            // eprintln!("");
+
+            let current_target_diag_idx =
+                Self::access_fkp_matrix(cost - 1, target_diagonal, max_diag, zero_diagonal_offset);
+
+            unsafe {
+                if fkp_matrix.get_unchecked(current_target_diag_idx).0 == m {
+                    return (cost - 1) as usize;
+                } else if cost > self.max_computable_cost {
+                    return usize::MAX;
+                }
+            }
+        }
+    }
+
+    fn get_max_diag(size_diff: i32) -> i32 {
+        size_diff * 2 + 3
+    }
+
+    fn fkp_matrix_access(&self, row: usize, col: usize, cols: usize) -> (i32, bool) {
+        self.fkp_matrix[row * cols + col]
+    }
+
+    #[inline(always)]
+    fn access_fkp_matrix(cost: i32, diag: i32, max_diag: i32, zero_diagonal_offset: i32) -> usize {
+        ((cost + 1) * (max_diag + 1) + diag + zero_diagonal_offset) as usize
+    }
+
+    #[inline(always)]
+    fn fkp_matrix_at(&self, cost: i32, diag: i32) -> usize {
+        ((cost + 1) * (self.max_diag + 1) + diag + self.zero_diagonal_offset) as usize
+    }
+
+    fn initialize_fkp_matrix(
+        zero_diagonal_offset: i32,
+        max_diag: i32,
+        max_cost: i32,
+    ) -> Vec<(i32, bool)> {
+        let mut matrix = vec![(i32::MIN, true); ((max_diag + 1) * (max_cost + 2)) as usize];
+        for diag in -zero_diagonal_offset..(max_diag - zero_diagonal_offset) {
+            for cost in -1..(max_cost + 1) {
+                if cost == diag.abs() - 1 {
+                    if diag < 0 {
+                        matrix
+                            [Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
+                            (diag.abs() - 1, true);
+                    } else {
+                        matrix
+                            [Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
+                            (-1, true);
+                    }
+                } else {
+                    matrix[Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
+                        (i32::MIN, true);
+                }
+            }
+        }
+
+        matrix
+    }
+
+    pub fn initialize_query(query: &'a [TraversalCharacter], threshold: i32) -> Self {
+        // initialize the control structure for the query
+        // our MAX_P (or max cost) is threshold + 2
+        // +2 to accommodate for the "virtual -1" edit and the edit cost +1 where the algorithm ends
+        let max_p = threshold + 2;
+
+        // since we have strict threshold on the edit distance, we only need to consider diagonals in the range of
+        // [-threshold, threshold] plus the diagonal for zero edits, plus one extra at each end for the case when we exceed k
+        // that is why we add + 3
+        let max_k = threshold * 2 + 3;
+
+        // zero_k offset (or the 0th diagonal offset) is the index in the FROW array where the diagonal for zero edits is stored
+        let zero_k_offset = max_k / 2;
+
+        let fkp_matrix = Self::initialize_fkp_matrix(zero_k_offset, max_k, max_p);
+
+        Self {
+            query,
+            fkp_matrix,
+            max_computable_cost: threshold,
+            max_diag: max_k,
+            max_cost: max_p,
+            zero_diagonal_offset: zero_k_offset,
+        }
+    }
+}
+
 struct SEDParameters {
     target_diagonal: usize,
     threshold: usize,
