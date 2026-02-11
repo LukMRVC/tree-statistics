@@ -41,26 +41,147 @@ fn string_edit_distance(s1: &[i32], s2: &[i32]) -> usize {
     result
 }
 
-struct BerghelRoachSed {
+struct BerghelRoachSed<'a, T: Eq> {
     fkp_matrix: Vec<i32>,
     max_diag: i32,
     // must be + 2 to accommodate for "virtual -1" and 0 cost
     max_cost: i32,
+    max_computable_cost: i32,
     zero_diagonal_offset: i32,
+    query: &'a [T],
 }
 
-impl BerghelRoachSed {
-    pub fn new(max_diag: i32, max_cost: i32) -> Self {
-        let zero_diagonal_offset = max_cost / 2;
+impl<'a, T: Eq> BerghelRoachSed<'a, T> {
+    pub fn initialize_query(query: &'a [T], threshold: i32) -> Self {
+        // initialize the control structure for the query
+        // our MAX_P (or max cost) is threshold + 2
+        // +2 to accommodate for the "virtual -1" edit and the edit cost +1 where the algorithm ends
+        let max_p = threshold + 2;
+
+        // since we have strict threshold on the edit distance, we only need to consider diagonals in the range of
+        // [-threshold, threshold] plus the diagonal for zero edits, plus one extra at each end for the case when we exceed k
+        // that is why we add + 3
+        let max_k = threshold * 2 + 3;
+
+        // zero_k offset (or the 0th diagonal offset) is the index in the FROW array where the diagonal for zero edits is stored
+        let zero_k_offset = max_k / 2;
+
+        let fkp_matrix = Self::initialize_fkp_matrix(zero_k_offset, max_k, max_p);
+
         Self {
-            fkp_matrix: Self::initialize_fkp_matrix(
+            query,
+            fkp_matrix,
+            max_computable_cost: threshold,
+            max_diag: max_k,
+            max_cost: max_p,
+            zero_diagonal_offset: zero_k_offset,
+        }
+    }
+
+    pub fn reinitialize_query(&mut self, query: &'a [T], threshold: i32) {
+        if self.max_cost >= threshold + 2 && self.max_diag >= threshold * 2 + 3 {
+            self.query = query;
+            self.max_computable_cost = threshold;
+            return;
+        }
+
+        *self = Self::initialize_query(query, threshold);
+    }
+
+    pub fn compute_distance(&mut self, target: &[T]) -> usize {
+        let mut s1 = self.query;
+        let mut s2 = target;
+
+        if s1.len() >= s2.len() {
+            (s1, s2) = (s2, s1);
+        }
+
+        let m = s1.len() as i32;
+        let n = s2.len() as i32;
+        let max_diag = self.max_diag;
+        let zero_diagonal_offset = self.zero_diagonal_offset;
+
+        let target_diagonal = n - m;
+
+        let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
+            use std::cmp::max;
+
+            let previous_row = &matrix[Self::access_fkp_matrix(
+                cost - 1,
+                -zero_diagonal_offset,
+                max_diag,
                 zero_diagonal_offset,
-                Self::get_max_diag(max_diag),
-                max_cost + 2,
-            ),
-            max_diag: Self::get_max_diag(max_diag),
-            max_cost: max_cost + 2,
-            zero_diagonal_offset,
+            )
+                ..Self::access_fkp_matrix(
+                    cost - 1,
+                    max_diag - zero_diagonal_offset,
+                    max_diag,
+                    zero_diagonal_offset,
+                )];
+
+            let offset_diag = (diag + self.zero_diagonal_offset) as usize;
+
+            let mut max_row = max(
+                previous_row[offset_diag] + 1, // substitution
+                max(
+                    previous_row[offset_diag - 1],     // deletion
+                    previous_row[offset_diag + 1] + 1, // insertion
+                ),
+            );
+            // While loop to extend the match (Ukkonen's optimization)
+            // Added safe bounds check (t >= 0) just in case initialization used -999
+            while (max_row < m && max_row + diag < n)
+                && s1[max_row as usize] == s2[(max_row + diag) as usize]
+            {
+                max_row += 1;
+            }
+
+            //
+            let idx = Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset);
+            matrix[idx] = max_row;
+        };
+
+        let mut cost = target_diagonal;
+        let fkp_matrix = &mut self.fkp_matrix;
+
+        loop {
+            let mut inc = cost;
+
+            for temp_cost in 0..cost {
+                if ((n - m) - inc).abs() <= temp_cost {
+                    greedy_extend((n - m) - inc, temp_cost, fkp_matrix);
+                }
+                if ((n - m) + inc).abs() <= temp_cost {
+                    greedy_extend((n - m) + inc, temp_cost, fkp_matrix);
+                }
+
+                inc -= 1;
+            }
+
+            greedy_extend((n - m), cost, fkp_matrix);
+            cost += 1;
+
+            // print matrix row by row
+
+            // eprintln!("FKP Matrix:");
+            // for (idx, val) in fkp_matrix.iter().enumerate() {
+            //     eprint!("{:>12} ", val);
+
+            //     if idx % (max_diag + 1) as usize == max_diag as usize {
+            //         eprintln!("");
+            //     }
+            // }
+
+            // eprintln!("");
+
+            let current_target_diag_idx =
+                Self::access_fkp_matrix(cost - 1, target_diagonal, max_diag, zero_diagonal_offset);
+
+            if fkp_matrix[current_target_diag_idx] == m {
+                return (cost - 1) as usize;
+            } else if cost > self.max_computable_cost {
+                return usize::MAX;
+            }
         }
     }
 
@@ -74,7 +195,12 @@ impl BerghelRoachSed {
 
     #[inline(always)]
     fn access_fkp_matrix(cost: i32, diag: i32, max_diag: i32, zero_diagonal_offset: i32) -> usize {
-        (((cost + 1) * (max_diag + 1)) + (diag + zero_diagonal_offset)) as usize
+        ((cost + 1) * (max_diag + 1) + diag + zero_diagonal_offset) as usize
+    }
+
+    #[inline(always)]
+    fn fkp_matrix_at(&self, cost: i32, diag: i32) -> usize {
+        ((cost + 1) * (self.max_diag + 1) + diag + self.zero_diagonal_offset) as usize
     }
 
     fn initialize_fkp_matrix(zero_diagonal_offset: i32, max_diag: i32, max_cost: i32) -> Vec<i32> {
@@ -787,8 +913,11 @@ mod tests {
         let max_diag = 10;
         let max_cost = 3;
         let zero_diagonal_offset = max_diag / 2;
-        let matrix =
-            BerghelRoachSed::initialize_fkp_matrix(zero_diagonal_offset, max_diag, max_cost + 2);
+        let matrix = BerghelRoachSed::<i32>::initialize_fkp_matrix(
+            zero_diagonal_offset,
+            max_diag,
+            max_cost + 2,
+        );
 
         // at p = -1, diag = 0
         let mut index_calc = |row: usize, col: usize| row * max_diag as usize + col;
@@ -812,19 +941,6 @@ mod tests {
         rv6[zero_diagonal_offset as usize - 5] = 4;
         let mut rv7 = vec![i32::MIN; max_diag as usize + 1];
 
-        // print matrix row by row
-        eprintln!("Initialized FKP Matrix:");
-        for (idx, val) in matrix.iter().enumerate() {
-            eprint!("{:>5} ", val);
-
-            if idx % (max_diag + 1) as usize == max_diag as usize {
-                eprintln!("");
-            }
-        }
-
-        eprintln!("");
-        eprintln!("");
-
         // combine all rv vectors into single vector
         let mut combined = vec![];
         combined.extend(rv1);
@@ -837,6 +953,49 @@ mod tests {
 
         // Check some key values in the matrix
         assert_eq!(matrix, combined);
+        // assert_eq!(matrix, initialized_fkp_target);
+    }
+
+    #[test]
+    fn test_br_first_case() {
+        let query = "garvey".chars().map(|c| c as char).collect::<Vec<_>>();
+        let target = "avery".chars().map(|c| c as char).collect::<Vec<_>>();
+
+        let mut br = BerghelRoachSed::<char>::initialize_query(&query, 3);
+        let result = br.compute_distance(&target);
+        assert_eq!(
+            result, 3,
+            "Expected edit distance of 3 between 'garvey' and 'avery' with k=3"
+        );
+
+        br.reinitialize_query(&query, 2);
+        let result = br.compute_distance(&target);
+        assert_eq!(
+            result,
+            usize::MAX,
+            "Expected edit non computable (distance > k) between 'garvey' and 'avery' with k=2"
+        );
+
+        let query = "abcde".chars().map(|c| c as char).collect::<Vec<_>>();
+        let target = "fghij".chars().map(|c| c as char).collect::<Vec<_>>();
+
+        br.reinitialize_query(&query, 5);
+        let result = br.compute_distance(&target);
+        assert_eq!(
+            result, 5,
+            "Expected edit distance of 5 between 'abcde' and 'fghij' with k=5"
+        );
+
+        let query = "kitten".chars().map(|c| c as char).collect::<Vec<_>>();
+        let target = "sitting".chars().map(|c| c as char).collect::<Vec<_>>();
+
+        br.reinitialize_query(&query, 3);
+        let result = br.compute_distance(&target);
+        assert_eq!(
+            result, 3,
+            "Expected edit distance of 3 between 'kitten' and 'sitting' with k=5"
+        );
+
         // assert_eq!(matrix, initialized_fkp_target);
     }
 
