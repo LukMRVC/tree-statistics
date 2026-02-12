@@ -101,6 +101,7 @@ if __name__ == "__main__":
   MAX_P = 10
   ZERO_K_OFFSET = MAX_K // 2
   fkp = initialize_fkp(ZERO_K_OFFSET, MAX_K, MAX_P + 2)
+  print_fkp(fkp, ZERO_K_OFFSET)
   print('Resulting distance is:', br("avery", "garvey", 3))
   print('Resulting distance is:', br("avery", "garvey", 2))
   print('Resulting distance is:', br("abcde", "fghij", 5))
