@@ -117,7 +117,7 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
 
         // Column-major layout: each diagonal's cost values are stored contiguously.
         // f(k, p) is at index: (k + zero_offset) * cost_stride + (p + 1)
-        let greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
+        let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
             use std::cmp::max;
 
             let diag_off = (diag + zero_diagonal_offset) as usize;
@@ -175,8 +175,11 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
 
             unsafe {
                 if *fkp_matrix.get_unchecked(check_idx) == m {
+                    // println!("Total FKP matrix accesses: {}", fkp_write_accesses);
                     return (cost - 1) as usize;
                 } else if cost > self.max_computable_cost {
+                    // println!("Total FKP matrix accesses: {}", fkp_write_accesses);
+
                     return usize::MAX;
                 }
             }
@@ -682,8 +685,8 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     let mut current_row = vec![-1i64; arr_len as usize];
     let mut next_row = vec![-1i64; arr_len as usize];
     let mut i: i64 = 0;
-    let condition_row = size_diff + zero_k;
-    let end_max = condition_row << 1;
+    let condition_diag = size_diff + zero_k;
+    let end_max = condition_diag << 1;
 
     loop {
         i += 1;
@@ -705,7 +708,7 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         }
 
         let end: i64;
-        if i <= condition_row {
+        if i <= condition_diag {
             end = i;
             unsafe {
                 *next_row.get_unchecked_mut((zero_k + i) as usize) = -1;
@@ -719,6 +722,24 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         let mut t;
 
         for q in start..end {
+            // Skip diagonals too far from target - they can't affect the result within budget
+            if (size_diff - q).abs() > threshold - (i - 1) {
+                previous_cell = current_cell;
+                current_cell = next_cell;
+                unsafe {
+                    next_cell = *current_row.get_unchecked(row_index + 1);
+                }
+                // Copy previous value or use sentinel
+                unsafe {
+                    *next_row.get_unchecked_mut(row_index) = *current_row.get_unchecked(row_index);
+                }
+                row_index += 1;
+                continue;
+            }
+            // if i + (size_diff.abs_diff(q)) as i64 > threshold {
+            //     continue;
+            // }
+
             previous_cell = current_cell;
             current_cell = next_cell;
             unsafe {
@@ -744,8 +765,8 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         }
 
         unsafe {
-            if !(*next_row.get_unchecked(condition_row as usize) < s1len && i <= threshold) {
-                if !(*next_row.get_unchecked(condition_row as usize) >= s1len) && i > threshold {
+            if !(*next_row.get_unchecked(condition_diag as usize) < s1len && i <= threshold) {
+                if !(*next_row.get_unchecked(condition_diag as usize) >= s1len) && i > threshold {
                     break usize::MAX;
                 }
                 break (i - 1) as usize;
@@ -1257,6 +1278,58 @@ mod tests {
 
         br.reinitialize_query(&query, 4);
         let result = br.compute_distance(&target);
+        assert_eq!(
+            result,
+            usize::MAX,
+            "Expected edit distance of 3 between 'kitten' and 'sitting' with k=5"
+        );
+
+        // assert_eq!(matrix, initialized_fkp_target);
+    }
+
+    #[test]
+    fn test_sed_boundd_first_case() {
+        let query = "garvey".chars().map(|c| c as i32).collect::<Vec<_>>();
+        let target = "avery".chars().map(|c| c as i32).collect::<Vec<_>>();
+
+        let result = bounded_string_edit_distance(&query, &target, 3);
+        assert_eq!(
+            result, 3,
+            "Expected edit distance of 3 between 'garvey' and 'avery' with k=3"
+        );
+
+        let result = bounded_string_edit_distance(&query, &target, 2);
+        assert_eq!(
+            result,
+            usize::MAX,
+            "Expected edit non computable (distance > k) between 'garvey' and 'avery' with k=2"
+        );
+
+        let query = "abcde".chars().map(|c| c as i32).collect::<Vec<_>>();
+        let target = "fghij".chars().map(|c| c as i32).collect::<Vec<_>>();
+
+        let result = bounded_string_edit_distance(&query, &target, 5);
+        assert_eq!(
+            result, 5,
+            "Expected edit distance of 5 between 'abcde' and 'fghij' with k=5"
+        );
+
+        let query = "kitten".chars().map(|c| c as i32).collect::<Vec<_>>();
+        let target = "sitting".chars().map(|c| c as i32).collect::<Vec<_>>();
+
+        let result = bounded_string_edit_distance(&query, &target, 3);
+        assert_eq!(
+            result, 3,
+            "Expected edit distance of 3 between 'kitten' and 'sitting' with k=5"
+        );
+
+        let query = "123456452abc".chars().map(|c| c as i32).collect::<Vec<_>>();
+        let target = "173829526452abc"
+            .chars()
+            .map(|c| c as i32)
+            .collect::<Vec<_>>();
+
+        let result = bounded_string_edit_distance(&query, &target, 4);
         assert_eq!(
             result,
             usize::MAX,
