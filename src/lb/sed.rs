@@ -152,38 +152,26 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
             }
         };
 
-        // let mut cost = target_diagonal;
-        let mut cost = target_diagonal - 1;
+        let mut cost = target_diagonal;
         let fkp_matrix = &mut self.fkp_matrix;
 
         loop {
-            // let mut inc = cost;
-
-            // for temp_cost in 0..cost {
-            //     if ((n - m) - inc).abs() <= temp_cost {
-            //         greedy_extend((n - m) - inc, temp_cost, fkp_matrix);
-            //     }
-            //     if ((n - m) + inc).abs() <= temp_cost {
-            //         greedy_extend((n - m) + inc, temp_cost, fkp_matrix);
-            //     }
-
-            //     inc -= 1;
-            // }
-
-            cost += 1;
-            for i in ((cost - target_diagonal) / 2)..1 {
+            // Afterword alternative from Berghel & Roach:
+            // Directly enumerate (diagonal, cost) pairs radiating outward from target_diagonal.
+            // Right of target diagonal: delta + i at cost p - i
+            for i in (1..=(cost - target_diagonal) / 2).rev() {
                 greedy_extend(target_diagonal + i, cost - i, fkp_matrix);
             }
-            for i in ((cost + target_diagonal) / 2)..1 {
+            // Left of target diagonal: delta - i at cost p - i
+            for i in (1..=(cost + target_diagonal) / 2).rev() {
                 greedy_extend(target_diagonal - i, cost - i, fkp_matrix);
             }
 
             greedy_extend(target_diagonal, cost, fkp_matrix);
-            let check_idx = (target_diagonal + zero_diagonal_offset) as usize * cs + cost as usize;
-            // cost += 1;
+            cost += 1;
 
             // Check f(target_diagonal, cost - 1)
-            // let check_idx = (target_diagonal + zero_diagonal_offset) as usize * cs + cost as usize;
+            let check_idx = (target_diagonal + zero_diagonal_offset) as usize * cs + cost as usize;
 
             unsafe {
                 if *fkp_matrix.get_unchecked(check_idx) == m {
