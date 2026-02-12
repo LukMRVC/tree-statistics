@@ -692,54 +692,65 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
 
-        let start: i64;
-        let mut next_cell: i64;
-        let mut previous_cell: i64;
-        let mut current_cell: i64 = -1;
-
+        // Calculate original band boundaries from Berghel-Roach algorithm
+        let original_start: i64;
         if i <= zero_k {
-            start = -i + 1;
-            next_cell = i - 2i64;
+            original_start = -i + 1;
         } else {
-            start = i - (zero_k << 1) + 1;
-            unsafe {
-                next_cell = *current_row.get_unchecked((zero_k + start) as usize);
-            }
+            original_start = i - (zero_k << 1) + 1;
         }
 
-        let end: i64;
+        let original_end: i64;
         if i <= condition_diag {
-            end = i;
+            original_end = i;
             unsafe {
                 *next_row.get_unchecked_mut((zero_k + i) as usize) = -1;
             }
         } else {
-            end = end_max - i;
+            original_end = end_max - i;
         }
 
-        let mut row_index = (start + zero_k) as usize;
+        // Precompute valid diagonal range based on budget
+        let budget = threshold - (i - 1);
+        let min_valid_diag = size_diff - budget;
+        let max_valid_diag = size_diff + budget;
+
+        // Intersect the original band with the budget-constrained range
+        let start = max(original_start, min_valid_diag);
+        let end = min(original_end, max_valid_diag + 1); // +1 because range is exclusive
+
+        // Initialize cell variables for the adjusted starting position
+        // These represent values from the previous cost level (i-1):
+        // - current_cell: value at diagonal (start - 1)
+        // - next_cell: value at diagonal (start)
+        let mut current_cell: i64;
+        let mut next_cell: i64;
+        let mut previous_cell: i64;
+
+        // Load initial values from previous row based on adjusted start position
+        if i <= zero_k && start == original_start {
+            // Original initialization for the standard case
+            current_cell = -1;
+            next_cell = i - 2i64;
+        } else {
+            // When start is adjusted, load values from the appropriate positions
+            unsafe {
+                let start_idx = (zero_k + start) as usize;
+                current_cell = if start > original_start && start_idx > 0 {
+                    *current_row.get_unchecked(start_idx - 1)
+                } else {
+                    -1
+                };
+                next_cell = *current_row.get_unchecked(start_idx);
+            }
+        }
+
+        let mut row_index = (start + zero_k) as usize - 1;
 
         let mut t;
 
         for q in start..end {
-            // Skip diagonals too far from target - they can't affect the result within budget
-            if (size_diff - q).abs() > threshold - (i - 1) {
-                previous_cell = current_cell;
-                current_cell = next_cell;
-                unsafe {
-                    next_cell = *current_row.get_unchecked(row_index + 1);
-                }
-                // Copy previous value or use sentinel
-                unsafe {
-                    *next_row.get_unchecked_mut(row_index) = *current_row.get_unchecked(row_index);
-                }
-                row_index += 1;
-                continue;
-            }
-            // if i + (size_diff.abs_diff(q)) as i64 > threshold {
-            //     continue;
-            // }
-
+            row_index += 1;
             previous_cell = current_cell;
             current_cell = next_cell;
             unsafe {
@@ -761,7 +772,6 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
             unsafe {
                 *next_row.get_unchecked_mut(row_index) = t;
             }
-            row_index += 1;
         }
 
         unsafe {
