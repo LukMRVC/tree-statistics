@@ -464,7 +464,7 @@ fn compute_sed_parameters(s1_len: &usize, s2_len: &usize, k: &usize) -> SEDParam
     // the maximum number of diagonals we need to consider
     // is 2*k (-k to +k) plus the diagonal for zero edits, plus one extra at each end for the case when we exceed k
     // that is why we add + 3
-    let array_size = (2 * k + 3) as usize;
+    let array_size = (2 * threshold + 3) as usize;
 
     SEDParameters {
         target_diagonal: size_diff,
@@ -496,11 +496,27 @@ pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: u
     // Usage in sed_struct_k:
     let (t1, t2, params) = prepare_sed_inputs!(t1, t2, k);
 
-    let pre_dist = berghel_roach_distance(&t1.reversed_preorder, &t2.reversed_preorder, &params);
+    let pre_dist = bounded_string_edit_distance_with_structure(
+        &t1.reversed_preorder,
+        &t2.reversed_preorder,
+        params.threshold,
+        params.array_size,
+        params.offset_0th_diagonal as i32,
+        params.target_diagonal as i32,
+        params.threshold as i32,
+    );
     if pre_dist > k {
         return pre_dist;
     }
-    let post_dist = berghel_roach_distance(&t1.preorder, &t2.preorder, &params);
+    let post_dist = bounded_string_edit_distance_with_structure(
+        &t1.preorder,
+        &t2.preorder,
+        params.threshold,
+        params.array_size,
+        params.offset_0th_diagonal as i32,
+        params.target_diagonal as i32,
+        params.threshold as i32,
+    );
     std::cmp::max(pre_dist, post_dist)
 }
 
@@ -712,8 +728,13 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 
         // Precompute valid diagonal range based on budget
         let budget = threshold - (i - 1);
-        let min_valid_diag = size_diff - budget;
-        let max_valid_diag = size_diff + budget;
+
+        // If budget is negative or zero, only the target diagonal is valid
+        let (min_valid_diag, max_valid_diag) = if budget <= 0 {
+            (size_diff, size_diff)
+        } else {
+            (size_diff - budget, size_diff + budget)
+        };
 
         // Intersect the original band with the budget-constrained range
         let start = max(original_start, min_valid_diag);
@@ -840,35 +861,67 @@ pub fn bounded_string_edit_distance_with_structure(
         i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
 
-        let mut start: i32;
-        let mut next_cell: i32;
-        let mut previous_cell: i32;
-        let mut current_cell: i32 = -1;
-
-        // Calculate the starting diagonal for this iteration
-        // This follows Berghel & Roach's band algorithm approach
+        // Calculate original band boundaries from Berghel-Roach algorithm
+        let original_start: i32;
         if i <= zero_k {
-            start = -i + 1;
-            next_cell = i - 2i32;
+            original_start = -i + 1;
         } else {
-            // 2 if i = 11 and zero_k = 10
-            start = i - (zero_k << 1) + 1;
-            unsafe {
-                (next_cell, next_allowed_substitution) =
-                    *current_row.get_unchecked((zero_k + start) as usize);
-            }
+            original_start = i - (zero_k << 1) + 1;
         }
 
-        // Calculate the ending diagonal for this iteration
-        let mut end: i32;
+        let original_end: i32;
         if i <= condition_diagonal {
-            end = i;
+            original_end = i;
             unsafe {
                 *next_row.get_unchecked_mut((zero_k + i) as usize) = (-1, true);
             }
         } else {
-            end = end_max - i;
+            original_end = end_max - i;
         }
+
+        // Precompute valid diagonal range based on budget
+        // Use k (not threshold) for budget calculation since k is the actual distance limit
+        let budget = k as i32 - (i - 1);
+
+        // If budget is negative or zero, only the target diagonal is valid
+        let (min_valid_diag, max_valid_diag) = if budget <= 0 {
+            (size_diff, size_diff)
+        } else {
+            (size_diff - budget, size_diff + budget)
+        };
+
+        // Intersect the original band with the budget-constrained range
+        let start = max(original_start, min_valid_diag);
+        let end = min(original_end, max_valid_diag + 1); // +1 because range is exclusive
+
+        // Initialize cell variables for the adjusted starting position
+        // These represent values from the previous cost level (i-1):
+        // - current_cell: value at diagonal (start - 1)
+        // - next_cell: value at diagonal (start)
+        let mut current_cell: i32;
+        let mut next_cell: i32;
+        let mut previous_cell: i32;
+        let mut next_allowed_substitution: bool;
+
+        // Load initial values from previous row based on adjusted start position
+        if i <= zero_k && start == original_start {
+            // Original initialization for the standard case
+            current_cell = -1;
+            next_cell = i - 2i32;
+            next_allowed_substitution = true;
+        } else {
+            // When start is adjusted, load values from the appropriate positions
+            unsafe {
+                let start_idx = (zero_k + start) as usize;
+                current_cell = if start > original_start && start_idx > 0 {
+                    current_row.get_unchecked(start_idx - 1).0
+                } else {
+                    -1
+                };
+                (next_cell, next_allowed_substitution) = *current_row.get_unchecked(start_idx);
+            }
+        }
+
         let current_edit_distance = (i - 1) as u32;
         let mut diagonal_index: usize = (start + zero_k).try_into().unwrap();
 

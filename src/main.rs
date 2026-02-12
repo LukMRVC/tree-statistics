@@ -244,54 +244,11 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut elapsed: Duration = Duration::MAX;
 
                         for _ in 0..runs {
-                            let elapsed_run: Instant = Instant::now();
-                            let (t, query) = &sed_queries[0];
-                            let mut insert_idx = 0usize;
-                            let mut pre_br =
-                                BerghelRoachSedStruct::initialize_query(&query.preorder, *t as i32);
-                            let mut post_br = BerghelRoachSedStruct::initialize_query(
-                                &query.postorder,
-                                *t as i32,
-                            );
-                            for (qid, (t, query)) in sed_queries.iter().enumerate() {
-                                // reserve space for candidates of this query
-                                if candidates.len() - insert_idx < sed_indexes.len() {
-                                    candidates.resize(
-                                        insert_idx + sed_indexes.len(),
-                                        (usize::MAX, usize::MAX),
-                                    );
-                                }
-
-                                pre_br.reinitialize_query(&query.preorder, *t as i32);
-                                post_br.reinitialize_query(&query.postorder, *t as i32);
-                                for (tid, tree) in sed_indexes.iter().enumerate() {
-                                    unsafe {
-                                        *candidates.get_unchecked_mut(insert_idx) = (qid, tid);
-                                    }
-                                    insert_idx += usize::from(
-                                        post_br.compute_distance(&tree.postorder) <= *t
-                                            && pre_br.compute_distance(&tree.preorder) <= *t,
-                                    );
-                                }
-                            }
-                            // let mut br_post = BerghelRoachSed::
-                            let elapsed_run = elapsed_run.elapsed();
-
-                            elapsed = std::cmp::min(elapsed, elapsed_run)
-                        }
-                        let mut sed_k_elapsed = Duration::MAX;
-
-                        for _ in 0..runs {
                             let elapsed_run: Duration;
                             (candidates, elapsed_run) =
                                 lb::iterate_queries!(sed_queries, sed_indexes, sed_struct_k);
-                            sed_k_elapsed = std::cmp::min(sed_k_elapsed, elapsed_run)
+                            elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
-                        println!(
-                            "SED_STRUCT_K\ntime:{duration_ms}ms\ncandidates:{canlen}",
-                            duration_ms = sed_k_elapsed.as_millis(),
-                            canlen = candidates.len()
-                        );
                         (
                             candidates
                                 .into_iter()
