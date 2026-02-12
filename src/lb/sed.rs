@@ -48,6 +48,9 @@ pub struct BerghelRoachSed<'a, T: Eq> {
     max_cost: i32,
     max_computable_cost: i32,
     zero_diagonal_offset: i32,
+    /// Column-major stride: number of cost entries per diagonal column.
+    /// Equals max_cost + 2 (cost range: -1..=max_cost).
+    cost_stride: i32,
     query: &'a [T],
 }
 
@@ -69,6 +72,7 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
         // zero_k offset (or the 0th diagonal offset) is the index in the FROW array where the diagonal for zero edits is stored
         let zero_k_offset = max_k / 2;
 
+        let cost_stride = max_p + 2;
         let fkp_matrix = Self::initialize_fkp_matrix(zero_k_offset, max_k, max_p);
 
         Self {
@@ -78,6 +82,7 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
             max_diag: max_k,
             max_cost: max_p,
             zero_diagonal_offset: zero_k_offset,
+            cost_stride,
         }
     }
 
@@ -101,7 +106,7 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
 
         let m = s1.len() as i32;
         let n = s2.len() as i32;
-        let max_diag = self.max_diag;
+        let cs = self.cost_stride as usize;
         let zero_diagonal_offset = self.zero_diagonal_offset;
 
         let target_diagonal = n - m;
@@ -110,40 +115,26 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
             return usize::MAX;
         }
 
-        let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
+        // Column-major layout: each diagonal's cost values are stored contiguously.
+        // f(k, p) is at index: (k + zero_offset) * cost_stride + (p + 1)
+        let greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<i32>| {
             use std::cmp::max;
 
-            let previous_row = unsafe {
-                matrix.get_unchecked(
-                    Self::access_fkp_matrix(
-                        cost - 1,
-                        -zero_diagonal_offset,
-                        max_diag,
-                        zero_diagonal_offset,
-                    )
-                        ..Self::access_fkp_matrix(
-                            cost - 1,
-                            max_diag - zero_diagonal_offset,
-                            max_diag,
-                            zero_diagonal_offset,
-                        ),
-                )
-            };
-
-            let offset_diag = (diag + self.zero_diagonal_offset) as usize;
+            let diag_off = (diag + zero_diagonal_offset) as usize;
+            // Index for f(k, cost-1): offset = (cost - 1) + 1 = cost
+            let prev_cost = cost as usize;
 
             let mut max_row = unsafe {
                 max(
-                    previous_row.get_unchecked(offset_diag) + 1, // substitution
+                    *matrix.get_unchecked(diag_off * cs + prev_cost) + 1, // f(k, p-1) + 1: substitution
                     max(
-                        *previous_row.get_unchecked(offset_diag - 1), // deletion
-                        previous_row.get_unchecked(offset_diag + 1) + 1, // insertion
+                        *matrix.get_unchecked((diag_off - 1) * cs + prev_cost), // f(k-1, p-1): deletion
+                        *matrix.get_unchecked((diag_off + 1) * cs + prev_cost) + 1, // f(k+1, p-1) + 1: insertion
                     ),
                 )
             };
 
-            // While loop to extend the match (Ukkonen's optimization)
-            // Added safe bounds check (t >= 0) just in case initialization used -999
+            // Greedy extension along the diagonal (Ukkonen's optimization)
             unsafe {
                 while max_row >= 0
                     && max_row < m
@@ -155,55 +146,47 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
                 }
             }
 
-            //
+            // Write f(k, p) at (diag_off * cs + (cost + 1))
             unsafe {
-                *matrix.get_unchecked_mut(Self::access_fkp_matrix(
-                    cost,
-                    diag,
-                    max_diag,
-                    zero_diagonal_offset,
-                )) = max_row;
+                *matrix.get_unchecked_mut(diag_off * cs + (cost + 1) as usize) = max_row;
             }
         };
 
-        let mut cost = target_diagonal;
+        // let mut cost = target_diagonal;
+        let mut cost = target_diagonal - 1;
         let fkp_matrix = &mut self.fkp_matrix;
 
         loop {
-            let mut inc = cost;
+            // let mut inc = cost;
 
-            for temp_cost in 0..cost {
-                if ((n - m) - inc).abs() <= temp_cost {
-                    greedy_extend((n - m) - inc, temp_cost, fkp_matrix);
-                }
-                if ((n - m) + inc).abs() <= temp_cost {
-                    greedy_extend((n - m) + inc, temp_cost, fkp_matrix);
-                }
-
-                inc -= 1;
-            }
-
-            greedy_extend((n - m), cost, fkp_matrix);
-            cost += 1;
-
-            // print matrix row by row
-
-            // eprintln!("FKP Matrix:");
-            // for (idx, val) in fkp_matrix.iter().enumerate() {
-            //     eprint!("{:>12} ", val);
-
-            //     if idx % (max_diag + 1) as usize == max_diag as usize {
-            //         eprintln!("");
+            // for temp_cost in 0..cost {
+            //     if ((n - m) - inc).abs() <= temp_cost {
+            //         greedy_extend((n - m) - inc, temp_cost, fkp_matrix);
             //     }
+            //     if ((n - m) + inc).abs() <= temp_cost {
+            //         greedy_extend((n - m) + inc, temp_cost, fkp_matrix);
+            //     }
+
+            //     inc -= 1;
             // }
 
-            // eprintln!("");
+            cost += 1;
+            for i in ((cost - target_diagonal) / 2)..1 {
+                greedy_extend(target_diagonal + i, cost - i, fkp_matrix);
+            }
+            for i in ((cost + target_diagonal) / 2)..1 {
+                greedy_extend(target_diagonal - i, cost - i, fkp_matrix);
+            }
 
-            let current_target_diag_idx =
-                Self::access_fkp_matrix(cost - 1, target_diagonal, max_diag, zero_diagonal_offset);
+            greedy_extend(target_diagonal, cost, fkp_matrix);
+            let check_idx = (target_diagonal + zero_diagonal_offset) as usize * cs + cost as usize;
+            // cost += 1;
+
+            // Check f(target_diagonal, cost - 1)
+            // let check_idx = (target_diagonal + zero_diagonal_offset) as usize * cs + cost as usize;
 
             unsafe {
-                if *fkp_matrix.get_unchecked(current_target_diag_idx) == m {
+                if *fkp_matrix.get_unchecked(check_idx) == m {
                     return (cost - 1) as usize;
                 } else if cost > self.max_computable_cost {
                     return usize::MAX;
@@ -216,39 +199,36 @@ impl<'a, T: Eq> BerghelRoachSed<'a, T> {
         size_diff * 2 + 3
     }
 
-    fn fkp_matrix_access(&self, row: usize, col: usize, cols: usize) -> i32 {
-        self.fkp_matrix[row * cols + col]
+    /// Column-major access: f(k, p) = matrix[(k + zero_offset) * cost_stride + (p + 1)]
+    #[inline(always)]
+    fn access_fkp_matrix(
+        cost: i32,
+        diag: i32,
+        cost_stride: i32,
+        zero_diagonal_offset: i32,
+    ) -> usize {
+        ((diag + zero_diagonal_offset) * cost_stride + (cost + 1)) as usize
     }
 
-    fn access_fkp_matrix(cost: i32, diag: i32, max_diag: i32, zero_diagonal_offset: i32) -> usize {
-        ((cost + 1) * (max_diag + 1) + diag + zero_diagonal_offset) as usize
-    }
-
+    #[inline(always)]
     fn fkp_matrix_at(&self, cost: i32, diag: i32) -> usize {
-        ((cost + 1) * (self.max_diag + 1) + diag + self.zero_diagonal_offset) as usize
+        ((diag + self.zero_diagonal_offset) * self.cost_stride + (cost + 1)) as usize
     }
 
+    /// Initialize the FKP matrix in column-major layout.
+    /// Each diagonal's cost entries are stored contiguously.
     fn initialize_fkp_matrix(zero_diagonal_offset: i32, max_diag: i32, max_cost: i32) -> Vec<i32> {
-        let mut matrix = vec![i32::MIN; ((max_diag + 1) * (max_cost + 2)) as usize];
+        let cost_stride = max_cost + 2;
+        let mut matrix = vec![i32::MIN; ((max_diag + 1) * cost_stride) as usize];
         for diag in -zero_diagonal_offset..(max_diag - zero_diagonal_offset) {
+            let diag_base = ((diag + zero_diagonal_offset) * cost_stride) as usize;
             for cost in -1..(max_cost + 1) {
                 if cost == diag.abs() - 1 {
-                    if diag < 0 {
-                        matrix
-                            [Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
-                            diag.abs() - 1;
-                    } else {
-                        matrix
-                            [Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
-                            -1;
-                    }
-                } else {
-                    matrix[Self::access_fkp_matrix(cost, diag, max_diag, zero_diagonal_offset)] =
-                        i32::MIN;
+                    let idx = diag_base + (cost + 1) as usize;
+                    matrix[idx] = if diag < 0 { diag.abs() - 1 } else { -1 };
                 }
             }
         }
-
         matrix
     }
 }
@@ -294,7 +274,7 @@ impl<'a> BerghelRoachSedStruct<'a> {
             return usize::MAX;
         }
 
-        let mut greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<(i32, bool)>| {
+        let greedy_extend = |diag: i32, cost: i32, matrix: &mut Vec<(i32, bool)>| {
             use std::cmp::max;
 
             let previous_row = &matrix[Self::access_fkp_matrix(
@@ -1165,48 +1145,77 @@ mod tests {
     fn test_initialize_fkp_matrix() {
         let max_diag = 10;
         let max_cost = 3;
-        let zero_diagonal_offset = max_diag / 2;
+        let zero_diagonal_offset = max_diag / 2; // = 5
         let matrix = BerghelRoachSed::<i32>::initialize_fkp_matrix(
             zero_diagonal_offset,
             max_diag,
-            max_cost + 2,
+            max_cost + 2, // max_cost param = 5
         );
 
-        // at p = -1, diag = 0
-        let mut index_calc = |row: usize, col: usize| row * max_diag as usize + col;
+        // Column-major layout: each diagonal's cost entries are contiguous.
+        // cost_stride = max_cost_param + 2 = 7
+        // For each diag d, base case is at cost = |d| - 1:
+        //   negative d → value = |d| - 1
+        //   positive d → value = -1
+        let cost_stride = (max_cost + 2 + 2) as usize; // 7
 
-        let mut rv1 = vec![i32::MIN; max_diag as usize + 1];
-        rv1[zero_diagonal_offset as usize] = -1;
+        // diag = -5 (idx 0): base case at cost=4, val=4
+        let mut col0 = vec![i32::MIN; cost_stride];
+        col0[5] = 4; // cost=4 → index 4+1=5
 
-        let mut rv2 = vec![i32::MIN; max_diag as usize + 1];
-        rv2[zero_diagonal_offset as usize - 1] = 0;
-        rv2[zero_diagonal_offset as usize + 1] = -1;
-        let mut rv3 = vec![i32::MIN; max_diag as usize + 1];
-        rv3[zero_diagonal_offset as usize - 2] = 1;
-        rv3[zero_diagonal_offset as usize + 2] = -1;
-        let mut rv4 = vec![i32::MIN; max_diag as usize + 1];
-        rv4[zero_diagonal_offset as usize - 3] = 2;
-        rv4[zero_diagonal_offset as usize + 3] = -1;
-        let mut rv5 = vec![i32::MIN; max_diag as usize + 1];
-        rv5[zero_diagonal_offset as usize - 4] = 3;
-        rv5[zero_diagonal_offset as usize + 4] = -1;
-        let mut rv6 = vec![i32::MIN; max_diag as usize + 1];
-        rv6[zero_diagonal_offset as usize - 5] = 4;
-        let mut rv7 = vec![i32::MIN; max_diag as usize + 1];
+        // diag = -4 (idx 1): base case at cost=3, val=3
+        let mut col1 = vec![i32::MIN; cost_stride];
+        col1[4] = 3;
 
-        // combine all rv vectors into single vector
+        // diag = -3: base case at cost=2, val=2
+        let mut col2 = vec![i32::MIN; cost_stride];
+        col2[3] = 2;
+
+        // diag = -2: base case at cost=1, val=1
+        let mut col3 = vec![i32::MIN; cost_stride];
+        col3[2] = 1;
+
+        // diag = -1: base case at cost=0, val=0
+        let mut col4 = vec![i32::MIN; cost_stride];
+        col4[1] = 0;
+
+        // diag = 0: base case at cost=-1, val=-1
+        let mut col5 = vec![i32::MIN; cost_stride];
+        col5[0] = -1;
+
+        // diag = +1: base case at cost=0, val=-1
+        let mut col6 = vec![i32::MIN; cost_stride];
+        col6[1] = -1;
+
+        // diag = +2: base case at cost=1, val=-1
+        let mut col7 = vec![i32::MIN; cost_stride];
+        col7[2] = -1;
+
+        // diag = +3: base case at cost=2, val=-1
+        let mut col8 = vec![i32::MIN; cost_stride];
+        col8[3] = -1;
+
+        // diag = +4: base case at cost=3, val=-1
+        let mut col9 = vec![i32::MIN; cost_stride];
+        col9[4] = -1;
+
+        // diag = +5: never set in init loop (loop range -5..5)
+        let col10 = vec![i32::MIN; cost_stride];
+
         let mut combined = vec![];
-        combined.extend(rv1);
-        combined.extend(rv2);
-        combined.extend(rv3);
-        combined.extend(rv4);
-        combined.extend(rv5);
-        combined.extend(rv6);
-        combined.extend(rv7);
+        combined.extend(col0);
+        combined.extend(col1);
+        combined.extend(col2);
+        combined.extend(col3);
+        combined.extend(col4);
+        combined.extend(col5);
+        combined.extend(col6);
+        combined.extend(col7);
+        combined.extend(col8);
+        combined.extend(col9);
+        combined.extend(col10);
 
-        // Check some key values in the matrix
         assert_eq!(matrix, combined);
-        // assert_eq!(matrix, initialized_fkp_target);
     }
 
     #[test]

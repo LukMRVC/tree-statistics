@@ -43,3 +43,10 @@ serde = { version = "1.0.203", features = ["derive", "serde_derive"] }
 crossbeam-channel = "0.5.13"
 cached = { version = "0.55.1", features = ["proc_macro"] }
 scc = "3.4.8"
+
+[dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
+
+[[bench]]
+name = "sed_benchmarks"
+harness = false

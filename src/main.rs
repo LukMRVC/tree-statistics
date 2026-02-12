@@ -254,12 +254,19 @@ fn main() -> Result<(), anyhow::Error> {
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
 
-                        // for _ in 0..runs {
-                        //     let elapsed_run: Duration;
-                        //     (candidates, elapsed_run) =
-                        //         lb::iterate_queries!(sed_queries, sed_indexes, sed_k);
-                        //     elapsed = std::cmp::min(elapsed, elapsed_run)
-                        // }
+                        let mut sed_k_elapsed = Duration::MAX;
+
+                        for _ in 0..runs {
+                            let elapsed_run: Duration;
+                            (candidates, elapsed_run) =
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k);
+                            sed_k_elapsed = std::cmp::min(sed_k_elapsed, elapsed_run)
+                        }
+                        println!(
+                            "SED_K\ntime:{duration_ms}ms\ncandidates:{canlen}",
+                            duration_ms = sed_k_elapsed.as_millis(),
+                            canlen = candidates.len()
+                        );
                         (
                             candidates
                                 .into_iter()
@@ -318,12 +325,19 @@ fn main() -> Result<(), anyhow::Error> {
 
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
-                        // for _ in 0..runs {
-                        //     let elapsed_run: Duration;
-                        //     (candidates, elapsed_run) =
-                        //         lb::iterate_queries!(sed_queries, sed_indexes, sed_struct_k);
-                        //     elapsed = std::cmp::min(elapsed, elapsed_run)
-                        // }
+                        let mut sed_k_elapsed = Duration::MAX;
+
+                        for _ in 0..runs {
+                            let elapsed_run: Duration;
+                            (candidates, elapsed_run) =
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_struct_k);
+                            sed_k_elapsed = std::cmp::min(sed_k_elapsed, elapsed_run)
+                        }
+                        println!(
+                            "SED_STRUCT_K\ntime:{duration_ms}ms\ncandidates:{canlen}",
+                            duration_ms = sed_k_elapsed.as_millis(),
+                            canlen = candidates.len()
+                        );
                         (
                             candidates
                                 .into_iter()
