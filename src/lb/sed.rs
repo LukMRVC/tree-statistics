@@ -487,6 +487,27 @@ macro_rules! prepare_sed_inputs {
 
 /// Computes bounded string edit distance with known maximal threshold.
 /// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
+pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
+    let (mut t1, mut t2) = (t1, t2);
+    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+        return k + 1;
+    }
+
+    // if size of t1 is bigger than t2, swap them
+    if t1.preorder.len() > t2.preorder.len() {
+        (t1, t2) = (t2, t1);
+    }
+    let post_dist = bounded_string_edit_distance(&t1.reversed_preorder, &t2.reversed_preorder, k);
+
+    if post_dist > k {
+        return post_dist;
+    }
+    let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
+    std::cmp::max(pre_dist, post_dist)
+}
+
+/// Computes bounded string edit distance with known maximal threshold.
+/// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
 pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: usize) -> usize {
     let (mut t1, mut t2) = (t1, t2);
     if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
@@ -609,27 +630,6 @@ fn string_edit_distance_with_structure(
     // }
 
     result as usize
-}
-
-/// Computes bounded string edit distance with known maximal threshold.
-/// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
-pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
-    let (mut t1, mut t2) = (t1, t2);
-    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
-        return k + 1;
-    }
-
-    // if size of t1 is bigger than t2, swap them
-    if t1.preorder.len() > t2.preorder.len() {
-        (t1, t2) = (t2, t1);
-    }
-    let post_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
-
-    if post_dist > k {
-        return post_dist;
-    }
-    let pre_dist = bounded_string_edit_distance(&t1.postorder, &t2.postorder, k);
-    std::cmp::max(pre_dist, post_dist)
 }
 
 pub fn sed_k_br<'a, T: Eq>(br: &'a mut BerghelRoachSed<T>, target: &'a [T]) -> usize {
@@ -992,9 +992,19 @@ pub fn bounded_string_edit_distance_with_structure(
                     let c1 = s1.get_unchecked(max_row_number as usize);
                     let c2 = s2.get_unchecked((max_row_number + diag_offset) as usize);
 
+                    // TODO: change computation back without translated coordinates for a bit
                     let char_eq = c1.char == c2.char;
                     struct_ok = (allowed_edits + (c1.sum - c2.sum).abs() <= k)
                         && (allowed_edits + (c1.diff - c2.diff).abs() <= k);
+
+                    // struct_ok = (allowed_edits
+                    //     + c1.preorder_descendant_postorder_ancestor
+                    //         .abs_diff(c2.preorder_descendant_postorder_ancestor)
+                    //         as i32
+                    //     + c1.preorder_following_postorder_preceding
+                    //         .abs_diff(c2.preorder_following_postorder_preceding)
+                    //         as i32)
+                    //     <= k;
 
                     if !char_eq || !struct_ok {
                         break;

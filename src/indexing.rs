@@ -26,6 +26,7 @@ pub struct SEDIndex {
     pub postorder: Vec<i32>,
 
     pub reversed_preorder: Vec<i32>,
+    pub reversed_postorder: Vec<i32>,
     pub c: ConstantsIndex,
 }
 
@@ -39,14 +40,24 @@ impl Indexer for SEDIndex {
         let mut pre = Vec::with_capacity(tree.count());
         let mut post = Vec::with_capacity(tree.count());
         let mut reversed_preorder = Vec::with_capacity(tree.count());
+        let mut reversed_postorder = Vec::with_capacity(tree.count());
 
-        traverse(root_id, tree, &mut pre, &mut post, &mut reversed_preorder);
+        traverse(
+            root_id,
+            tree,
+            &mut pre,
+            &mut post,
+            &mut reversed_preorder,
+            &mut reversed_postorder,
+        );
 
         reversed_preorder.reverse();
+        reversed_postorder.reverse();
         Self {
             postorder: post,
             preorder: pre,
             reversed_preorder,
+            reversed_postorder,
             c: ConstantsIndex {
                 tree_size: tree.count(),
             },
@@ -60,12 +71,14 @@ fn traverse(
     pre: &mut Vec<i32>,
     post: &mut Vec<i32>,
     rev_pre: &mut Vec<i32>,
+    rev_post: &mut Vec<i32>,
 ) {
     // i am here at the current root
     let label = tree.get(nid).unwrap().get();
     pre.push(*label);
+    rev_post.push(*label);
     for cnid in nid.children(tree) {
-        traverse(cnid, tree, pre, post, rev_pre);
+        traverse(cnid, tree, pre, post, rev_pre, rev_post);
     }
     rev_pre.push(*label);
     post.push(*label);
@@ -183,8 +196,8 @@ impl SEDIndexWithStructure {
             char: *label,
             preorder_following_postorder_preceding: following as i32,
             preorder_descendant_postorder_ancestor: *depth as i32,
-            sum: following as i32 + preceding as i32,
-            diff: following as i32 - preceding as i32,
+            sum: following as i32 + *depth as i32,
+            diff: following as i32 - *depth as i32,
         });
 
         // to get a reversed preorder traversal we need to reverse the postorder traversal
