@@ -34,6 +34,14 @@ pub enum LowerBoundMethods {
     Bib,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum SedTraversal {
+    Preorder,
+    Postorder,
+    ReversedPreorder,
+    ReversedPostorder,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     /// outputs data for degree, leaf paths and labels histograms
@@ -78,6 +86,12 @@ pub enum Commands {
         /// Then the lowest duration of all runs is taken as result
         #[arg(long = "runs", short = 'r', default_value_t = 1)]
         runs: usize,
+        /// First pass query traversal for SED / SEDStruct
+        #[arg(long = "sed-first-traversal", value_enum, default_value_t = SedTraversal::ReversedPreorder)]
+        sed_first_traversal: SedTraversal,
+        /// Second pass query traversal for SED / SEDStruct
+        #[arg(long = "sed-second-traversal", value_enum, default_value_t = SedTraversal::Preorder)]
+        sed_second_traversal: SedTraversal,
     },
     /// Validates candidate results against real results
     Validate {

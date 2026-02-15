@@ -5,12 +5,15 @@ use crate::parsing::{tree_to_string, LabelDict, TreeOutput};
 use crate::statistics::TreeStatistics;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use cli::{Cli, Commands, LowerBoundMethods};
+use cli::{Cli, Commands, LowerBoundMethods, SedTraversal as CliSedTraversal};
 use indexing::SEDIndexWithStructure;
 use itertools::Itertools;
 use lb::indexes;
 use lb::label_intersection::{self, label_intersection_k};
-use lb::sed::{sed_k, sed_struct_k};
+use lb::sed::{
+    sed_k, sed_k_with_config, sed_struct_k, sed_struct_k_with_config, SedTraversalConfig,
+    TraversalOrder,
+};
 
 use lb::structural_filter::{self, ted as struct_ted_k, LabelSetConverter};
 use parsing::get_frequency_ordering;
@@ -33,6 +36,15 @@ mod statistics;
 mod validation;
 
 fn main() -> Result<(), anyhow::Error> {
+    fn map_cli_sed_traversal(order: CliSedTraversal) -> TraversalOrder {
+        match order {
+            CliSedTraversal::Preorder => TraversalOrder::Preorder,
+            CliSedTraversal::Postorder => TraversalOrder::Postorder,
+            CliSedTraversal::ReversedPreorder => TraversalOrder::ReversedPreorder,
+            CliSedTraversal::ReversedPostorder => TraversalOrder::ReversedPostorder,
+        }
+    }
+
     let cli = cli::Cli::parse();
     let mut cmd = cli::Cli::command();
 
@@ -128,6 +140,8 @@ fn main() -> Result<(), anyhow::Error> {
             results_path: _results,
             q,
             runs,
+            sed_first_traversal,
+            sed_second_traversal,
         } => {
             use LowerBoundMethods as LBM;
             if !output.is_dir() {
@@ -135,6 +149,10 @@ fn main() -> Result<(), anyhow::Error> {
                 process::exit(1);
             }
             let q = q.unwrap_or(2);
+            let sed_config = SedTraversalConfig {
+                first: map_cli_sed_traversal(sed_first_traversal),
+                second: map_cli_sed_traversal(sed_second_traversal),
+            };
 
             if !cli.quiet {
                 println!("Preparing dataset and running preprocessing for all methods");
@@ -212,22 +230,21 @@ fn main() -> Result<(), anyhow::Error> {
                             .map(|(t, q)| (*t, SEDIndex::index_tree(q, &label_dict)))
                             .collect_vec();
 
-                        let mut candidates = vec![(usize::MAX, usize::MAX); sed_indexes.len() * 2];
+                        let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;
+
+                        let sed_lb = |q: &SEDIndex, t: &SEDIndex, threshold: usize| {
+                            sed_k_with_config(q, t, threshold, sed_config)
+                        };
 
                         for _ in 0..runs {
                             let elapsed_run: Duration;
+
                             (candidates, elapsed_run) =
-                                lb::iterate_queries!(sed_queries, sed_indexes, sed_k);
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_lb);
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
-                        (
-                            candidates
-                                .into_iter()
-                                .filter(|(q, t)| *q < usize::MAX)
-                                .collect::<Vec<_>>(),
-                            elapsed,
-                        )
+                        (candidates, elapsed)
                     }
                     LBM::SEDStruct => {
                         let sed_indexes = trees
@@ -243,10 +260,17 @@ fn main() -> Result<(), anyhow::Error> {
                         let mut candidates = vec![];
                         let mut elapsed: Duration = Duration::MAX;
 
+                        let sed_lb = |q: &SEDIndexWithStructure,
+                                      t: &SEDIndexWithStructure,
+                                      threshold: usize| {
+                            sed_struct_k_with_config(q, t, threshold, sed_config)
+                        };
+
                         for _ in 0..runs {
                             let elapsed_run: Duration;
+
                             (candidates, elapsed_run) =
-                                lb::iterate_queries!(sed_queries, sed_indexes, sed_struct_k);
+                                lb::iterate_queries!(sed_queries, sed_indexes, sed_lb);
                             elapsed = std::cmp::min(elapsed, elapsed_run)
                         }
                         (

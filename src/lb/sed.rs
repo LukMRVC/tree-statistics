@@ -485,60 +485,137 @@ macro_rules! prepare_sed_inputs {
     }};
 }
 
-/// Computes bounded string edit distance with known maximal threshold.
-/// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
-pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TraversalOrder {
+    Preorder,
+    Postorder,
+    ReversedPreorder,
+    ReversedPostorder,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SedTraversalConfig {
+    pub first: TraversalOrder,
+    pub second: TraversalOrder,
+}
+
+impl Default for SedTraversalConfig {
+    fn default() -> Self {
+        Self {
+            first: TraversalOrder::ReversedPreorder,
+            second: TraversalOrder::Preorder,
+        }
+    }
+}
+
+#[inline(always)]
+fn select_traversal_i32<'a>(index: &'a SEDIndex, order: TraversalOrder) -> &'a [i32] {
+    match order {
+        TraversalOrder::Preorder => &index.preorder,
+        TraversalOrder::Postorder => &index.postorder,
+        TraversalOrder::ReversedPreorder => &index.reversed_preorder,
+        TraversalOrder::ReversedPostorder => &index.reversed_postorder,
+    }
+}
+
+#[inline(always)]
+fn select_traversal_struct<'a>(
+    index: &'a SEDIndexWithStructure,
+    order: TraversalOrder,
+) -> &'a [TraversalCharacter] {
+    match order {
+        TraversalOrder::Preorder => &index.preorder,
+        TraversalOrder::Postorder => &index.postorder,
+        TraversalOrder::ReversedPreorder => &index.reversed_preorder,
+        TraversalOrder::ReversedPostorder => &index.reversed_postorder,
+    }
+}
+
+/// Computes bounded string edit distance with known maximal threshold
+/// with runtime-configurable traversal pairs.
+pub fn sed_k_with_config(
+    t1: &SEDIndex,
+    t2: &SEDIndex,
+    k: usize,
+    config: SedTraversalConfig,
+) -> usize {
     let (mut t1, mut t2) = (t1, t2);
     if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
         return k + 1;
     }
 
-    // if size of t1 is bigger than t2, swap them
     if t1.preorder.len() > t2.preorder.len() {
         (t1, t2) = (t2, t1);
     }
-    let post_dist = bounded_string_edit_distance(&t1.reversed_preorder, &t2.reversed_preorder, k);
 
-    if post_dist > k {
-        return post_dist;
+    let first_dist = bounded_string_edit_distance(
+        select_traversal_i32(t1, config.first),
+        select_traversal_i32(t2, config.first),
+        k,
+    );
+
+    if first_dist > k {
+        return first_dist;
     }
-    let pre_dist = bounded_string_edit_distance(&t1.preorder, &t2.preorder, k);
-    std::cmp::max(pre_dist, post_dist)
+
+    let second_dist = bounded_string_edit_distance(
+        select_traversal_i32(t1, config.second),
+        select_traversal_i32(t2, config.second),
+        k,
+    );
+    std::cmp::max(first_dist, second_dist)
+}
+
+/// Computes bounded string edit distance with known maximal threshold.
+/// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
+pub fn sed_k(t1: &SEDIndex, t2: &SEDIndex, k: usize) -> usize {
+    sed_k_with_config(t1, t2, k, SedTraversalConfig::default())
+}
+
+/// Computes bounded string edit distance with known maximal threshold
+/// with runtime-configurable traversal pairs.
+pub fn sed_struct_k_with_config(
+    t1: &SEDIndexWithStructure,
+    t2: &SEDIndexWithStructure,
+    k: usize,
+    config: SedTraversalConfig,
+) -> usize {
+    let (mut t1, mut t2) = (t1, t2);
+    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
+        return k + 1;
+    }
+
+    let (t1, t2, params) = prepare_sed_inputs!(t1, t2, k);
+
+    let first_dist = bounded_string_edit_distance_with_structure(
+        select_traversal_struct(t1, config.first),
+        select_traversal_struct(t2, config.first),
+        params.threshold,
+        params.array_size,
+        params.offset_0th_diagonal as i32,
+        params.target_diagonal as i32,
+        params.threshold as i32,
+    );
+    if first_dist > k {
+        return first_dist;
+    }
+
+    let second_dist = bounded_string_edit_distance_with_structure(
+        select_traversal_struct(t1, config.second),
+        select_traversal_struct(t2, config.second),
+        params.threshold,
+        params.array_size,
+        params.offset_0th_diagonal as i32,
+        params.target_diagonal as i32,
+        params.threshold as i32,
+    );
+    std::cmp::max(first_dist, second_dist)
 }
 
 /// Computes bounded string edit distance with known maximal threshold.
 /// Returns distance at max of K. Algorithm by Hal Berghel and David Roach
 pub fn sed_struct_k(t1: &SEDIndexWithStructure, t2: &SEDIndexWithStructure, k: usize) -> usize {
-    let (mut t1, mut t2) = (t1, t2);
-    if t1.c.tree_size.abs_diff(t2.c.tree_size) > k {
-        return k + 1;
-    }
-
-    // Usage in sed_struct_k:
-    let (t1, t2, params) = prepare_sed_inputs!(t1, t2, k);
-
-    let pre_dist = bounded_string_edit_distance_with_structure(
-        &t1.reversed_preorder,
-        &t2.reversed_preorder,
-        params.threshold,
-        params.array_size,
-        params.offset_0th_diagonal as i32,
-        params.target_diagonal as i32,
-        params.threshold as i32,
-    );
-    if pre_dist > k {
-        return pre_dist;
-    }
-    let post_dist = bounded_string_edit_distance_with_structure(
-        &t1.preorder,
-        &t2.preorder,
-        params.threshold,
-        params.array_size,
-        params.offset_0th_diagonal as i32,
-        params.target_diagonal as i32,
-        params.threshold as i32,
-    );
-    std::cmp::max(pre_dist, post_dist)
+    sed_struct_k_with_config(t1, t2, k, SedTraversalConfig::default())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -638,47 +715,6 @@ pub fn sed_k_br<'a, T: Eq>(br: &'a mut BerghelRoachSed<T>, target: &'a [T]) -> u
 
 pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
     use std::cmp::{max, min};
-    // assumes size of s2 is bigger or equal than s1
-    // let mut s1len = s1.len();
-    // let mut s2len = s2.len();
-    // // perform suffix trimming
-    // for _ in s1
-    //     .iter()
-    //     .rev()
-    //     .zip(s2.iter().rev())
-    //     .take_while(|(s1c, s2c)| s1c == s2c)
-    // {
-    //     s1len -= 1;
-    //     s2len -= 1;
-    //     if s1len == 0 {
-    //         break;
-    //     }
-    // }
-
-    // let mut common_prefix = 0;
-
-    // // now prefix trimming
-    // for _ in s1.iter().zip(s2.iter()).take_while(|(s1c, s2c)| s1c == s2c) {
-    //     common_prefix += 1;
-    //     if common_prefix >= s1len {
-    //         break;
-    //     }
-    // }
-
-    // if s1len == 0 {
-    //     return s2len;
-    // }
-
-    // // prefix trimming done
-    // let s1 = &s1[common_prefix..s1len];
-    // let s2 = &s2[common_prefix..s2len];
-
-    // s1len -= common_prefix;
-    // s2len -= common_prefix;
-    // // one string is gone by suffix and prefix trimming, so just return the remaining size
-    // if s1len == 0 {
-    //     return s2len;
-    // }
     let (s1, s2) = if s1.len() <= s2.len() {
         (s1, s2)
     } else {
@@ -796,8 +832,9 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
         }
 
         unsafe {
-            if !(*next_row.get_unchecked(condition_diag as usize) < s1len && i <= threshold) {
-                if !(*next_row.get_unchecked(condition_diag as usize) >= s1len) && i > threshold {
+            let condition_value = *next_row.get_unchecked(condition_diag as usize);
+            if !(condition_value < s1len && i <= threshold) {
+                if !(condition_value >= s1len) && i > threshold {
                     break usize::MAX;
                 }
                 break (i - 1) as usize;
