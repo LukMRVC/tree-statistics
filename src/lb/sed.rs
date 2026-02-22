@@ -1,4 +1,3 @@
-use std::{cell::UnsafeCell, sync::LazyLock};
 use std::{i32, usize};
 
 use rustc_hash::FxHashMap;
@@ -734,14 +733,13 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 
     let arr_len = size_diff + (zero_k) * 2 + 2;
 
+    let condition_diag = (size_diff + zero_k);
+    let end_max = ((condition_diag) << 1);
+
     let mut current_row = vec![-1i64; arr_len as usize];
     let mut next_row = vec![-1i64; arr_len as usize];
-    let mut i: i64 = 0;
-    let condition_diag = size_diff + zero_k;
-    let end_max = condition_diag << 1;
 
-    loop {
-        i += 1;
+    for i in 1..=threshold + 1 {
         std::mem::swap(&mut next_row, &mut current_row);
 
         // Calculate original band boundaries from Berghel-Roach algorithm
@@ -833,14 +831,13 @@ pub fn bounded_string_edit_distance(s1: &[i32], s2: &[i32], k: usize) -> usize {
 
         unsafe {
             let condition_value = *next_row.get_unchecked(condition_diag as usize);
-            if !(condition_value < s1len && i <= threshold) {
-                if !(condition_value >= s1len) && i > threshold {
-                    break usize::MAX;
-                }
-                break (i - 1) as usize;
+            if condition_value >= s1len {
+                return (i - 1) as usize;
             }
         }
     }
+
+    usize::MAX
 }
 
 /// Performs bounded string edit distance with known maximal threshold
@@ -875,7 +872,6 @@ pub fn bounded_string_edit_distance_with_structure(
     let mut next_row = vec![(-1, true); arr_len as usize];
 
     // println!("Initialized rows with length: {}", arr_len);
-    let mut i = 0i32;
     // condition_diagonal is the diaogonal on which the resulting SED lies.
     // we will be checking this diagonal to determine if we can stop early
     let condition_diagonal = size_diff + zero_k;
@@ -893,9 +889,8 @@ pub fn bounded_string_edit_distance_with_structure(
     // }
 
     let mut next_allowed_substitution = true;
-    loop {
+    for i in 1..=threshold + 1 {
         // i here is the current allowed edit distance
-        i += 1;
         std::mem::swap(&mut next_row, &mut current_row);
 
         // Calculate original band boundaries from Berghel-Roach algorithm
@@ -1074,22 +1069,13 @@ pub fn bounded_string_edit_distance_with_structure(
         // to determine the distance is > threshold, or we've reached the
         // threshold itself - this follows the "cutoff" principle in the paper
         unsafe {
-            if !(next_row.get_unchecked(condition_diagonal_idx).0 < s1len as i32 && i <= threshold)
-            {
-                if threshold < k as i32 {
-                    break ((i - 1) + k as i32 - threshold) as usize;
-                }
-
-                if !(next_row.get_unchecked(condition_diagonal_idx).0 >= s1len as i32)
-                    && i > threshold
-                {
-                    break usize::MAX;
-                }
-
-                break (i - 1) as usize;
+            if next_row.get_unchecked(condition_diagonal_idx).0 >= s1len {
+                return (i - 1) as usize;
             }
         }
     }
+
+    usize::MAX
     // })
 }
 
@@ -1399,6 +1385,15 @@ mod tests {
 
     #[test]
     fn test_sed_boundd_first_case() {
+        let query = "aaa".chars().map(|c| c as i32).collect::<Vec<_>>();
+        let target = "aaabcd".chars().map(|c| c as i32).collect::<Vec<_>>();
+
+        let result = bounded_string_edit_distance(&query, &target, 3);
+        assert_eq!(
+            result, 3,
+            "Expected edit distance of 3 between 'aaa' and 'aaabcd' with k=3"
+        );
+
         let query = "garvey".chars().map(|c| c as i32).collect::<Vec<_>>();
         let target = "avery".chars().map(|c| c as i32).collect::<Vec<_>>();
 
