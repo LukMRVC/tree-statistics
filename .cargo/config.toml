@@ -1,4 +1,4 @@
 
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
-rustflags = ["-Awarnings", "-Z", "threads=16", "-C", "target-cpu=native"]
+rustflags = ["-Awarnings", "-C", "target-cpu=native"]

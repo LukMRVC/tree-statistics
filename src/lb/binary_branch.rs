@@ -92,7 +92,7 @@ impl BinaryBranchConverter {
 pub fn ted(t1: &BinaryBranchTuple, t2: &BinaryBranchTuple, k: usize) -> usize {
     let (t1s, t2s) = (t1.0, t2.0);
     if t1s.abs_diff(t2s) > k {
-        return k + 1;
+        return k * 5 + 1;
     }
     let mut intersection_size = 0usize;
 
